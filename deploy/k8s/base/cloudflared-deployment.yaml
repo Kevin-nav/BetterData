@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: betterdata-cloudflared
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-cloudflared
+    app.kubernetes.io/part-of: betterdata
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: betterdata-cloudflared
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: betterdata-cloudflared
+        app.kubernetes.io/part-of: betterdata
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.4.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - tunnel
+            - --no-autoupdate
+            - run
+            - --token
+            - $(CLOUDFLARED_TOKEN)
+          env:
+            - name: CLOUDFLARED_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: betterdata-cloudflared
+                  key: token
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

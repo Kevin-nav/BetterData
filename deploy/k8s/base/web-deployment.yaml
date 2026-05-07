@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: betterdata-web
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-web
+    app.kubernetes.io/part-of: betterdata
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: betterdata-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: betterdata-web
+        app.kubernetes.io/part-of: betterdata
+    spec:
+      imagePullSecrets:
+        - name: ghcr-auth
+      containers:
+        - name: web
+          image: ghcr.io/kevin-nav/betterdata-web:master
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: betterdata-web-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
