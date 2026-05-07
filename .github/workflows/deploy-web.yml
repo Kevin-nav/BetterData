@@ -85,6 +85,7 @@ jobs:
       - name: Deploy selected image
         run: |
           sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$IMAGE:$IMAGE_TAG"
+          sudo -n kubectl -n "$NAMESPACE" rollout restart deployment/betterdata-web
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=180s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-cloudflared --timeout=180s
 
