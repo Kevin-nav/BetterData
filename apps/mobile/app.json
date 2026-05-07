@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Better Data",
+    "slug": "better-data",
+    "scheme": "betterdata",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.betterdatagh.app"
+    },
+    "android": {
+      "package": "com.betterdatagh.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f7b45"
+      }
+    }
+  }
+}

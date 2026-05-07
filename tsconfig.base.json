@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@betterdata/config": ["packages/config/src/index.ts"],
+      "@betterdata/contracts": ["packages/contracts/src/index.ts"],
+      "@betterdata/database": ["packages/database/src/index.ts"],
+      "@betterdata/ui": ["packages/ui/src/index.ts"]
+    }
+  }
+}

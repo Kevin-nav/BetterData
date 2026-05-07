@@ -1,0 +1,25 @@
+{
+  "name": "better-data",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Better Data monorepo for customer web, admin, mobile, and shared backend services.",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "format": "prettier --write .",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "convex:codegen": "convex codegen"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "convex": "^1.33.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.4",
+    "typescript": "^5.7.3"
+  }
+}
