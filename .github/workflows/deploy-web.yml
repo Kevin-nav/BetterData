@@ -30,6 +30,7 @@ env:
   CLOUDFLARED_TOKEN: ${{ secrets.CLOUDFLARED_TOKEN }}
   GHCR_READ_USERNAME: ${{ secrets.GHCR_READ_USERNAME }}
   GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   deploy:
@@ -73,15 +74,13 @@ jobs:
 
       - name: Sync GHCR image pull secret
         run: |
-          if [ -n "$GHCR_READ_USERNAME" ] && [ -n "$GHCR_READ_TOKEN" ]; then
-            sudo -n kubectl -n "$NAMESPACE" create secret docker-registry ghcr-auth \
-              --docker-server=ghcr.io \
-              --docker-username="$GHCR_READ_USERNAME" \
-              --docker-password="$GHCR_READ_TOKEN" \
-              --dry-run=client -o yaml | sudo -n kubectl apply -f -
-          else
-            echo "GHCR_READ_USERNAME/GHCR_READ_TOKEN not set; assuming public image or existing ghcr-auth secret."
-          fi
+          username="${GHCR_READ_USERNAME:-$GITHUB_ACTOR}"
+          token="${GHCR_READ_TOKEN:-$GITHUB_TOKEN}"
+          sudo -n kubectl -n "$NAMESPACE" create secret docker-registry ghcr-auth \
+            --docker-server=ghcr.io \
+            --docker-username="$username" \
+            --docker-password="$token" \
+            --dry-run=client -o yaml | sudo -n kubectl apply -f -
 
       - name: Deploy selected image
         run: |
