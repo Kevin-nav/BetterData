@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 export const list = query({
   args: {
-    network: v.optional(v.union(v.literal("YELLO"), v.literal("TELECEL"), v.literal("AT_PREMIUM")))
+    network: v.optional(v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")))
   },
   handler: async (ctx, args) => {
     if (args.network) {

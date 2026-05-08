@@ -14,7 +14,7 @@ export const overview = query({
         weeklyGhs: 0,
         monthlyGhs: 0
       },
-      datamartBalanceGhs: 0,
+      vendorBalanceGhs: 0,
       pendingAgentApplications: pendingAgents.length
     };
   }

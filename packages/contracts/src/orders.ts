@@ -1,4 +1,4 @@
-import type { DataMartNetworkCode } from "./networks";
+import type { NetworkCode } from "./networks";
 
 export const ORDER_STATUSES = [
   "pending",
@@ -12,7 +12,7 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export type PurchaseRequest = {
   packageId: string;
-  network: DataMartNetworkCode;
+  network: NetworkCode;
   recipientPhone: string;
   confirmRecipientIsCorrect: true;
   paymentMethod: "paystack_momo" | "wallet";
@@ -24,14 +24,16 @@ export type Order = {
   reference: string;
   status: OrderStatus;
   packageId: string;
-  network: DataMartNetworkCode;
+  vendorId?: string;
+  vendorOrderReference?: string;
+  network: NetworkCode;
   recipientPhone: string;
   amountGhs: number;
   createdAt: string;
   updatedAt: string;
 };
 
-export type DataMartWebhookEvent =
+export type DataVendorWebhookEvent =
   | "order.created"
   | "order.completed"
   | "order.failed"

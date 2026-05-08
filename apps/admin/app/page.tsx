@@ -1,6 +1,6 @@
 const dashboardCards = [
   { label: "Daily revenue", value: "GHS 0" },
-  { label: "DataMart balance", value: "GHS 0" },
+  { label: "Vendor balance", value: "GHS 0" },
   { label: "Pending agents", value: "0" },
   { label: "Open orders", value: "0" }
 ];

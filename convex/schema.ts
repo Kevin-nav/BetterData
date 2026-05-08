@@ -21,32 +21,37 @@ export default defineSchema({
     userId: v.id("users"),
     label: v.string(),
     phone: v.string(),
-    network: v.optional(v.union(v.literal("YELLO"), v.literal("TELECEL"), v.literal("AT_PREMIUM")))
+    network: v.optional(v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")))
   }).index("by_user", ["userId"]),
 
   dataPackages: defineTable({
-    providerPackageId: v.string(),
-    network: v.union(v.literal("YELLO"), v.literal("TELECEL"), v.literal("AT_PREMIUM")),
+    vendorId: v.string(),
+    vendorPackageId: v.string(),
+    network: v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")),
     name: v.string(),
     sizeMb: v.number(),
     providerCostGhs: v.number(),
     customerPriceGhs: v.number(),
     isAvailable: v.boolean(),
-    providerUpdatedAt: v.number()
+    providerUpdatedAt: v.number(),
+    vendorRaw: v.optional(v.any())
   })
-    .index("by_provider_package_id", ["providerPackageId"])
+    .index("by_vendor_package_id", ["vendorId", "vendorPackageId"])
     .index("by_network", ["network"]),
 
   orders: defineTable({
     userId: v.optional(v.id("users")),
     guestContactPhone: v.optional(v.string()),
     packageId: v.id("dataPackages"),
-    network: v.union(v.literal("YELLO"), v.literal("TELECEL"), v.literal("AT_PREMIUM")),
+    vendorId: v.string(),
+    vendorPackageId: v.optional(v.string()),
+    vendorOrderReference: v.optional(v.string()),
+    vendorRaw: v.optional(v.any()),
+    network: v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")),
     recipientPhone: v.string(),
     amountGhs: v.number(),
     paymentMethod: v.union(v.literal("paystack_momo"), v.literal("wallet")),
     paystackReference: v.optional(v.string()),
-    datamartReference: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
       v.literal("processing"),
@@ -59,7 +64,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_paystack_reference", ["paystackReference"])
-    .index("by_datamart_reference", ["datamartReference"])
+    .index("by_vendor_order_reference", ["vendorId", "vendorOrderReference"])
     .index("by_status", ["status"]),
 
   walletTransactions: defineTable({

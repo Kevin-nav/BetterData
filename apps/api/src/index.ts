@@ -4,6 +4,7 @@ import Fastify from "fastify";
 
 import { registerAdminRoutes } from "./modules/admin/admin.routes";
 import { registerHealthRoutes } from "./modules/health/health.routes";
+import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.routes";
 import { registerOrderRoutes } from "./modules/orders/orders.routes";
 import { registerPackageRoutes } from "./modules/packages/packages.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
@@ -22,6 +23,7 @@ await registerPackageRoutes(server);
 await registerOrderRoutes(server);
 await registerWalletRoutes(server);
 await registerAdminRoutes(server);
+await registerVendorSimulationRoutes(server);
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "0.0.0.0";
