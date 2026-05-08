@@ -17,7 +17,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Better Data – Instant Mobile Data Bundles in Ghana",
   description:
-    "Buy MTN, Telecel and AirtelTigo data bundles at the best prices. No account needed – enter your number, pay with MoMo, and get credited instantly.",
+    "Buy MTN, Telecel and AirtelTigo data bundles at the best prices. No account needed enter your number, pay with MoMo, and get credited instantly.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
