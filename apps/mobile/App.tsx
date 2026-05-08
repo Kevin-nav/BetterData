@@ -2,6 +2,12 @@ import { NETWORK_CODES } from "@betterdata/contracts";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 
+const NETWORK_LABELS = {
+  mtn: "MTN",
+  telecel: "Telecel",
+  airteltigo: "AirtelTigo"
+} as const;
+
 export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
@@ -16,9 +22,9 @@ export default function App() {
           <Text style={styles.primaryButtonText}>Buy data</Text>
         </Pressable>
         <View style={styles.networks}>
-          {Object.entries(NETWORK_CODES).map(([name, code]) => (
+          {Object.values(NETWORK_CODES).map((code) => (
             <View key={code} style={styles.networkCard}>
-              <Text style={styles.networkName}>{name}</Text>
+              <Text style={styles.networkName}>{NETWORK_LABELS[code]}</Text>
               <Text style={styles.networkCode}>{code}</Text>
             </View>
           ))}

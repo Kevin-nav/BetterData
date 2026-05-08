@@ -95,9 +95,9 @@ const AirtelTigoLogo = () => (
 );
 
 const NETWORKS = [
-  { name: "MTN", id: "YELLO", Logo: MtnLogo },
-  { name: "Telecel", id: "TELECEL", Logo: TelecelLogo },
-  { name: "AirtelTigo", id: "AT_PREMIUM", Logo: AirtelTigoLogo },
+  { name: "MTN", id: "mtn", Logo: MtnLogo },
+  { name: "Telecel", id: "telecel", Logo: TelecelLogo },
+  { name: "AirtelTigo", id: "airteltigo", Logo: AirtelTigoLogo },
 ];
 
 /* ── Icons ── */
@@ -164,7 +164,7 @@ const LockIcon = () => (
 
 export default function HomePage() {
   const main = useRef<HTMLElement>(null);
-  const [network, setNetwork] = useState("YELLO");
+  const [network, setNetwork] = useState("mtn");
   const [phone, setPhone] = useState("");
   const [navScrolled, setNavScrolled] = useState(false);
 

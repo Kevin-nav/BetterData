@@ -64,8 +64,8 @@ export default function LegalPage() {
               Better Data is a Ghana-focused mobile data bundle reseller. We
               allow customers to purchase data bundles for supported mobile
               networks, currently MTN, Telecel, and AirtelTigo. Data bundle
-              fulfillment is provided through third-party infrastructure,
-              including DataMartGH. Payments are processed through Paystack and
+              fulfillment is provided through third-party data vendor
+              infrastructure. Payments are processed through Paystack and
               supported Mobile Money channels.
             </p>
 
@@ -209,7 +209,7 @@ export default function LegalPage() {
             <h3>12. Third-Party Services</h3>
             <p>
               Better Data relies on third-party services, including Firebase
-              Auth, Paystack, Resend, DataMartGH, mobile network operators, and
+              Auth, Paystack, Resend, data vendors, mobile network operators, and
               other infrastructure providers. Their services may be subject to
               their own terms, privacy notices, limits, downtime, and errors.
               Better Data is not responsible for third-party systems outside
