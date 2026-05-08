@@ -98,7 +98,31 @@ const NETWORKS = [
   { name: "MTN", id: "mtn", Logo: MtnLogo },
   { name: "Telecel", id: "telecel", Logo: TelecelLogo },
   { name: "AirtelTigo", id: "airteltigo", Logo: AirtelTigoLogo },
-];
+] as const;
+
+type NetworkId = (typeof NETWORKS)[number]["id"];
+
+type DataPackage = {
+  id: string;
+  vendorId: string;
+  vendorPackageId: string;
+  network: NetworkId;
+  name: string;
+  sizeMb: number;
+  costGhs: number;
+  customerPriceGhs: number;
+  isAvailable: boolean;
+};
+
+type OrderResult = {
+  reference: string;
+  vendorId: string;
+  status: "processing" | "completed" | "failed" | "refunded";
+  estimatedDeliverySeconds?: number;
+};
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
 /* ── Icons ── */
 const ShieldIcon = () => (
@@ -164,9 +188,25 @@ const LockIcon = () => (
 
 export default function HomePage() {
   const main = useRef<HTMLElement>(null);
-  const [network, setNetwork] = useState("mtn");
+  const [network, setNetwork] = useState<NetworkId>("mtn");
   const [phone, setPhone] = useState("");
+  const [packages, setPackages] = useState<DataPackage[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packageError, setPackageError] = useState("");
+  const [recipientConfirmed, setRecipientConfirmed] = useState(false);
+  const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
+  const [orderError, setOrderError] = useState("");
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [navScrolled, setNavScrolled] = useState(false);
+
+  const networkPackages = packages.filter(
+    (item) => item.network === network && item.isAvailable,
+  );
+  const selectedPackage =
+    networkPackages.find((item) => item.id === selectedPackageId) ??
+    networkPackages[0];
 
   /* Navbar scroll detection */
   useEffect(() => {
@@ -174,6 +214,53 @@ export default function HomePage() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadPackages() {
+      try {
+        setPackagesLoading(true);
+        setPackageError("");
+
+        const response = await fetch(`${API_BASE_URL}/data-packages`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to load data packages.");
+        }
+
+        const data = (await response.json()) as { packages: DataPackage[] };
+        setPackages(data.packages);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setPackageError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load data packages.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setPackagesLoading(false);
+        }
+      }
+    }
+
+    void loadPackages();
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const firstPackage = packages.find(
+      (item) => item.network === network && item.isAvailable,
+    );
+    setSelectedPackageId(firstPackage?.id ?? "");
+  }, [network, packages]);
 
   /* GSAP Animations */
   useGSAP(
@@ -237,6 +324,96 @@ export default function HomePage() {
     const y = ((e.clientY - rect.top) / rect.height) * 100;
     e.currentTarget.style.setProperty("--mouse-x", `${x}%`);
     e.currentTarget.style.setProperty("--mouse-y", `${y}%`);
+  };
+
+  const submitQuickPurchase = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setOrderError("");
+    setOrderResult(null);
+
+    if (!selectedPackage) {
+      setOrderError("Choose a package before continuing.");
+      return;
+    }
+
+    if (!phone.trim()) {
+      setOrderError("Enter the recipient phone number.");
+      return;
+    }
+
+    if (!recipientConfirmed) {
+      setOrderError("Confirm the recipient number is correct.");
+      return;
+    }
+
+    try {
+      setSubmittingOrder(true);
+
+      const response = await fetch(`${API_BASE_URL}/orders`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          packageId: selectedPackage.vendorPackageId,
+          network,
+          recipientPhone: phone.trim(),
+          confirmRecipientIsCorrect: true,
+          paymentMethod: "paystack_momo",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message ?? "Unable to place order.");
+      }
+
+      setOrderResult(data as OrderResult);
+    } catch (error) {
+      setOrderError(
+        error instanceof Error ? error.message : "Unable to place order.",
+      );
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
+  const refreshOrderStatus = async () => {
+    if (!orderResult) {
+      return;
+    }
+
+    try {
+      setRefreshingStatus(true);
+      setOrderError("");
+
+      const response = await fetch(
+        `${API_BASE_URL}/orders/${encodeURIComponent(orderResult.reference)}/status`,
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message ?? "Unable to refresh order status.");
+      }
+
+      setOrderResult((current) =>
+        current
+          ? {
+              ...current,
+              status: data.status,
+            }
+          : current,
+      );
+    } catch (error) {
+      setOrderError(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh order status.",
+      );
+    } finally {
+      setRefreshingStatus(false);
+    }
   };
 
   return (
@@ -303,7 +480,7 @@ export default function HomePage() {
 
           {/* Right — Quick Buy Widget */}
           <div className="widget-wrap">
-            <div className="widget">
+            <form className="widget" onSubmit={submitQuickPurchase}>
               <div className="widget-head">
                 <div className="icon">
                   <ZapIcon />
@@ -319,7 +496,10 @@ export default function HomePage() {
                       key={n.id}
                       className="net-opt"
                       data-active={network === n.id}
-                      onClick={() => setNetwork(n.id)}
+                      onClick={() => {
+                        setNetwork(n.id);
+                        setOrderResult(null);
+                      }}
                     >
                       <div className="net-icon">
                         <n.Logo />
@@ -331,29 +511,118 @@ export default function HomePage() {
               </div>
 
               <div className="field-group">
+                <label className="field-label">Choose Package</label>
+                <div className="package-list">
+                  {packagesLoading ? (
+                    <div className="package-empty">Loading packages...</div>
+                  ) : packageError ? (
+                    <div className="package-empty package-error">
+                      {packageError}
+                    </div>
+                  ) : networkPackages.length === 0 ? (
+                    <div className="package-empty">
+                      No packages available for this network.
+                    </div>
+                  ) : (
+                    networkPackages.slice(0, 4).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="package-opt"
+                        data-active={selectedPackage?.id === item.id}
+                        onClick={() => {
+                          setSelectedPackageId(item.id);
+                          setOrderResult(null);
+                        }}
+                      >
+                        <span>{formatPackageSize(item.sizeMb)}</span>
+                        <strong>GHS {item.customerPriceGhs.toFixed(2)}</strong>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="field-group">
                 <label className="field-label">Phone Number</label>
                 <input
                   type="tel"
                   className="text-input"
                   placeholder="e.g. 054 123 4567"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setOrderResult(null);
+                  }}
                 />
               </div>
 
-              <Link
-                href={`/buy?network=${network}&phone=${phone}`}
+              <label className="confirm-row">
+                <input
+                  type="checkbox"
+                  checked={recipientConfirmed}
+                  onChange={(event) =>
+                    setRecipientConfirmed(event.currentTarget.checked)
+                  }
+                />
+                <span>
+                  I have checked the recipient number and accept responsibility
+                  for wrong-number purchases.
+                </span>
+              </label>
+
+              <button
+                type="submit"
                 className="btn btn-primary btn-lg btn-full"
-                style={{ marginTop: 20 }}
+                style={{ marginTop: 18 }}
+                disabled={
+                  submittingOrder ||
+                  packagesLoading ||
+                  !selectedPackage ||
+                  !recipientConfirmed
+                }
               >
-                Continue to Packages
-              </Link>
+                {submittingOrder ? "Placing Order..." : "Place Test Order"}
+              </button>
+
+              {orderError ? (
+                <div className="order-message order-error">{orderError}</div>
+              ) : null}
+
+              {orderResult ? (
+                <div className="order-result">
+                  <div>
+                    <span>Order Reference</span>
+                    <strong>{orderResult.reference}</strong>
+                  </div>
+                  <div className="order-result-grid">
+                    <div>
+                      <span>Status</span>
+                      <strong>{formatStatus(orderResult.status)}</strong>
+                    </div>
+                    <div>
+                      <span>ETA</span>
+                      <strong>
+                        {formatEta(orderResult.estimatedDeliverySeconds)}
+                      </strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="status-link"
+                    onClick={refreshOrderStatus}
+                    disabled={refreshingStatus}
+                  >
+                    {refreshingStatus ? "Checking..." : "Check status"}
+                  </button>
+                </div>
+              ) : null}
 
               <div className="widget-footer">
                 <LockIcon />
-                <span>Secure payment via Paystack</span>
+                <span>Simulation mode. Paystack comes next.</span>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       </section>
@@ -533,4 +802,31 @@ export default function HomePage() {
       </footer>
     </main>
   );
+}
+
+function formatPackageSize(sizeMb: number) {
+  if (sizeMb >= 1024) {
+    return `${Number(sizeMb / 1024).toLocaleString("en-GH", {
+      maximumFractionDigits: 1,
+    })}GB`;
+  }
+
+  return `${sizeMb}MB`;
+}
+
+function formatStatus(status: OrderResult["status"]) {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatEta(seconds?: number) {
+  if (seconds === undefined) {
+    return "Checking";
+  }
+
+  if (seconds === 0) {
+    return "Instant";
+  }
+
+  const minutes = Math.round(seconds / 60);
+  return minutes >= 60 ? `${Math.round(minutes / 60)} hr` : `${minutes} min`;
 }

@@ -18,6 +18,8 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS builder
 COPY --from=pruner /app/out/full/ .
 COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 RUN pnpm --filter @betterdata/web build
 
 FROM node:22-alpine AS runner
