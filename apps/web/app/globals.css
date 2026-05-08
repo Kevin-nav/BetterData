@@ -488,6 +488,18 @@ img { display: block; max-width: 100%; }
 .package-error {
   border-color: rgba(255, 106, 106, 0.28);
   color: #ffb4b4;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.package-error button {
+  border: 0;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 7px 14px;
 }
 
 .confirm-row {

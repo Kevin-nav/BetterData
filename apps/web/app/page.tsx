@@ -194,6 +194,7 @@ export default function HomePage() {
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packageError, setPackageError] = useState("");
+  const [loadKey, setLoadKey] = useState(0);
   const [recipientConfirmed, setRecipientConfirmed] = useState(false);
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
   const [orderError, setOrderError] = useState("");
@@ -213,7 +214,7 @@ export default function HomePage() {
     const onScroll = () => setNavScrolled(window.scrollY > 40);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [loadKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -326,6 +327,11 @@ export default function HomePage() {
     e.currentTarget.style.setProperty("--mouse-y", `${y}%`);
   };
 
+  const retryLoadPackages = () => {
+    setPackageError("");
+    setLoadKey((key) => key + 1);
+  };
+
   const submitQuickPurchase = async (event: React.FormEvent) => {
     event.preventDefault();
     setOrderError("");
@@ -363,12 +369,11 @@ export default function HomePage() {
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.message ?? "Unable to place order.");
+        throw new Error(await safeResponseError(response, "Unable to place order."));
       }
 
+      const data = await response.json();
       setOrderResult(data as OrderResult);
     } catch (error) {
       setOrderError(
@@ -391,12 +396,13 @@ export default function HomePage() {
       const response = await fetch(
         `${API_BASE_URL}/orders/${encodeURIComponent(orderResult.reference)}/status`,
       );
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.message ?? "Unable to refresh order status.");
+        throw new Error(
+          await safeResponseError(response, "Unable to refresh order status."),
+        );
       }
 
+      const data = await response.json();
       setOrderResult((current) =>
         current
           ? {
@@ -517,7 +523,10 @@ export default function HomePage() {
                     <div className="package-empty">Loading packages...</div>
                   ) : packageError ? (
                     <div className="package-empty package-error">
-                      {packageError}
+                      <span>{packageError}</span>
+                      <button type="button" onClick={retryLoadPackages}>
+                        Retry
+                      </button>
                     </div>
                   ) : networkPackages.length === 0 ? (
                     <div className="package-empty">
@@ -829,4 +838,19 @@ function formatEta(seconds?: number) {
 
   const minutes = Math.round(seconds / 60);
   return minutes >= 60 ? `${Math.round(minutes / 60)} hr` : `${minutes} min`;
+}
+
+async function safeResponseError(response: Response, fallback: string) {
+  const text = await response.text();
+
+  if (!text) {
+    return fallback;
+  }
+
+  try {
+    const data = JSON.parse(text) as { message?: string };
+    return data.message ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
