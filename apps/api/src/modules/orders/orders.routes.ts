@@ -56,7 +56,10 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     try {
-      const event = await vendor.normalizeWebhook(request.body, request.headers);
+      const event = await vendor.normalizeWebhook(
+        request.body,
+        normalizeWebhookHeaders(request.headers)
+      );
 
       return {
         received: true,
@@ -97,5 +100,18 @@ function isWebhookValidationError(error: unknown) {
     message.includes("malformed") ||
     message.includes("invalid") ||
     message.includes("order reference")
+  );
+}
+
+function normalizeWebhookHeaders(
+  headers: Record<string, string | string[] | undefined>
+) {
+  return Object.fromEntries(
+    Object.entries(headers)
+      .filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)
+      .map(([key, value]) => [
+        key.toLowerCase(),
+        Array.isArray(value) ? value.join(",") : value
+      ])
   );
 }
