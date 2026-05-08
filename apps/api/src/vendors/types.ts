@@ -1,6 +1,7 @@
 import type {
   DataVendorId,
   VendorBalance,
+  VendorDeliveryTracker,
   VendorOrderStatus,
   VendorPackage,
   VendorPurchaseInput,
@@ -15,6 +16,7 @@ export type DataVendor = {
   purchase(input: VendorPurchaseInput): Promise<VendorPurchaseResult>;
   getOrderStatus(reference: string): Promise<VendorOrderStatus>;
   getBalance(): Promise<VendorBalance>;
+  getDeliveryTracker?(): Promise<VendorDeliveryTracker>;
   normalizeWebhook?(
     payload: unknown,
     headers: Record<string, string>

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { PurchaseRequest } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
 
@@ -12,13 +14,35 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     const vendor = getActiveDataVendor();
+    const idempotencyKey = randomUUID();
+    const result = await vendor.purchase({
+      packageId: request.body.packageId,
+      network: request.body.network,
+      recipientPhone: request.body.recipientPhone,
+      idempotencyKey
+    });
 
     return reply.code(202).send({
-      reference: "pending-provider-integration",
+      reference: result.vendorOrderReference,
       vendorId: vendor.id,
-      status: "pending"
+      status: result.status,
+      estimatedDeliverySeconds: result.estimatedDeliverySeconds
     });
   });
+
+  server.get<{ Params: { reference: string } }>(
+    "/orders/:reference/status",
+    async (request) => {
+      const vendor = getActiveDataVendor();
+      const status = await vendor.getOrderStatus(request.params.reference);
+
+      return {
+        reference: request.params.reference,
+        vendorId: vendor.id,
+        status
+      };
+    }
+  );
 
   server.post("/webhooks/data-vendor", async (request) => {
     const vendor = getActiveDataVendor();

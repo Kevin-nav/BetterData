@@ -1,6 +1,10 @@
 import type { NetworkCode } from "./networks";
 
-export type DataVendorId = "datamart";
+export type DataVendorId =
+  | "datamart"
+  | "sandbox-fast"
+  | "sandbox-delayed"
+  | "sandbox-flaky";
 
 export type VendorOrderStatus =
   | "processing"
@@ -36,6 +40,7 @@ export type VendorPurchaseInput = {
 export type VendorPurchaseResult = {
   vendorOrderReference: string;
   status: VendorOrderStatus;
+  estimatedDeliverySeconds?: number;
   raw?: unknown;
 };
 
@@ -47,5 +52,22 @@ export type VendorBalance = {
 export type VendorWebhookEvent = {
   vendorOrderReference: string;
   status: VendorOrderStatus;
+  raw?: unknown;
+};
+
+export type VendorDeliveryTracker = {
+  message: string;
+  scanner: {
+    active: boolean;
+    waiting: boolean;
+    waitSeconds: number;
+  };
+  stats: {
+    checked: number;
+    delivered: number;
+    partial: number;
+    pending: number;
+    failed: number;
+  };
   raw?: unknown;
 };

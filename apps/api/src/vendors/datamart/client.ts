@@ -6,91 +6,54 @@ import type {
 
 import type { DataVendor } from "../types";
 import {
-  mapDataMartPackage,
-  mapDataMartStatus,
-  toDataMartProviderCode,
-  type DataMartPackagePayload
+  fakeDataMartGetBalance,
+  fakeDataMartGetOrderStatus,
+  fakeDataMartListPackages,
+  fakeDataMartPurchase
+} from "./fakeTransport";
+import {
+  mapDataMartBalanceResponse,
+  mapDataMartPackageGroups,
+  mapDataMartPurchaseResponse,
+  mapDataMartStatusResponse,
+  mapDataMartWebhook
 } from "./mapper";
 
 export function createDataMartVendor(): DataVendor {
-  const baseUrl = process.env.DATAMART_BASE_URL;
-  const apiKey = process.env.DATAMART_API_KEY;
-
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    if (!baseUrl || !apiKey) {
-      throw new Error("DataMart vendor is not configured.");
-    }
-
-    const response = await fetch(`${baseUrl}${path}`, {
-      ...init,
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        ...(init?.headers ?? {})
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`DataMart request failed: ${response.status}`);
-    }
-
-    return (await response.json()) as T;
-  }
-
   return {
     id: "datamart",
     displayName: "DataMartGH",
 
     async listPackages(): Promise<VendorPackage[]> {
-      const response = await request<{ packages?: unknown[] }>("/data-packages");
+      const response = await fakeDataMartListPackages();
 
-      return (response.packages ?? [])
-        .map((item) => mapDataMartPackage(item as DataMartPackagePayload))
-        .filter((item): item is VendorPackage => Boolean(item));
+      return mapDataMartPackageGroups(response.data);
     },
 
     async purchase(input: VendorPurchaseInput): Promise<VendorPurchaseResult> {
-      const response = await request<{ reference?: string; status?: string }>(
-        "/purchase",
-        {
-          method: "POST",
-          headers: {
-            "x-idempotency-key": input.idempotencyKey
-          },
-          body: JSON.stringify({
-            package_id: input.packageId,
-            network: toDataMartProviderCode(input.network),
-            recipient_phone: input.recipientPhone
-          })
-        }
-      );
-
-      if (!response.reference) {
-        throw new Error("DataMart purchase response did not include a reference.");
-      }
+      const response = await fakeDataMartPurchase(input, input.idempotencyKey);
+      const result = mapDataMartPurchaseResponse(response);
 
       return {
-        vendorOrderReference: response.reference,
-        status: mapDataMartStatus(response.status ?? "processing"),
-        raw: response
+        ...result,
+        estimatedDeliverySeconds: result.status === "processing" ? 30 * 60 : 0
       };
     },
 
     async getOrderStatus(reference: string) {
-      const response = await request<{ status?: string }>(
-        `/order-status/${reference}`
-      );
+      const response = await fakeDataMartGetOrderStatus(reference);
 
-      return mapDataMartStatus(response.status ?? "processing");
+      return mapDataMartStatusResponse(response);
     },
 
     async getBalance() {
-      const response = await request<{ balance?: number }>("/balance");
+      const response = await fakeDataMartGetBalance();
 
-      return {
-        balanceGhs: response.balance ?? 0,
-        raw: response
-      };
+      return mapDataMartBalanceResponse(response);
+    },
+
+    async normalizeWebhook(payload) {
+      return mapDataMartWebhook(payload);
     }
   };
 }

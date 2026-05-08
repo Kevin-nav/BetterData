@@ -21,7 +21,18 @@ pnpm install
 pnpm dev
 ```
 
-Copy `.env.example` to `.env` and fill in Firebase, Paystack, Resend, DataMartGH, and database credentials before integrating live services.
+Copy `.env.example` to `.env` and fill in Firebase, Paystack, Resend, data vendor, and database credentials before integrating live services.
+
+## Data Vendor Simulation
+
+Local development can run without real vendor API calls:
+
+- `sandbox-fast` completes purchases immediately.
+- `sandbox-delayed` keeps purchases processing for 30 minutes, or 60 minutes when the recipient phone ends in `60`.
+- `sandbox-flaky` fails purchases after about 2 minutes when the recipient phone ends in `99`.
+- `datamart` uses DataMart-shaped fake responses for now; real HTTP is intentionally disabled until credentials and production readiness are confirmed.
+
+Set `BETTERDATA_ACTIVE_DATA_VENDOR` in `.env`.
 
 ## Convex
 
@@ -42,4 +53,4 @@ pnpm convex:deploy
 
 ## Architecture Notes
 
-The PRD calls for web, mobile, and admin clients sharing one backend. Convex owns the real-time database and app-facing functions, while the Node API remains the integration boundary for Paystack, Resend, Firebase Admin, and DataMartGH provider calls. Shared packages keep network codes, order statuses, user roles, and provider-facing contracts consistent across all apps.
+The PRD calls for web, mobile, and admin clients sharing one backend. Convex owns the real-time database and app-facing functions, while the Node API remains the integration boundary for Paystack, Resend, Firebase Admin, and data vendor calls. Shared packages keep network codes, order statuses, user roles, and provider-facing contracts consistent across all apps.
