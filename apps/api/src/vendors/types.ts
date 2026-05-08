@@ -1,3 +1,5 @@
+import type { IncomingHttpHeaders } from "node:http";
+
 import type {
   DataVendorId,
   VendorBalance,
@@ -19,6 +21,6 @@ export type DataVendor = {
   getDeliveryTracker?(): Promise<VendorDeliveryTracker>;
   normalizeWebhook?(
     payload: unknown,
-    headers: Record<string, string>
+    headers: IncomingHttpHeaders
   ): Promise<VendorWebhookEvent>;
 };

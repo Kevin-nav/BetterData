@@ -59,11 +59,12 @@ export function mapDataMartPackage(
       : undefined);
   const network = raw.network ? fromDataMartProviderCode(raw.network) : undefined;
 
-  if (!vendorPackageId || !network) {
+  const sizeMb = raw.size_mb ?? raw.mb;
+  const costGhs = raw.cost ?? raw.price;
+
+  if (!vendorPackageId || !network || sizeMb === undefined || costGhs === undefined) {
     return undefined;
   }
-
-  const sizeMb = raw.size_mb ?? raw.mb ?? (raw.capacity ?? 0) * 1024;
 
   return {
     vendorPackageId,

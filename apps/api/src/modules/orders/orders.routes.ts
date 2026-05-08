@@ -44,26 +44,58 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
   );
 
-  server.post("/webhooks/data-vendor", async (request) => {
+  server.post("/webhooks/data-vendor", async (request, reply) => {
     const vendor = getActiveDataVendor();
 
     if (!vendor.normalizeWebhook) {
+      return reply.code(501).send({
+        message: "Active data vendor does not support webhooks.",
+        vendorId: vendor.id,
+        received: false
+      });
+    }
+
+    try {
+      const event = await vendor.normalizeWebhook(request.body, request.headers);
+
       return {
         received: true,
         vendorId: vendor.id,
-        normalized: false
+        event
       };
+    } catch (error) {
+      if (isWebhookValidationError(error)) {
+        request.log.warn({ error, vendorId: vendor.id }, "Invalid vendor webhook");
+
+        return reply.code(400).send({
+          message: "Invalid vendor webhook payload.",
+          vendorId: vendor.id,
+          received: false
+        });
+      }
+
+      request.log.error({ error, vendorId: vendor.id }, "Vendor webhook failed");
+
+      return reply.code(500).send({
+        message: "Vendor webhook processing failed.",
+        vendorId: vendor.id,
+        received: false
+      });
     }
-
-    const event = await vendor.normalizeWebhook(
-      request.body,
-      request.headers as Record<string, string>
-    );
-
-    return {
-      received: true,
-      vendorId: vendor.id,
-      event
-    };
   });
+}
+
+function isWebhookValidationError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("webhook") ||
+    message.includes("signature") ||
+    message.includes("malformed") ||
+    message.includes("invalid") ||
+    message.includes("order reference")
+  );
 }

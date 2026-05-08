@@ -36,6 +36,22 @@ assert.equal(mappedPackage?.network, "mtn");
 assert.equal(mappedPackage?.name, "MTN 5GB");
 assert.equal(mappedPackage?.sizeMb, 5120);
 assert.equal(mappedPackage?.costGhs, 23);
+assert.equal(
+  mapDataMartPackage({
+    capacity: 5,
+    network: "YELLO",
+    price: 23
+  }),
+  undefined
+);
+assert.equal(
+  mapDataMartPackage({
+    capacity: 5,
+    mb: 5120,
+    network: "YELLO"
+  }),
+  undefined
+);
 
 const purchase = mapDataMartPurchaseResponse({
   data: {
