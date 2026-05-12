@@ -273,7 +273,7 @@ export default function HomePage() {
     const onScroll = () => setNavScrolled(window.scrollY > 40);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [loadKey]);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -313,7 +313,7 @@ export default function HomePage() {
     void loadPackages();
 
     return () => controller.abort();
-  }, []);
+  }, [loadKey]);
 
   useEffect(() => {
     const firstPackage = packages.find(
