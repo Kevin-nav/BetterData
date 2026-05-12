@@ -26,6 +26,7 @@ env:
   PUBLIC_APP_URL: ${{ secrets.PUBLIC_APP_URL }}
   PUBLIC_ADMIN_URL: ${{ secrets.PUBLIC_ADMIN_URL }}
   API_BASE_URL: ${{ secrets.API_BASE_URL }}
+  NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
   NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
   CLOUDFLARED_TOKEN: ${{ secrets.CLOUDFLARED_TOKEN }}
   GHCR_READ_USERNAME: ${{ secrets.GHCR_READ_USERNAME }}
@@ -62,6 +63,7 @@ jobs:
             --from-literal=PUBLIC_APP_URL="$PUBLIC_APP_URL" \
             --from-literal=PUBLIC_ADMIN_URL="$PUBLIC_ADMIN_URL" \
             --from-literal=API_BASE_URL="$API_BASE_URL" \
+            --from-literal=NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
             --from-literal=NEXT_PUBLIC_CONVEX_URL="$NEXT_PUBLIC_CONVEX_URL" \
             --dry-run=client -o yaml | sudo -n kubectl apply -f -
 

@@ -34,6 +34,16 @@ Local development can run without real vendor API calls:
 
 Set `BETTERDATA_ACTIVE_DATA_VENDOR` in `.env`.
 
+## Landing Quick Purchase
+
+The homepage quick purchase widget talks to the API directly during the guest purchase simulation:
+
+- `GET /data-packages` loads packages from the active data vendor.
+- `POST /orders` places a simulated guest order.
+- `GET /orders/:reference/status` refreshes the returned order status.
+
+Set `NEXT_PUBLIC_API_BASE_URL` for the web app. For local development this is usually `http://localhost:4000`. For Docker and production builds it must be available at build time because Next.js inlines `NEXT_PUBLIC_*` values into the client bundle.
+
 ## Convex
 
 This repo includes a root-level `convex/` backend scaffold. Since you already have a remote Convex project, link this repo to it from the repository root:

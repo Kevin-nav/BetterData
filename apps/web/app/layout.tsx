@@ -15,14 +15,21 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Better Data – Instant Mobile Data Bundles in Ghana",
+  title: "Better Data - Instant Mobile Data Bundles in Ghana",
   description:
-    "Buy MTN, Telecel and AirtelTigo data bundles at the best prices. No account needed – enter your number, pay with MoMo, and get credited instantly.",
+    "Buy MTN, Telecel and AirtelTigo data bundles at the best prices. No account needed, enter your number, pay with MoMo, and get credited instantly.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-theme',t)}else if(window.matchMedia('(prefers-color-scheme:dark)').matches){document.documentElement.setAttribute('data-theme','dark')}}catch(e){}})()`,
+          }}
+        />
+      </head>
       <body className={`${dmSans.variable} ${spaceGrotesk.variable}`}>{children}</body>
     </html>
   );

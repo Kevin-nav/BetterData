@@ -98,7 +98,31 @@ const NETWORKS = [
   { name: "MTN", id: "mtn", Logo: MtnLogo },
   { name: "Telecel", id: "telecel", Logo: TelecelLogo },
   { name: "AirtelTigo", id: "airteltigo", Logo: AirtelTigoLogo },
-];
+] as const;
+
+type NetworkId = (typeof NETWORKS)[number]["id"];
+
+type DataPackage = {
+  id: string;
+  vendorId: string;
+  vendorPackageId: string;
+  network: NetworkId;
+  name: string;
+  sizeMb: number;
+  costGhs: number;
+  customerPriceGhs: number;
+  isAvailable: boolean;
+};
+
+type OrderResult = {
+  reference: string;
+  vendorId: string;
+  status: "processing" | "completed" | "failed" | "refunded";
+  estimatedDeliverySeconds?: number;
+};
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
 /* ── Icons ── */
 const ShieldIcon = () => (
@@ -162,11 +186,87 @@ const LockIcon = () => (
   </svg>
 );
 
+const SunIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+);
+
+const TruckIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="3" width="15" height="13" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" />
+  </svg>
+);
+
+const DocumentIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+  </svg>
+);
+
+const HeadsetIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+  </svg>
+);
+
+const SignalIcon = () => (
+  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" />
+  </svg>
+);
+
+const PackageBoxIcon = () => (
+  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" />
+  </svg>
+);
+
 export default function HomePage() {
   const main = useRef<HTMLElement>(null);
-  const [network, setNetwork] = useState("mtn");
+  const [network, setNetwork] = useState<NetworkId>("mtn");
   const [phone, setPhone] = useState("");
+  const [packages, setPackages] = useState<DataPackage[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packageError, setPackageError] = useState("");
+  const [loadKey, setLoadKey] = useState(0);
+  const [recipientConfirmed, setRecipientConfirmed] = useState(false);
+  const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
+  const [orderError, setOrderError] = useState("");
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [navScrolled, setNavScrolled] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = document.documentElement.getAttribute("data-theme");
+    if (saved === "dark" || saved === "light") {
+      setTheme(saved);
+    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+  };
+
+  const networkPackages = packages.filter(
+    (item) => item.network === network && item.isAvailable,
+  );
+  const selectedPackage =
+    networkPackages.find((item) => item.id === selectedPackageId) ??
+    networkPackages[0];
 
   /* Navbar scroll detection */
   useEffect(() => {
@@ -174,6 +274,53 @@ export default function HomePage() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadPackages() {
+      try {
+        setPackagesLoading(true);
+        setPackageError("");
+
+        const response = await fetch(`${API_BASE_URL}/data-packages`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to load data packages.");
+        }
+
+        const data = (await response.json()) as { packages: DataPackage[] };
+        setPackages(data.packages);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setPackageError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load data packages.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setPackagesLoading(false);
+        }
+      }
+    }
+
+    void loadPackages();
+
+    return () => controller.abort();
+  }, [loadKey]);
+
+  useEffect(() => {
+    const firstPackage = packages.find(
+      (item) => item.network === network && item.isAvailable,
+    );
+    setSelectedPackageId(firstPackage?.id ?? "");
+  }, [network, packages]);
 
   /* GSAP Animations */
   useGSAP(
@@ -239,6 +386,101 @@ export default function HomePage() {
     e.currentTarget.style.setProperty("--mouse-y", `${y}%`);
   };
 
+  const retryLoadPackages = () => {
+    setPackageError("");
+    setLoadKey((key) => key + 1);
+  };
+
+  const submitQuickPurchase = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setOrderError("");
+    setOrderResult(null);
+
+    if (!selectedPackage) {
+      setOrderError("Choose a package before continuing.");
+      return;
+    }
+
+    if (!phone.trim()) {
+      setOrderError("Enter the recipient phone number.");
+      return;
+    }
+
+    if (!recipientConfirmed) {
+      setOrderError("Confirm the recipient number is correct.");
+      return;
+    }
+
+    try {
+      setSubmittingOrder(true);
+
+      const response = await fetch(`${API_BASE_URL}/orders`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          packageId: selectedPackage.vendorPackageId,
+          network,
+          recipientPhone: phone.trim(),
+          confirmRecipientIsCorrect: true,
+          paymentMethod: "paystack_momo",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await safeResponseError(response, "Unable to place order."));
+      }
+
+      const data = await response.json();
+      setOrderResult(data as OrderResult);
+    } catch (error) {
+      setOrderError(
+        error instanceof Error ? error.message : "Unable to place order.",
+      );
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
+  const refreshOrderStatus = async () => {
+    if (!orderResult) {
+      return;
+    }
+
+    try {
+      setRefreshingStatus(true);
+      setOrderError("");
+
+      const response = await fetch(
+        `${API_BASE_URL}/orders/${encodeURIComponent(orderResult.reference)}/status`,
+      );
+      if (!response.ok) {
+        throw new Error(
+          await safeResponseError(response, "Unable to refresh order status."),
+        );
+      }
+
+      const data = await response.json();
+      setOrderResult((current) =>
+        current
+          ? {
+              ...current,
+              status: data.status,
+            }
+          : current,
+      );
+    } catch (error) {
+      setOrderError(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh order status.",
+      );
+    } finally {
+      setRefreshingStatus(false);
+    }
+  };
+
   return (
     <main ref={main}>
       {/* ── Navbar ── */}
@@ -255,6 +497,9 @@ export default function HomePage() {
             <Link href="/signup" className="btn btn-primary">
               Sign Up
             </Link>
+            <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+              {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            </button>
           </div>
         </div>
       </nav>
@@ -274,16 +519,16 @@ export default function HomePage() {
         <div className="hero-fade" />
 
         <div className="container hero-inner">
-          {/* Left — Copy */}
+          {/* Left - Copy */}
           <div className="hero-copy">
             <h1 className="hero-title">
-              Data you can <span className="accent">count&nbsp;on</span>,
-              instantly.
+              Buy <span className="accent">Cheap Data</span>{" "}
+              Bundles Instantly
             </h1>
 
             <p className="hero-desc">
-              Get MTN, Telecel, and AirtelTigo bundles at the best prices. No
-              account needed, just enter your number and pay with MoMo.
+              Buy cheap MTN, Telecel and AirtelTigo data bundles online at
+              affordable prices. Fast delivery, no account needed.
             </p>
 
             <div className="hero-cta-row">
@@ -291,7 +536,7 @@ export default function HomePage() {
                 How it works
               </Link>
               <Link href="/buy" className="btn btn-primary btn-lg">
-                Buy Data Now
+                Get Started
               </Link>
             </div>
 
@@ -303,7 +548,7 @@ export default function HomePage() {
 
           {/* Right — Quick Buy Widget */}
           <div className="widget-wrap">
-            <div className="widget">
+            <form className="widget" onSubmit={submitQuickPurchase}>
               <div className="widget-head">
                 <div className="icon">
                   <ZapIcon />
@@ -319,7 +564,10 @@ export default function HomePage() {
                       key={n.id}
                       className="net-opt"
                       data-active={network === n.id}
-                      onClick={() => setNetwork(n.id)}
+                      onClick={() => {
+                        setNetwork(n.id);
+                        setOrderResult(null);
+                      }}
                     >
                       <div className="net-icon">
                         <n.Logo />
@@ -331,45 +579,200 @@ export default function HomePage() {
               </div>
 
               <div className="field-group">
+                <label className="field-label">Choose Package</label>
+                <div className="package-list">
+                  {packagesLoading ? (
+                    <div className="package-empty">Loading packages...</div>
+                  ) : packageError ? (
+                    <div className="package-empty package-error">
+                      <span>{packageError}</span>
+                      <button type="button" onClick={retryLoadPackages}>
+                        Retry
+                      </button>
+                    </div>
+                  ) : networkPackages.length === 0 ? (
+                    <div className="package-empty">
+                      No packages available for this network.
+                    </div>
+                  ) : (
+                    networkPackages.slice(0, 4).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="package-opt"
+                        data-active={selectedPackage?.id === item.id}
+                        onClick={() => {
+                          setSelectedPackageId(item.id);
+                          setOrderResult(null);
+                        }}
+                      >
+                        <span>{formatPackageSize(item.sizeMb)}</span>
+                        <strong>GHS {item.customerPriceGhs.toFixed(2)}</strong>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="field-group">
                 <label className="field-label">Phone Number</label>
                 <input
                   type="tel"
                   className="text-input"
                   placeholder="e.g. 054 123 4567"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setOrderResult(null);
+                  }}
                 />
               </div>
 
-              <Link
-                href={`/buy?network=${network}&phone=${phone}`}
+              <label className="confirm-row">
+                <input
+                  type="checkbox"
+                  checked={recipientConfirmed}
+                  onChange={(event) =>
+                    setRecipientConfirmed(event.currentTarget.checked)
+                  }
+                />
+                <span>
+                  I have checked the recipient number and accept responsibility
+                  for wrong-number purchases.
+                </span>
+              </label>
+
+              <button
+                type="submit"
                 className="btn btn-primary btn-lg btn-full"
-                style={{ marginTop: 20 }}
+                style={{ marginTop: 18 }}
+                disabled={
+                  submittingOrder ||
+                  packagesLoading ||
+                  !selectedPackage ||
+                  !recipientConfirmed
+                }
               >
-                Continue to Packages
-              </Link>
+                {submittingOrder ? "Placing Order..." : "Place Test Order"}
+              </button>
+
+              {orderError ? (
+                <div className="order-message order-error">{orderError}</div>
+              ) : null}
+
+              {orderResult ? (
+                <div className="order-result">
+                  <div>
+                    <span>Order Reference</span>
+                    <strong>{orderResult.reference}</strong>
+                  </div>
+                  <div className="order-result-grid">
+                    <div>
+                      <span>Status</span>
+                      <strong>{formatStatus(orderResult.status)}</strong>
+                    </div>
+                    <div>
+                      <span>ETA</span>
+                      <strong>
+                        {formatEta(orderResult.estimatedDeliverySeconds)}
+                      </strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="status-link"
+                    onClick={refreshOrderStatus}
+                    disabled={refreshingStatus}
+                  >
+                    {refreshingStatus ? "Checking..." : "Check status"}
+                  </button>
+                </div>
+              ) : null}
 
               <div className="widget-footer">
                 <LockIcon />
-                <span>Secure payment via Paystack</span>
+                <span>Simulation mode. Paystack comes next.</span>
               </div>
+            </form>
+          </div>
+        </div>
+        <div className="hero-wave">
+          <svg viewBox="0 0 1440 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0,60 C360,120 720,0 1440,60 L1440,100 L0,100 Z" fill="var(--bg-root)" />
+          </svg>
+        </div>
+      </section>
+
+      {/* ── Network Cards ── */}
+      <section className="network-cards reveal">
+        <div className="container">
+          <div className="network-cards-grid">
+            <div className="network-card mtn" onClick={() => { setNetwork("mtn"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              <SignalIcon />
+              <span>MTN</span>
+            </div>
+            <div className="network-card telecel" onClick={() => { setNetwork("telecel"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              <SignalIcon />
+              <span>Telecel</span>
+            </div>
+            <div className="network-card airteltigo" onClick={() => { setNetwork("airteltigo"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              <SignalIcon />
+              <span>AirtelTigo</span>
+            </div>
+            <div className="network-card bulk">
+              <PackageBoxIcon />
+              <span>Bulk Orders</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Trust Strip ── */}
-      <section className="trust-strip reveal">
+      {/* ── Why Choose Us ── */}
+      <section className="why-us">
         <div className="container">
-          <div className="trust-strip-inner">
-            <h3>All major networks supported</h3>
-            <div className="network-logos">
-              {NETWORKS.map((n) => (
-                <div key={n.id} className="logo-item">
-                  <n.Logo />
-                  <span>{n.name}</span>
-                </div>
-              ))}
+          <div className="section-header reveal">
+            <h2>Why Choose Us</h2>
+          </div>
+          <div className="features-grid">
+            <div className="feature-card reveal">
+              <div className="feature-icon green"><TruckIcon /></div>
+              <h3>Fast Delivery</h3>
+              <p>Experience instant data delivery with our automated system. Your bundle arrives in seconds.</p>
+            </div>
+            <div className="feature-card reveal">
+              <div className="feature-icon orange"><DocumentIcon /></div>
+              <h3>Bulk Order Processing</h3>
+              <p>Upload Excel files or use text input to process hundreds of orders simultaneously.</p>
+            </div>
+            <div className="feature-card reveal">
+              <div className="feature-icon blue"><HeadsetIcon /></div>
+              <h3>24/7 Support</h3>
+              <p>Our dedicated support team is available round the clock to help you with any technical issues.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Stats ── */}
+      <section className="stats-section">
+        <div className="container">
+          <div className="stats-divider">
+            <div className="line" />
+            <div className="dot" />
+            <div className="line" />
+          </div>
+          <div className="stats-grid">
+            <div className="stat-card reveal">
+              <div className="stat-number">99.9%</div>
+              <div className="stat-label">Website Uptime</div>
+            </div>
+            <div className="stat-card reveal">
+              <div className="stat-number">20K+</div>
+              <div className="stat-label">Happy Clients</div>
+            </div>
+            <div className="stat-card reveal">
+              <div className="stat-number">100K+</div>
+              <div className="stat-label">Orders Completed</div>
             </div>
           </div>
         </div>
@@ -394,7 +797,7 @@ export default function HomePage() {
               {
                 n: "2",
                 title: "Confirm details",
-                desc: "Double-check the phone number and package  we'll show you an instant price summary.",
+                desc: "Double-check the phone number and package. We will show you an instant price summary.",
               },
               {
                 n: "3",
@@ -514,16 +917,10 @@ export default function HomePage() {
               </a>
             </div>
             <div className="footer-col">
-              <span className="footer-col-title">Legal</span>
-              <Link href="/legal#terms" className="footer-link">
-                Terms &amp; Conditions
-              </Link>
-              <Link href="/legal#privacy" className="footer-link">
-                Privacy Policy
-              </Link>
-              <Link href="/legal#cookies" className="footer-link">
-                Cookie Notice
-              </Link>
+              <span className="footer-col-title">Working Hours</span>
+              <span className="footer-link">Monday - Saturday</span>
+              <span className="footer-link">6:00am - 11:59pm</span>
+              <span className="footer-link">Sunday: 7:00am - 11:30pm</span>
             </div>
           </div>
           <div className="footer-bottom">
@@ -533,4 +930,46 @@ export default function HomePage() {
       </footer>
     </main>
   );
+}
+
+function formatPackageSize(sizeMb: number) {
+  if (sizeMb >= 1024) {
+    return `${Number(sizeMb / 1024).toLocaleString("en-GH", {
+      maximumFractionDigits: 1,
+    })}GB`;
+  }
+
+  return `${sizeMb}MB`;
+}
+
+function formatStatus(status: OrderResult["status"]) {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatEta(seconds?: number) {
+  if (seconds === undefined) {
+    return "Checking";
+  }
+
+  if (seconds === 0) {
+    return "Instant";
+  }
+
+  const minutes = Math.round(seconds / 60);
+  return minutes >= 60 ? `${Math.round(minutes / 60)} hr` : `${minutes} min`;
+}
+
+async function safeResponseError(response: Response, fallback: string) {
+  const text = await response.text();
+
+  if (!text) {
+    return fallback;
+  }
+
+  try {
+    const data = JSON.parse(text) as { message?: string };
+    return data.message ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
