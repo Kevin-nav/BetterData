@@ -122,6 +122,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@betterdata/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@betterdata/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

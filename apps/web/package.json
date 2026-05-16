@@ -11,6 +11,7 @@
     "test": "echo \"No tests yet for web\""
   },
   "dependencies": {
+    "@betterdata/api-client": "workspace:*",
     "@betterdata/contracts": "workspace:*",
     "@betterdata/ui": "workspace:*",
     "@gsap/react": "^2.1.2",

@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  createBetterDataApiClient,
+  type CreateOrderResponse,
+} from "@betterdata/api-client";
+import type { DataPackage } from "@betterdata/contracts";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -102,27 +107,11 @@ const NETWORKS = [
 
 type NetworkId = (typeof NETWORKS)[number]["id"];
 
-type DataPackage = {
-  id: string;
-  vendorId: string;
-  vendorPackageId: string;
-  network: NetworkId;
-  name: string;
-  sizeMb: number;
-  costGhs: number;
-  customerPriceGhs: number;
-  isAvailable: boolean;
-};
-
-type OrderResult = {
-  reference: string;
-  vendorId: string;
-  status: "processing" | "completed" | "failed" | "refunded";
-  estimatedDeliverySeconds?: number;
-};
+type OrderResult = CreateOrderResponse;
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const betterDataApi = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 
 /* ── Icons ── */
 const ShieldIcon = () => (
@@ -283,15 +272,7 @@ export default function HomePage() {
         setPackagesLoading(true);
         setPackageError("");
 
-        const response = await fetch(`${API_BASE_URL}/data-packages`, {
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to load data packages.");
-        }
-
-        const data = (await response.json()) as { packages: DataPackage[] };
+        const data = await betterDataApi.listDataPackages();
         setPackages(data.packages);
       } catch (error) {
         if (controller.signal.aborted) {
@@ -299,9 +280,7 @@ export default function HomePage() {
         }
 
         setPackageError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load data packages.",
+          readApiError(error, "Unable to load data packages."),
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -414,30 +393,17 @@ export default function HomePage() {
     try {
       setSubmittingOrder(true);
 
-      const response = await fetch(`${API_BASE_URL}/orders`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          packageId: selectedPackage.vendorPackageId,
-          network,
-          recipientPhone: phone.trim(),
-          confirmRecipientIsCorrect: true,
-          paymentMethod: "paystack_momo",
-        }),
+      const data = await betterDataApi.createOrder({
+        packageId: selectedPackage.vendorPackageId,
+        network,
+        recipientPhone: phone.trim(),
+        confirmRecipientIsCorrect: true,
+        paymentMethod: "paystack_momo",
       });
 
-      if (!response.ok) {
-        throw new Error(await safeResponseError(response, "Unable to place order."));
-      }
-
-      const data = await response.json();
-      setOrderResult(data as OrderResult);
+      setOrderResult(data);
     } catch (error) {
-      setOrderError(
-        error instanceof Error ? error.message : "Unable to place order.",
-      );
+      setOrderError(readApiError(error, "Unable to place order."));
     } finally {
       setSubmittingOrder(false);
     }
@@ -452,16 +418,7 @@ export default function HomePage() {
       setRefreshingStatus(true);
       setOrderError("");
 
-      const response = await fetch(
-        `${API_BASE_URL}/orders/${encodeURIComponent(orderResult.reference)}/status`,
-      );
-      if (!response.ok) {
-        throw new Error(
-          await safeResponseError(response, "Unable to refresh order status."),
-        );
-      }
-
-      const data = await response.json();
+      const data = await betterDataApi.getOrderStatus(orderResult.reference);
       setOrderResult((current) =>
         current
           ? {
@@ -471,11 +428,7 @@ export default function HomePage() {
           : current,
       );
     } catch (error) {
-      setOrderError(
-        error instanceof Error
-          ? error.message
-          : "Unable to refresh order status.",
-      );
+      setOrderError(readApiError(error, "Unable to refresh order status."));
     } finally {
       setRefreshingStatus(false);
     }
@@ -959,17 +912,10 @@ function formatEta(seconds?: number) {
   return minutes >= 60 ? `${Math.round(minutes / 60)} hr` : `${minutes} min`;
 }
 
-async function safeResponseError(response: Response, fallback: string) {
-  const text = await response.text();
-
-  if (!text) {
-    return fallback;
+function readApiError(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message || fallback;
   }
 
-  try {
-    const data = JSON.parse(text) as { message?: string };
-    return data.message ?? fallback;
-  } catch {
-    return fallback;
-  }
+  return fallback;
 }
