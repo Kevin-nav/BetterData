@@ -8,6 +8,8 @@ dist/
 build/
 coverage/
 .turbo/
+.worktrees
+.worktrees/
 *.tsbuildinfo
 
 # Environment
