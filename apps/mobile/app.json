@@ -5,6 +5,7 @@
     "scheme": "betterdata",
     "version": "0.1.0",
     "orientation": "portrait",
+    "jsEngine": "jsc",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
