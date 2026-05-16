@@ -23,20 +23,26 @@ export const createIntent = mutation({
     }
 
     return await ctx.db.insert("orders", {
-      userId: args.userId,
-      guestContactPhone: args.guestContactPhone,
       packageId: args.packageId,
       vendorId: args.vendorId,
-      vendorPackageId: args.vendorPackageId,
-      vendorOrderReference: args.vendorOrderReference,
-      vendorRaw: args.vendorRaw,
       network: args.network,
       recipientPhone: args.recipientPhone,
       amountGhs: args.amountGhs,
       paymentMethod: args.paymentMethod,
       status: "pending",
       idempotencyKey: args.idempotencyKey,
-      recipientConfirmedAt: Date.now()
+      recipientConfirmedAt: Date.now(),
+      ...(args.userId !== undefined ? { userId: args.userId } : {}),
+      ...(args.guestContactPhone !== undefined
+        ? { guestContactPhone: args.guestContactPhone }
+        : {}),
+      ...(args.vendorPackageId !== undefined
+        ? { vendorPackageId: args.vendorPackageId }
+        : {}),
+      ...(args.vendorOrderReference !== undefined
+        ? { vendorOrderReference: args.vendorOrderReference }
+        : {}),
+      ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
     });
   }
 });
@@ -51,5 +57,31 @@ export const listForUser = query({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .order("desc")
       .collect();
+  }
+});
+
+export const getById = query({
+  args: {
+    orderId: v.id("orders")
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.orderId);
+  }
+});
+
+export const getByVendorReference = query({
+  args: {
+    vendorId: v.string(),
+    vendorOrderReference: v.string()
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_vendor_order_reference", (q) =>
+        q
+          .eq("vendorId", args.vendorId)
+          .eq("vendorOrderReference", args.vendorOrderReference)
+      )
+      .first();
   }
 });
