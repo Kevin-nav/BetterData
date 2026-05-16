@@ -1,6 +1,13 @@
+import { createBetterDataApiClient } from "@betterdata/api-client";
+import { packageFunctions } from "@betterdata/app-api";
 import { NETWORK_CODES } from "@betterdata/contracts";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const betterDataApi = createBetterDataApiClient({ baseUrl: API_BASE_URL });
+const sharedPackageQuery = packageFunctions.listAvailable;
 
 const NETWORK_LABELS = {
   mtn: "MTN",
@@ -9,6 +16,8 @@ const NETWORK_LABELS = {
 } as const;
 
 export default function App() {
+  const backendStatus = sharedPackageQuery && betterDataApi ? "Shared backend ready" : "Backend unavailable";
+
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
@@ -18,6 +27,7 @@ export default function App() {
         <Text style={styles.copy}>
           Buy MTN, Telecel, and AirtelTigo bundles with Mobile Money, wallet balance, and status tracking.
         </Text>
+        <Text style={styles.backendStatus}>{backendStatus}</Text>
         <Pressable style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Buy data</Text>
         </Pressable>
@@ -60,6 +70,12 @@ const styles = StyleSheet.create({
     color: "#344054",
     fontSize: 17,
     lineHeight: 26
+  },
+  backendStatus: {
+    marginTop: 12,
+    color: "#0f7b45",
+    fontSize: 14,
+    fontWeight: "700"
   },
   primaryButton: {
     alignItems: "center",

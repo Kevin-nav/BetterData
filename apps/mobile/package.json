@@ -14,6 +14,8 @@
     "test": "echo \"No tests yet for mobile\""
   },
   "dependencies": {
+    "@betterdata/api-client": "workspace:*",
+    "@betterdata/app-api": "workspace:*",
     "@betterdata/contracts": "workspace:*",
     "convex": "^1.33.0",
     "expo": "^52.0.27",

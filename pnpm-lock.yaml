@@ -85,6 +85,12 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@betterdata/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+      '@betterdata/app-api':
+        specifier: workspace:*
+        version: link:../../packages/app-api
       '@betterdata/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
