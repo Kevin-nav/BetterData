@@ -9,6 +9,8 @@ Better Data is a Ghana-focused data bundle reselling platform for MTN, Telecel, 
 - `apps/mobile` - Expo React Native app for Android and iOS
 - `apps/api` - Node.js TypeScript backend API
 - `convex` - Convex schema, queries, mutations, and HTTP functions
+- `packages/api-client` - shared typed client for public-safe API endpoints
+- `packages/app-api` - shared Convex function references for web, mobile, admin, and services
 - `packages/contracts` - shared domain types and API contracts
 - `packages/config` - shared runtime constants and environment helpers
 - `packages/database` - database schema and persistence boundary
@@ -34,15 +36,27 @@ Local development can run without real vendor API calls:
 
 Set `BETTERDATA_ACTIVE_DATA_VENDOR` in `.env`.
 
+## Shared Backend Boundary
+
+Web, mobile, and admin should share one app-facing backend contract:
+
+- Use `packages/app-api` for Convex function references.
+- Use Convex for app state, app workflows, and real-time subscriptions.
+- Use `packages/api-client` when a client must call a public-safe HTTP endpoint.
+- Keep private integrations in `apps/api`: Paystack, Resend, Firebase Admin, data vendors, webhooks, and operational jobs.
+- Have API side effects write state back to the same Convex deployment so clients receive real-time updates.
+
+Both `NEXT_PUBLIC_CONVEX_URL` and `EXPO_PUBLIC_CONVEX_URL` should point to the same Convex deployment for a given environment.
+
 ## Landing Quick Purchase
 
-The homepage quick purchase widget talks to the API directly during the guest purchase simulation:
+The homepage quick purchase widget uses `@betterdata/api-client` for the guest purchase simulation:
 
 - `GET /data-packages` loads packages from the active data vendor.
 - `POST /orders` places a simulated guest order.
 - `GET /orders/:reference/status` refreshes the returned order status.
 
-Set `NEXT_PUBLIC_API_BASE_URL` for the web app. For local development this is usually `http://localhost:4000`. For Docker and production builds it must be available at build time because Next.js inlines `NEXT_PUBLIC_*` values into the client bundle.
+Set `NEXT_PUBLIC_API_BASE_URL` for the web app and `EXPO_PUBLIC_API_BASE_URL` for the mobile app. For local development these usually point at `http://localhost:4000`. For Docker and production builds, public variables must be available at build time because Next.js and Expo inline their public environment variables into client bundles.
 
 ## Convex
 

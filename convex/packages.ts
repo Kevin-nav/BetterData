@@ -6,13 +6,37 @@ export const list = query({
     network: v.optional(v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")))
   },
   handler: async (ctx, args) => {
-    if (args.network) {
+    const network = args.network;
+
+    if (network !== undefined) {
       return await ctx.db
         .query("dataPackages")
-        .withIndex("by_network", (q) => q.eq("network", args.network))
+        .withIndex("by_network", (q) => q.eq("network", network))
         .collect();
     }
 
     return await ctx.db.query("dataPackages").collect();
+  }
+});
+
+export const listAvailable = query({
+  args: {
+    network: v.optional(v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")))
+  },
+  handler: async (ctx, args) => {
+    const network = args.network;
+    const packages =
+      network !== undefined
+        ? await ctx.db
+            .query("dataPackages")
+            .withIndex("by_network", (q) => q.eq("network", network))
+            .filter((q) => q.eq(q.field("isAvailable"), true))
+            .collect()
+        : await ctx.db
+            .query("dataPackages")
+            .filter((q) => q.eq(q.field("isAvailable"), true))
+            .collect();
+
+    return packages;
   }
 });
