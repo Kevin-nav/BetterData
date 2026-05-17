@@ -30,9 +30,13 @@ export const listAvailable = query({
         ? await ctx.db
             .query("dataPackages")
             .withIndex("by_network", (q) => q.eq("network", network))
+            .filter((q) => q.eq(q.field("isAvailable"), true))
             .collect()
-        : await ctx.db.query("dataPackages").collect();
+        : await ctx.db
+            .query("dataPackages")
+            .filter((q) => q.eq(q.field("isAvailable"), true))
+            .collect();
 
-    return packages.filter((item) => item.isAvailable);
+    return packages;
   }
 });

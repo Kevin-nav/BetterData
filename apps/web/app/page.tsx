@@ -109,8 +109,10 @@ type NetworkId = (typeof NETWORKS)[number]["id"];
 
 type OrderResult = CreateOrderResponse;
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE_URL = requirePublicEnv(
+  process.env.NEXT_PUBLIC_API_BASE_URL,
+  "NEXT_PUBLIC_API_BASE_URL",
+);
 const betterDataApi = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 
 /* ── Icons ── */
@@ -273,6 +275,11 @@ export default function HomePage() {
         setPackageError("");
 
         const data = await betterDataApi.listDataPackages();
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
         setPackages(data.packages);
       } catch (error) {
         if (controller.signal.aborted) {
@@ -918,4 +925,12 @@ function readApiError(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function requirePublicEnv(value: string | undefined, name: string) {
+  if (!value?.trim()) {
+    throw new Error(`${name} is required before initializing the Better Data API client.`);
+  }
+
+  return value;
 }

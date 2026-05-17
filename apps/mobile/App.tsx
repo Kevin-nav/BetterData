@@ -1,13 +1,14 @@
 import { createBetterDataApiClient } from "@betterdata/api-client";
-import { packageFunctions } from "@betterdata/app-api";
 import { NETWORK_CODES } from "@betterdata/contracts";
 import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE_URL = requirePublicEnv(
+  process.env.EXPO_PUBLIC_API_BASE_URL,
+  "EXPO_PUBLIC_API_BASE_URL"
+);
 const betterDataApi = createBetterDataApiClient({ baseUrl: API_BASE_URL });
-const sharedPackageQuery = packageFunctions.listAvailable;
 
 const NETWORK_LABELS = {
   mtn: "MTN",
@@ -16,7 +17,31 @@ const NETWORK_LABELS = {
 } as const;
 
 export default function App() {
-  const backendStatus = sharedPackageQuery && betterDataApi ? "Shared backend ready" : "Backend unavailable";
+  const [backendStatus, setBackendStatus] = useState("Checking backend...");
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function probeBackend() {
+      try {
+        await withTimeout(betterDataApi.listDataPackages(), 5000);
+
+        if (isActive) {
+          setBackendStatus("Shared backend ready");
+        }
+      } catch {
+        if (isActive) {
+          setBackendStatus("Backend unavailable");
+        }
+      }
+    }
+
+    void probeBackend();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -110,3 +135,20 @@ const styles = StyleSheet.create({
     color: "#667085"
   }
 });
+
+function requirePublicEnv(value: string | undefined, name: string) {
+  if (!value?.trim()) {
+    throw new Error(`${name} is required before initializing the Better Data API client.`);
+  }
+
+  return value;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Backend readiness probe timed out.")), timeoutMs);
+    })
+  ]);
+}

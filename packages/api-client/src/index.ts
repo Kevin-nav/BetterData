@@ -60,12 +60,15 @@ export function createBetterDataApiClient(
     path: string,
     init?: RequestInit
   ): Promise<TResponse> {
+    const headers = new Headers(init?.headers);
+
+    if (init?.body && !headers.get("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+
     const response = await fetcher(`${baseUrl}${path}`, {
       ...init,
-      headers: {
-        ...(init?.body ? { "content-type": "application/json" } : undefined),
-        ...init?.headers
-      }
+      headers
     });
 
     if (!response.ok) {

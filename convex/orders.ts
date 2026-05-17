@@ -1,4 +1,6 @@
 import { mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 
 export const createIntent = mutation({
@@ -52,6 +54,12 @@ export const listForUser = query({
     userId: v.id("users")
   },
   handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedUser(ctx);
+
+    if (!canReadUserOrders(caller, args.userId)) {
+      throw new Error("Unauthorized.");
+    }
+
     return await ctx.db
       .query("orders")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -65,7 +73,18 @@ export const getById = query({
     orderId: v.id("orders")
   },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.orderId);
+    const caller = await requireAuthenticatedUser(ctx);
+    const order = await ctx.db.get(args.orderId);
+
+    if (order === null) {
+      return null;
+    }
+
+    if (!canReadOrder(caller, order)) {
+      throw new Error("Unauthorized.");
+    }
+
+    return order;
   }
 });
 
@@ -75,7 +94,8 @@ export const getByVendorReference = query({
     vendorOrderReference: v.string()
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const caller = await requireAuthenticatedUser(ctx);
+    const order = await ctx.db
       .query("orders")
       .withIndex("by_vendor_order_reference", (q) =>
         q
@@ -83,5 +103,42 @@ export const getByVendorReference = query({
           .eq("vendorOrderReference", args.vendorOrderReference)
       )
       .first();
+
+    if (order === null) {
+      return null;
+    }
+
+    if (!canReadOrder(caller, order)) {
+      throw new Error("Unauthorized.");
+    }
+
+    return order;
   }
 });
+
+async function requireAuthenticatedUser(ctx: QueryCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+
+  if (identity === null) {
+    throw new Error("Unauthorized.");
+  }
+
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_firebase_uid", (q) => q.eq("firebaseUid", identity.subject))
+    .first();
+
+  if (user === null) {
+    throw new Error("Unauthorized.");
+  }
+
+  return user;
+}
+
+function canReadUserOrders(caller: Doc<"users">, userId: Id<"users">) {
+  return caller.role === "admin" || caller._id === userId;
+}
+
+function canReadOrder(caller: Doc<"users">, order: Doc<"orders">) {
+  return caller.role === "admin" || order.userId === caller._id;
+}
