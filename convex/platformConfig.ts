@@ -4,16 +4,28 @@ import { v } from "convex/values";
 
 export const PAYMENT_CONFIG_KEYS = [
   "minimumWalletTopUpGhs",
+  "maximumWalletTopUpGhs",
   "agentOnboardingFeeGhs",
   "firstPurchaseDiscountGhs",
-  "agentDiscountPercentage"
+  "agentDiscountPercentage",
+  "paymentIntentExpirySeconds"
 ] as const;
+
+export const PAYMENT_CONFIG_DEFAULTS = {
+  minimumWalletTopUpGhs: 10,
+  maximumWalletTopUpGhs: 500,
+  firstPurchaseDiscountGhs: 0,
+  agentDiscountPercentage: 0,
+  paymentIntentExpirySeconds: 1800
+} as const;
 
 const paymentConfigKey = v.union(
   v.literal("minimumWalletTopUpGhs"),
+  v.literal("maximumWalletTopUpGhs"),
   v.literal("agentOnboardingFeeGhs"),
   v.literal("firstPurchaseDiscountGhs"),
-  v.literal("agentDiscountPercentage")
+  v.literal("agentDiscountPercentage"),
+  v.literal("paymentIntentExpirySeconds")
 );
 
 export const getNumberConfig = query({
@@ -75,7 +87,9 @@ export async function readNumberConfig(ctx: QueryCtx | MutationCtx, key: string)
     .first();
 
   if (typeof config?.value !== "number") {
-    return null;
+    return key in PAYMENT_CONFIG_DEFAULTS
+      ? PAYMENT_CONFIG_DEFAULTS[key as keyof typeof PAYMENT_CONFIG_DEFAULTS]
+      : null;
   }
 
   return config.value;

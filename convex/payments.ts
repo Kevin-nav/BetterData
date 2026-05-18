@@ -551,9 +551,17 @@ async function resolvePaymentIntent(
       ctx,
       "minimumWalletTopUpGhs"
     );
+    const maximumWalletTopUpGhs = await requirePositiveConfig(
+      ctx,
+      "maximumWalletTopUpGhs"
+    );
 
     if (request.amountGhs < minimumWalletTopUpGhs) {
       throw new Error(`Minimum wallet top-up is GHS ${minimumWalletTopUpGhs}.`);
+    }
+
+    if (request.amountGhs > maximumWalletTopUpGhs) {
+      throw new Error(`Maximum wallet top-up is GHS ${maximumWalletTopUpGhs}.`);
     }
 
     return {
@@ -563,6 +571,7 @@ async function resolvePaymentIntent(
       metadata: {
         requestedAmountGhs: request.amountGhs,
         minimumWalletTopUpGhs,
+        maximumWalletTopUpGhs,
         customerEmail: request.customerEmail
       }
     };
