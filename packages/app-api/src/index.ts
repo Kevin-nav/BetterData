@@ -6,3 +6,4 @@ export const packageFunctions = api.packages;
 export const walletFunctions = api.wallet;
 export const paymentFunctions = (api as any).payments;
 export const platformConfigFunctions = (api as any).platformConfig;
+export const opsAlertFunctions = (api as any).opsAlerts;
