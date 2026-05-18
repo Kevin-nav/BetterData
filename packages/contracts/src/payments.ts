@@ -15,25 +15,18 @@ export type PaymentIntentStatus =
 export type CreatePaymentIntentRequest =
   | {
       purpose: "data_purchase";
-      userId?: string;
       packageId: string;
       network: "mtn" | "telecel" | "airteltigo";
       recipientPhone: string;
-      customerEmail: string;
       confirmRecipientIsCorrect: true;
       savedNumberId?: string;
-      guestContactPhone?: string;
     }
   | {
       purpose: "wallet_top_up";
-      userId: string;
-      customerEmail: string;
       amountGhs: number;
     }
   | {
       purpose: "agent_application_fee";
-      userId: string;
-      customerEmail: string;
     };
 
 export type CreatePaymentIntentResponse = {
@@ -70,3 +63,23 @@ export type WalletTransaction = {
   reference: string;
   createdAt: string;
 };
+
+export type OpsAlertSeverity = "info" | "warning" | "critical";
+export type OpsAlertStatus = "open" | "acknowledged" | "resolved";
+export type OpsAlertCategory =
+  | "payment"
+  | "webhook"
+  | "fulfillment"
+  | "config"
+  | "security";
+export type OpsAlertRetryAction =
+  | "verify_payment"
+  | "fulfill_order"
+  | "credit_wallet"
+  | "complete_agent_application";
+export type OpsAlertRetryStatus =
+  | "not_started"
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed";
