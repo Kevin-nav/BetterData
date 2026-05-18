@@ -46,6 +46,12 @@ Convex owns configurable amounts and payment state. Package prices come from `da
 
 The API owns Paystack secrets, transaction initialization, webhook signature checks, transaction verification, and vendor fulfillment after verified payment. Webhook processing is idempotent by Paystack reference so retries cannot double-credit wallets, double-create agent applications, or double-submit vendor purchases.
 
+Guest data purchases are the only unauthenticated Paystack payment flow. Wallet top-ups, agent application fees, and logged-in purchases require Firebase auth, and the API derives ownership from the verified token instead of request body IDs. Guest checkout uses a generated Paystack email and treats the recipient phone as the fallback support contact. Optional Paystack payer phone is stored only when the provider returns it.
+
+Payment telemetry uses OpenTelemetry and Honeycomb only when configured outside development. Telemetry uses keyed HMAC hashes for user and phone correlation and never sends raw PII, secrets, tokens, auth headers, or full provider payloads. Convex stores sanitized payment facts and durable ops alerts. Cloudflare R2 is the preferred future option for encrypted, short-retention raw provider payload archives if the business later needs dispute evidence storage.
+
+Payment failure recovery is alert-driven. `opsAlerts` records capture suspicious webhooks, config issues, and downstream failures after verified payments. Retry schedules are stored as metadata: data fulfillment retries use 1m, 5m, 15m, 30m, and 1h delays; wallet and agent completion retries use 30s, 2m, 5m, 15m, and 30m delays. Final retry failure escalates the alert to critical for manual admin handling.
+
 ## Environment Contract
 
 - `NEXT_PUBLIC_API_BASE_URL` points the web app at the API service.

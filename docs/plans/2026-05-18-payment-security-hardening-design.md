@@ -41,6 +41,8 @@ The system should not abandon an unpaid intent until Paystack timeout plus grace
 
 Timeout mismatch should not block payment creation at first. It should create admin-visible warnings and structured logs. Production readiness can report warning status for mismatch, but hard failures should be reserved for missing secrets, missing required config, Paystack API unreachability during diagnostics, or webhook verification being impossible.
 
+Implementation note: the first hardening pass adds the config and alert structure. A later diagnostics endpoint can read Paystack's live timeout and create the mismatch alert.
+
 ## Config
 
 Convex remains the source of truth for payment config.
