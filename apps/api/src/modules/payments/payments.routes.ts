@@ -196,7 +196,11 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           await convex.mutation(paymentFunctions.completeSucceededIntent, {
             providerReference: reference,
             amountGhs: verified.amountGhs,
+            amountPesewas: verified.amountPesewas,
             currency: "GHS",
+            ...(verified.customer?.phone !== undefined
+              ? { paystackPayerPhone: verified.customer.phone }
+              : {}),
             providerPayload: verified
           });
 

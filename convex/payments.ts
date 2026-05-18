@@ -69,6 +69,8 @@ export const prepareIntent = mutation({
           ? { guestContactPhone: prepared.guestContactPhone }
           : {}),
         amountGhs: prepared.amountGhs,
+        baseAmountPesewas: ghsToPesewas(prepared.amountGhs),
+        providerAmountPesewas: ghsToPesewas(prepared.amountGhs),
         currency: "GHS",
         providerReference: args.providerReference,
         purposeMetadata: prepared.metadata,
@@ -101,6 +103,8 @@ export const createPendingIntent = mutation({
     userId: v.optional(v.id("users")),
     guestContactPhone: v.optional(v.string()),
     amountGhs: v.number(),
+    baseAmountPesewas: v.optional(v.number()),
+    providerAmountPesewas: v.optional(v.number()),
     currency: v.literal("GHS"),
     providerReference: v.string(),
     purposeMetadata: v.any()
@@ -121,6 +125,9 @@ export const createPendingIntent = mutation({
     return await ctx.db.insert("paymentIntents", {
       ...args,
       status: "pending",
+      baseAmountPesewas: args.baseAmountPesewas ?? ghsToPesewas(args.amountGhs),
+      providerAmountPesewas:
+        args.providerAmountPesewas ?? ghsToPesewas(args.amountGhs),
       createdAt: now,
       updatedAt: now
     });
@@ -231,7 +238,9 @@ export const completeSucceededIntent = mutation({
   args: {
     providerReference: v.string(),
     amountGhs: v.number(),
+    amountPesewas: v.optional(v.number()),
     currency: v.literal("GHS"),
+    paystackPayerPhone: v.optional(v.string()),
     providerPayload: v.optional(v.any())
   },
   handler: async (ctx, args) => {
@@ -241,7 +250,11 @@ export const completeSucceededIntent = mutation({
       throw new Error("Payment intent not found.");
     }
 
-    if (intent.amountGhs !== args.amountGhs || intent.currency !== args.currency) {
+    const expectedPesewas =
+      intent.providerAmountPesewas ?? ghsToPesewas(intent.amountGhs);
+    const verifiedPesewas = args.amountPesewas ?? ghsToPesewas(args.amountGhs);
+
+    if (expectedPesewas !== verifiedPesewas || intent.currency !== args.currency) {
       throw new Error("Verified transaction does not match payment intent.");
     }
 
@@ -257,6 +270,10 @@ export const completeSucceededIntent = mutation({
 
     await ctx.db.patch(intent._id, {
       status: "succeeded",
+      providerAmountPesewas: verifiedPesewas,
+      ...(args.paystackPayerPhone !== undefined
+        ? { paystackPayerPhone: args.paystackPayerPhone }
+        : {}),
       completedAt: Date.now(),
       updatedAt: Date.now(),
       ...(args.providerPayload !== undefined
@@ -661,4 +678,8 @@ async function requirePositiveConfig(ctx: MutationCtx, key: string) {
 
 function roundGhs(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function ghsToPesewas(value: number) {
+  return Math.round(value * 100);
 }

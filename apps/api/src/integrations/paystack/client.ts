@@ -21,6 +21,7 @@ export type VerifiedPaystackTransaction = {
   reference: string;
   status: "success" | "failed" | "abandoned" | string;
   amountGhs: number;
+  amountPesewas: number;
   currency: string;
   paidAt?: string;
   channel?: string;
@@ -172,6 +173,7 @@ export async function verifyPaystackTransaction(
     reference: data.reference,
     status: data.status,
     amountGhs: data.amount / 100,
+    amountPesewas: data.amount,
     currency: data.currency,
     ...(data.paid_at !== null && data.paid_at !== undefined ? { paidAt: data.paid_at } : {}),
     ...(data.channel !== null && data.channel !== undefined ? { channel: data.channel } : {}),
