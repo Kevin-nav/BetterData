@@ -32,10 +32,19 @@ API side effects must write resulting state back to the same Convex deployment u
 
 1. Client selects a network, package, and recipient number.
 2. Client creates or reads app workflow state through Convex.
-3. API initializes payment through Paystack or debits wallet balance when private side effects are needed.
-4. API places fulfillment requests with DataMartGH using idempotency keys.
-5. DataMartGH webhooks update order status in Convex.
-6. Web and mobile clients subscribe to Convex status updates from the same deployment.
+3. API initializes a Paystack payment intent or debits wallet balance when private side effects are needed.
+4. Paystack webhooks are verified by signature and transaction reference before Convex state changes.
+5. API places fulfillment requests with DataMartGH using idempotency keys after successful collection.
+6. DataMartGH webhooks update order status in Convex.
+7. Web and mobile clients subscribe to Convex status updates from the same deployment.
+
+## Payment Boundary
+
+Payments use one core intent model with purpose-specific completion. The first gateway is Paystack, and the supported purposes are data purchase, wallet top-up, and agent application fee.
+
+Convex owns configurable amounts and payment state. Package prices come from `dataPackages` plus active `pricingRules`; platform payment config lives in `platformConfig` with keys for minimum wallet top-up, agent onboarding fee, first-purchase discount, and agent discount percentage. Client apps never provide trusted final amounts.
+
+The API owns Paystack secrets, transaction initialization, webhook signature checks, transaction verification, and vendor fulfillment after verified payment. Webhook processing is idempotent by Paystack reference so retries cannot double-credit wallets, double-create agent applications, or double-submit vendor purchases.
 
 ## Environment Contract
 

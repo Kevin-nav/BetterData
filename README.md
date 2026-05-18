@@ -48,6 +48,22 @@ Web, mobile, and admin should share one app-facing backend contract:
 
 Both `NEXT_PUBLIC_CONVEX_URL` and `EXPO_PUBLIC_CONVEX_URL` should point to the same Convex deployment for a given environment.
 
+## Paystack Payments
+
+The API exposes a unified payment intent flow for Paystack Mobile Money:
+
+- `POST /payments/intents` initializes checkout for data purchases, wallet top-ups, and agent application fees.
+- `GET /payments/intents/:reference` returns public-safe payment status.
+- `POST /webhooks/paystack` receives Paystack webhooks.
+
+Configure the Paystack dashboard webhook URL as:
+
+```text
+https://<api-domain>/webhooks/paystack
+```
+
+The API verifies the Paystack webhook signature and then verifies the transaction by reference before any Convex state changes. Convex owns configurable amounts through `platformConfig`: `minimumWalletTopUpGhs`, `agentOnboardingFeeGhs`, `firstPurchaseDiscountGhs`, and `agentDiscountPercentage`.
+
 ## Landing Quick Purchase
 
 The homepage quick purchase widget uses `@betterdata/api-client` for the guest purchase simulation:
