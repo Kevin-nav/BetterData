@@ -144,7 +144,10 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     async (request, reply) => {
     const vendor = getActiveDataVendor();
     const headers = normalizeWebhookHeaders(request.headers);
-    const verification = verifyDataVendorWebhook(headers);
+    const verification = verifyDataVendorWebhook(
+      headers,
+      JSON.stringify(request.body ?? {})
+    );
 
     if (!verification.ok) {
       request.log.warn({ vendorId: vendor.id }, "Invalid vendor webhook credentials");

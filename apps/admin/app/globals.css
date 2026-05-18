@@ -103,6 +103,16 @@ h1 {
   background: #f8fafc;
 }
 
+.alert-banner {
+  margin-bottom: 18px;
+  border: 1px solid #f0a29a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fff4f2;
+  color: #8e2c22;
+  font-weight: 700;
+}
+
 .table-shell {
   overflow-x: auto;
   border: 1px solid #d9e2ec;

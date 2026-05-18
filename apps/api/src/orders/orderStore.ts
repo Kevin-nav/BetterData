@@ -48,6 +48,10 @@ export function createOrderStore(env: NodeJS.ProcessEnv = process.env): OrderSto
     return createConvexOrderStore(env.CONVEX_URL);
   }
 
+  if (env.NODE_ENV === "production") {
+    throw new Error("CONVEX_URL is required for production order persistence.");
+  }
+
   return createMemoryOrderStore();
 }
 

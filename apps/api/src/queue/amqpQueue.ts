@@ -1,4 +1,10 @@
-import { connect, type Channel, type ChannelModel, type ConsumeMessage } from "amqplib";
+import {
+  connect,
+  type Channel,
+  type ChannelModel,
+  type ConfirmChannel,
+  type ConsumeMessage
+} from "amqplib";
 
 import {
   QUEUE_NAMES,
@@ -13,14 +19,14 @@ export async function createAmqpQueueProvider(options: {
   prefetch?: number;
 }): Promise<QueueProvider> {
   const connection = await connect(options.url);
-  const channel = await connection.createChannel();
+  const channel = await connection.createConfirmChannel();
 
   await channel.prefetch(options.prefetch ?? 5);
   await assertTopology(channel);
 
   return {
     async enqueue(queue, job) {
-      const messageId = publish(channel, queue, job);
+      const messageId = await publish(channel, queue, job);
 
       return { messageId };
     },
@@ -72,16 +78,27 @@ async function assertTopology(channel: Channel) {
   });
 }
 
-function publish(channel: Channel, queue: QueueName, job: QueueJob, delayMs?: number) {
+async function publish(
+  channel: ConfirmChannel,
+  queue: QueueName,
+  job: QueueJob,
+  delayMs?: number
+) {
   const messageId = crypto.randomUUID();
   const body = Buffer.from(JSON.stringify(job));
 
-  channel.sendToQueue(queue, body, {
+  const accepted = channel.sendToQueue(queue, body, {
     persistent: true,
     contentType: "application/json",
     messageId,
     ...(delayMs !== undefined ? { expiration: String(delayMs) } : {})
   });
+
+  if (!accepted) {
+    await new Promise((resolve) => channel.once("drain", resolve));
+  }
+
+  await channel.waitForConfirms();
 
   return messageId;
 }
@@ -92,39 +109,43 @@ async function handleMessage(
   queue: QueueName,
   consumer: QueueConsumer
 ) {
-  const job = JSON.parse(message.content.toString("utf8")) as QueueJob;
-  const attempts =
-    typeof message.properties.headers?.attempts === "number"
-      ? message.properties.headers.attempts
-      : "attempt" in job
-        ? job.attempt
-        : 0;
+  try {
+    const job = JSON.parse(message.content.toString("utf8")) as QueueJob;
+    const attempts =
+      typeof message.properties.headers?.attempts === "number"
+        ? message.properties.headers.attempts
+        : "attempt" in job
+          ? job.attempt
+          : 0;
 
-  await consumer({
-    id: message.properties.messageId ?? crypto.randomUUID(),
-    queue,
-    job,
-    attempts,
-    async ack() {
-      channel.ack(message);
-    },
-    async retry(delayMs) {
-      publish(
-        channel,
-        QUEUE_NAMES.purchaseRetry,
-        { ...job, attempt: attempts + 1 } as QueueJob,
-        delayMs
-      );
-      channel.ack(message);
-    },
-    async deadLetter(reason) {
-      publish(channel, QUEUE_NAMES.purchaseDead, {
-        ...job,
-        deadLetterReason: reason
-      });
-      channel.ack(message);
-    }
-  });
+    await consumer({
+      id: message.properties.messageId ?? crypto.randomUUID(),
+      queue,
+      job,
+      attempts,
+      async ack() {
+        channel.ack(message);
+      },
+      async retry(delayMs) {
+        await publish(
+          channel as ConfirmChannel,
+          QUEUE_NAMES.purchaseRetry,
+          { ...job, attempt: attempts + 1 } as QueueJob,
+          delayMs
+        );
+        channel.ack(message);
+      },
+      async deadLetter(reason) {
+        await publish(channel as ConfirmChannel, QUEUE_NAMES.purchaseDead, {
+          ...job,
+          deadLetterReason: reason
+        });
+        channel.ack(message);
+      }
+    });
+  } catch {
+    channel.nack(message, false, false);
+  }
 }
 
 export async function closeAmqpConnection(connection: ChannelModel) {

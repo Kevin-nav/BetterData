@@ -16,7 +16,15 @@ export function verifyPurchasePaymentSafety(
   env: NodeJS.ProcessEnv = process.env
 ): PaymentSafetyResult {
   if (body.paymentMethod === "wallet") {
-    return { ok: true, paymentStatus: "verified" };
+    if (env.ALLOW_UNVERIFIED_WALLET_ORDERS === "true") {
+      return { ok: true, paymentStatus: "verified" };
+    }
+
+    return {
+      ok: false,
+      statusCode: 409,
+      message: "Verified wallet debit is required before vendor purchase."
+    };
   }
 
   if (env.ALLOW_UNVERIFIED_PAYSTACK_ORDERS === "true") {

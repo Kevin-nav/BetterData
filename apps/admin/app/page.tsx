@@ -15,7 +15,8 @@ const apiBaseUrl =
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const overview = await loadAdminOverview();
+  const overviewState = await loadAdminOverview();
+  const overview = overviewState.overview;
   const cards: DashboardCard[] = [
     { label: "Daily revenue", value: formatGhs(overview.revenue.dailyGhs) },
     {
@@ -51,6 +52,9 @@ export default async function AdminDashboardPage() {
           <p>Admin</p>
           <h1>Operations dashboard</h1>
         </header>
+        {overviewState.error ? (
+          <div className="alert-banner">{overviewState.error}</div>
+        ) : null}
         <div className="metric-grid">
           {cards.map((card) => (
             <article
@@ -76,19 +80,26 @@ async function loadAdminOverview() {
       ...adminApiHeaders()
     });
 
-    return await client.getAdminOverview();
+    return { overview: await client.getAdminOverview() };
   } catch {
     return {
-      revenue: { dailyGhs: 0, weeklyGhs: 0, monthlyGhs: 0 },
-      vendorBalanceGhs: null,
-      vendor: {
-        id: "unknown",
-        displayName: "Data vendor",
-        balanceGhs: null,
-        balanceStatus: "unknown" as const,
-        checkedAt: new Date().toISOString()
+      error: "Admin API is unavailable or authentication failed.",
+      overview: {
+        revenue: { dailyGhs: 0, weeklyGhs: 0, monthlyGhs: 0 },
+        vendorBalanceGhs: null,
+        vendor: {
+          id: "unknown",
+          displayName: "Data vendor",
+          balanceGhs: null,
+          balanceStatus: "unknown" as const,
+          checkedAt: new Date().toISOString()
+        },
+        queue: {
+          purchaseDepth: 0,
+          deadLetterDepth: 0
+        },
+        pendingAgentApplications: 0
       },
-      pendingAgentApplications: 0
     };
   }
 }

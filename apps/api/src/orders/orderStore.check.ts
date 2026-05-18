@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { createMemoryOrderStore } from "./orderStore";
+import { createOrderStore } from "./orderStore";
 
 const store = createMemoryOrderStore();
 const order = await store.createIntent({
@@ -43,3 +44,8 @@ await store.recordVendorResult(order.reference, {
 const updated = await store.getByReference(order.reference);
 assert.equal(updated?.vendorOrderReference, "GN-123");
 assert.equal(updated?.status, "processing");
+
+assert.throws(
+  () => createOrderStore({ NODE_ENV: "production" }),
+  /CONVEX_URL is required/
+);

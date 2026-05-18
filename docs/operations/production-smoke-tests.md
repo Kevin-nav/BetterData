@@ -111,7 +111,7 @@ curl -i -X POST https://api.betterdatagh.com/orders \
   -d '{"packageId":"datamart:yello-1gb","network":"mtn","recipientPhone":"0551234567","confirmRecipientIsCorrect":true,"paymentMethod":"paystack_momo"}'
 ```
 
-Wallet/internal smoke test:
+Wallet/internal smoke test. This should fail unless wallet debit is implemented or `ALLOW_UNVERIFIED_WALLET_ORDERS=true` is set in a controlled staging environment:
 
 ```bash
 curl -i -X POST https://api.betterdatagh.com/orders \
@@ -119,7 +119,7 @@ curl -i -X POST https://api.betterdatagh.com/orders \
   -d '{"packageId":"datamart:yello-1gb","network":"mtn","recipientPhone":"0551234567","confirmRecipientIsCorrect":true,"paymentMethod":"wallet"}'
 ```
 
-Expected:
+Expected when the controlled staging override is enabled:
 
 - API returns `202`.
 - Response reference starts with `BD-`.

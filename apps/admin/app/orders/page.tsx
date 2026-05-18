@@ -8,7 +8,8 @@ const apiBaseUrl =
 export const dynamic = "force-dynamic";
 
 export default async function AdminOrdersPage() {
-  const orders = await loadOrders();
+  const orderState = await loadOrders();
+  const orders = orderState.orders;
 
   return (
     <main className="admin-shell">
@@ -26,6 +27,9 @@ export default async function AdminOrdersPage() {
           <p>Admin</p>
           <h1>Orders</h1>
         </header>
+        {orderState.error ? (
+          <div className="alert-banner">{orderState.error}</div>
+        ) : null}
         <div className="table-shell">
           <table>
             <thead>
@@ -78,8 +82,11 @@ async function loadOrders() {
     });
     const response = await client.listAdminOrders();
 
-    return response.orders;
+    return { orders: response.orders };
   } catch {
-    return [];
+    return {
+      orders: [],
+      error: "Admin orders API is unavailable or authentication failed."
+    };
   }
 }

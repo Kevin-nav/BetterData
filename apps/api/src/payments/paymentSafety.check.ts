@@ -11,6 +11,17 @@ const base = {
 
 assert.deepEqual(
   verifyPurchasePaymentSafety({ ...base, paymentMethod: "wallet" }, {}),
+  {
+    ok: false,
+    statusCode: 409,
+    message: "Verified wallet debit is required before vendor purchase."
+  }
+);
+assert.deepEqual(
+  verifyPurchasePaymentSafety(
+    { ...base, paymentMethod: "wallet" },
+    { ALLOW_UNVERIFIED_WALLET_ORDERS: "true" }
+  ),
   { ok: true, paymentStatus: "verified" }
 );
 assert.deepEqual(

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 export type WebhookVerificationResult =
   | { ok: true }
@@ -6,8 +7,36 @@ export type WebhookVerificationResult =
 
 export function verifyDataVendorWebhook(
   headers: Record<string, string>,
+  rawBody: string,
   env: NodeJS.ProcessEnv = process.env
 ): WebhookVerificationResult {
+  const hmacSecret = env.WEBHOOK_HMAC_SECRET;
+
+  if (hmacSecret) {
+    const signature = headers["x-signature"] ?? headers["x-betterdata-signature"];
+    const timestamp = headers["x-timestamp"];
+
+    if (!signature || !timestamp || !isFreshTimestamp(timestamp)) {
+      return {
+        ok: false,
+        statusCode: 401,
+        message: "Invalid webhook signature."
+      };
+    }
+
+    const expected = createHmac("sha256", hmacSecret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest("hex");
+
+    return safeEqual(signature, expected)
+      ? { ok: true }
+      : {
+          ok: false,
+          statusCode: 401,
+          message: "Invalid webhook signature."
+        };
+  }
+
   const secret = env.WEBHOOK_SECRET;
 
   if (!secret) {
@@ -36,6 +65,16 @@ export function verifyDataVendorWebhook(
   }
 
   return { ok: true };
+}
+
+function isFreshTimestamp(value: string) {
+  const timestamp = Number(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  return Math.abs(Date.now() - timestamp) <= 5 * 60 * 1000;
 }
 
 function safeEqual(left: string, right: string) {

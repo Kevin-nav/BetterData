@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 
 import { verifyDataVendorWebhook } from "./webhookVerification";
 
 assert.deepEqual(
-  verifyDataVendorWebhook({}, { NODE_ENV: "development" }),
+  verifyDataVendorWebhook({}, "{}", { NODE_ENV: "development" }),
   { ok: true }
 );
 assert.deepEqual(
-  verifyDataVendorWebhook({}, { NODE_ENV: "production" }),
+  verifyDataVendorWebhook({}, "{}", { NODE_ENV: "production" }),
   {
     ok: false,
     statusCode: 500,
@@ -17,6 +18,7 @@ assert.deepEqual(
 assert.deepEqual(
   verifyDataVendorWebhook(
     { "x-betterdata-webhook-secret": "secret" },
+    "{}",
     { NODE_ENV: "production", WEBHOOK_SECRET: "secret" }
   ),
   { ok: true }
@@ -24,6 +26,7 @@ assert.deepEqual(
 assert.deepEqual(
   verifyDataVendorWebhook(
     { "x-betterdata-webhook-secret": "bad" },
+    "{}",
     { NODE_ENV: "production", WEBHOOK_SECRET: "secret" }
   ),
   {
@@ -31,4 +34,27 @@ assert.deepEqual(
     statusCode: 401,
     message: "Invalid webhook credentials."
   }
+);
+
+const timestamp = String(Date.now());
+const rawBody = JSON.stringify({ data: { orderReference: "GN-1" } });
+const signature = createHmac("sha256", "hmac-secret")
+  .update(`${timestamp}.${rawBody}`)
+  .digest("hex");
+
+assert.deepEqual(
+  verifyDataVendorWebhook(
+    { "x-signature": signature, "x-timestamp": timestamp },
+    rawBody,
+    { NODE_ENV: "production", WEBHOOK_HMAC_SECRET: "hmac-secret" }
+  ),
+  { ok: true }
+);
+assert.equal(
+  verifyDataVendorWebhook(
+    { "x-signature": "bad", "x-timestamp": timestamp },
+    rawBody,
+    { NODE_ENV: "production", WEBHOOK_HMAC_SECRET: "hmac-secret" }
+  ).ok,
+  false
 );
