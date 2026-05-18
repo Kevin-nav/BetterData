@@ -23,6 +23,7 @@ import {
   requireRequestUser,
   resolvePaystackEmail
 } from "../auth/requestUser";
+import { getNextRetryAt } from "./retryPolicy";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -242,6 +243,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         return { received: true };
       } catch (error) {
         request.log.error({ error, reference }, "Paystack webhook processing failed");
+        const nextRetryAt = getNextRetryAt("internal_completion", 0);
         await createOpsAlertSafely(createConvexClient(), {
           severity: "warning",
           category: "payment",
@@ -252,7 +254,8 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           },
           retryable: true,
           retryAction: "verify_payment",
-          retryStatus: "not_started"
+          retryStatus: "queued",
+          ...(nextRetryAt !== null ? { nextRetryAt } : {})
         });
 
         return reply.code(500).send({
@@ -317,6 +320,7 @@ async function fulfillPaidDataPurchase(
       ...(result.raw !== undefined ? { vendorRaw: result.raw } : {})
     });
   } catch (error) {
+    const nextRetryAt = getNextRetryAt("data_fulfillment", 0);
     await createOpsAlertSafely(convex, {
       severity: "warning",
       category: "fulfillment",
@@ -328,8 +332,8 @@ async function fulfillPaidDataPurchase(
       },
       retryable: true,
       retryAction: "fulfill_order",
-      retryStatus: "not_started",
-      nextRetryAt: Date.now() + 60_000
+      retryStatus: "queued",
+      ...(nextRetryAt !== null ? { nextRetryAt } : {})
     });
     throw error;
   }

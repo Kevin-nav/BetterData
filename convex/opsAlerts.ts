@@ -56,6 +56,99 @@ export const create = mutation({
   }
 });
 
+export const queueRetry = mutation({
+  args: {
+    alertId: v.id("opsAlerts"),
+    nextRetryAt: v.number()
+  },
+  handler: async (ctx, args) => {
+    const alert = await ctx.db.get(args.alertId);
+
+    if (alert === null) {
+      throw new Error("Ops alert not found.");
+    }
+
+    if (!alert.retryable) {
+      throw new Error("Ops alert is not retryable.");
+    }
+
+    await ctx.db.patch(args.alertId, {
+      retryStatus: "queued",
+      nextRetryAt: args.nextRetryAt,
+      updatedAt: Date.now()
+    });
+  }
+});
+
+export const markRetryRunning = mutation({
+  args: {
+    alertId: v.id("opsAlerts")
+  },
+  handler: async (ctx, args) => {
+    const alert = await ctx.db.get(args.alertId);
+
+    if (alert === null) {
+      throw new Error("Ops alert not found.");
+    }
+
+    await ctx.db.patch(args.alertId, {
+      retryStatus: "running",
+      retryCount: alert.retryCount + 1,
+      lastRetriedAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  }
+});
+
+export const markRetrySucceeded = mutation({
+  args: {
+    alertId: v.id("opsAlerts")
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.alertId, {
+      status: "resolved",
+      retryStatus: "succeeded",
+      resolvedAt: now,
+      updatedAt: now
+    });
+  }
+});
+
+export const markRetryFailed = mutation({
+  args: {
+    alertId: v.id("opsAlerts"),
+    nextRetryAt: v.optional(v.number()),
+    finalFailure: v.optional(v.boolean()),
+    message: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const finalFailure = args.finalFailure ?? false;
+
+    await ctx.db.patch(args.alertId, {
+      severity: finalFailure ? "critical" : "warning",
+      retryStatus: "failed",
+      ...(args.nextRetryAt !== undefined ? { nextRetryAt: args.nextRetryAt } : {}),
+      ...(args.message !== undefined ? { message: args.message } : {}),
+      updatedAt: Date.now()
+    });
+  }
+});
+
+export const listDueRetries = query({
+  args: {
+    now: v.number()
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("opsAlerts")
+      .withIndex("by_retry", (q) =>
+        q.eq("retryStatus", "queued").lte("nextRetryAt", args.now)
+      )
+      .take(50);
+  }
+});
+
 export const acknowledge = mutation({
   args: {
     alertId: v.id("opsAlerts")
