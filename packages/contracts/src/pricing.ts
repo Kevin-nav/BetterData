@@ -12,4 +12,5 @@ export type DiscountConfig = {
   firstPurchaseDiscountGhs: number;
   agentDiscountPercentage: number;
   minimumWalletTopUpGhs: number;
+  agentOnboardingFeeGhs: number;
 };

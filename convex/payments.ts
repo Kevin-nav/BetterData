@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { readNumberConfig } from "./platformConfig";
 
 const paymentPurpose = v.union(
   v.literal("data_purchase"),
@@ -22,6 +23,76 @@ const networkCode = v.union(
   v.literal("telecel"),
   v.literal("airteltigo")
 );
+
+const paymentIntentRequest = v.union(
+  v.object({
+    purpose: v.literal("data_purchase"),
+    userId: v.optional(v.id("users")),
+    packageId: v.id("dataPackages"),
+    network: networkCode,
+    recipientPhone: v.string(),
+    customerEmail: v.string(),
+    confirmRecipientIsCorrect: v.literal(true),
+    savedNumberId: v.optional(v.string()),
+    guestContactPhone: v.optional(v.string())
+  }),
+  v.object({
+    purpose: v.literal("wallet_top_up"),
+    userId: v.id("users"),
+    customerEmail: v.string(),
+    amountGhs: v.number()
+  }),
+  v.object({
+    purpose: v.literal("agent_application_fee"),
+    userId: v.id("users"),
+    customerEmail: v.string()
+  })
+);
+
+export const prepareIntent = mutation({
+  args: {
+    request: paymentIntentRequest,
+    providerReference: v.string()
+  },
+  handler: async (ctx, args) => {
+    const prepared = await resolvePaymentIntent(ctx, args.request, args.providerReference);
+    const existing = await findPaystackIntent(ctx, args.providerReference);
+
+    if (existing === null) {
+      const now = Date.now();
+      await ctx.db.insert("paymentIntents", {
+        provider: "paystack",
+        purpose: prepared.purpose,
+        status: "pending",
+        ...(prepared.userId !== undefined ? { userId: prepared.userId } : {}),
+        ...(prepared.guestContactPhone !== undefined
+          ? { guestContactPhone: prepared.guestContactPhone }
+          : {}),
+        amountGhs: prepared.amountGhs,
+        currency: "GHS",
+        providerReference: args.providerReference,
+        purposeMetadata: prepared.metadata,
+        createdAt: now,
+        updatedAt: now
+      });
+    } else if (
+      existing.amountGhs !== prepared.amountGhs ||
+      existing.currency !== "GHS" ||
+      existing.purpose !== prepared.purpose
+    ) {
+      throw new Error("Existing payment intent does not match resolved payment details.");
+    }
+
+    return {
+      provider: "paystack" as const,
+      purpose: prepared.purpose,
+      reference: args.providerReference,
+      amountGhs: prepared.amountGhs,
+      currency: "GHS" as const,
+      metadata: prepared.metadata
+    };
+  }
+});
 
 export const createPendingIntent = mutation({
   args: {
@@ -343,6 +414,16 @@ async function completeDataPurchase(
     idempotencyKey: intent.providerReference,
     recipientConfirmedAt: Date.now()
   });
+
+  if (intent.userId !== undefined) {
+    const user = await ctx.db.get(intent.userId);
+
+    if (user !== null && !user.firstPurchaseDiscountUsed) {
+      await ctx.db.patch(intent.userId, {
+        firstPurchaseDiscountUsed: true
+      });
+    }
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -355,4 +436,165 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function isNetworkCode(value: unknown): value is "mtn" | "telecel" | "airteltigo" {
   return value === "mtn" || value === "telecel" || value === "airteltigo";
+}
+
+async function resolvePaymentIntent(
+  ctx: MutationCtx,
+  request:
+    | {
+        purpose: "data_purchase";
+        userId?: Id<"users">;
+        packageId: Id<"dataPackages">;
+        network: "mtn" | "telecel" | "airteltigo";
+        recipientPhone: string;
+        customerEmail: string;
+        confirmRecipientIsCorrect: true;
+        savedNumberId?: string;
+        guestContactPhone?: string;
+      }
+    | {
+        purpose: "wallet_top_up";
+        userId: Id<"users">;
+        customerEmail: string;
+        amountGhs: number;
+      }
+    | {
+        purpose: "agent_application_fee";
+        userId: Id<"users">;
+        customerEmail: string;
+      },
+  providerReference: string
+) {
+  if (request.purpose === "wallet_top_up") {
+    const minimumWalletTopUpGhs = await requirePositiveConfig(
+      ctx,
+      "minimumWalletTopUpGhs"
+    );
+
+    if (request.amountGhs < minimumWalletTopUpGhs) {
+      throw new Error(`Minimum wallet top-up is GHS ${minimumWalletTopUpGhs}.`);
+    }
+
+    return {
+      purpose: request.purpose,
+      userId: request.userId,
+      amountGhs: request.amountGhs,
+      metadata: {
+        requestedAmountGhs: request.amountGhs,
+        minimumWalletTopUpGhs,
+        customerEmail: request.customerEmail
+      }
+    };
+  }
+
+  if (request.purpose === "agent_application_fee") {
+    const agentOnboardingFeeGhs = await requirePositiveConfig(
+      ctx,
+      "agentOnboardingFeeGhs"
+    );
+
+    return {
+      purpose: request.purpose,
+      userId: request.userId,
+      amountGhs: agentOnboardingFeeGhs,
+      metadata: {
+        agentOnboardingFeeGhs,
+        customerEmail: request.customerEmail
+      }
+    };
+  }
+
+  if (!request.confirmRecipientIsCorrect) {
+    throw new Error("Recipient number confirmation is required.");
+  }
+
+  const dataPackage = await ctx.db.get(request.packageId);
+
+  if (dataPackage === null || !dataPackage.isAvailable) {
+    throw new Error("Selected data package is not available.");
+  }
+
+  if (dataPackage.network !== request.network) {
+    throw new Error("Selected package does not match the requested network.");
+  }
+
+  const user =
+    "userId" in request && request.userId !== undefined
+      ? await ctx.db.get(request.userId)
+      : null;
+  const amountGhs = await resolveDataPurchaseAmount(ctx, dataPackage, user);
+
+  if (amountGhs <= 0) {
+    throw new Error("Resolved purchase amount must be greater than zero.");
+  }
+
+  return {
+    purpose: request.purpose,
+    amountGhs,
+    ...(user !== null ? { userId: user._id } : {}),
+    ...(request.guestContactPhone !== undefined
+      ? { guestContactPhone: request.guestContactPhone }
+      : {}),
+    metadata: {
+      packageId: dataPackage._id,
+      vendorId: dataPackage.vendorId,
+      vendorPackageId: dataPackage.vendorPackageId,
+      network: request.network,
+      recipientPhone: request.recipientPhone,
+      customerEmail: request.customerEmail,
+      providerReference,
+      baseCustomerPriceGhs: dataPackage.customerPriceGhs
+    }
+  };
+}
+
+async function resolveDataPurchaseAmount(
+  ctx: MutationCtx,
+  dataPackage: Doc<"dataPackages">,
+  user: Doc<"users"> | null
+) {
+  const packageRule = await ctx.db
+    .query("pricingRules")
+    .withIndex("by_package", (q) => q.eq("packageId", dataPackage._id))
+    .filter((q) => q.eq(q.field("isActive"), true))
+    .first();
+  const globalRule =
+    packageRule === null
+      ? await ctx.db
+          .query("pricingRules")
+          .filter((q) =>
+            q.and(q.eq(q.field("isGlobal"), true), q.eq(q.field("isActive"), true))
+          )
+          .first()
+      : null;
+  const pricingRule = packageRule ?? globalRule;
+  const basePrice =
+    pricingRule === null
+      ? dataPackage.customerPriceGhs
+      : pricingRule.mode === "percentage"
+        ? dataPackage.providerCostGhs * (1 + pricingRule.value / 100)
+        : dataPackage.providerCostGhs + pricingRule.value;
+  const agentDiscountPercentage =
+    user?.role === "agent" ? ((await readNumberConfig(ctx, "agentDiscountPercentage")) ?? 0) : 0;
+  const firstPurchaseDiscountGhs =
+    user !== null && !user.firstPurchaseDiscountUsed
+      ? ((await readNumberConfig(ctx, "firstPurchaseDiscountGhs")) ?? 0)
+      : 0;
+  const discounted = basePrice * (1 - agentDiscountPercentage / 100);
+
+  return roundGhs(Math.max(discounted - firstPurchaseDiscountGhs, 0));
+}
+
+async function requirePositiveConfig(ctx: MutationCtx, key: string) {
+  const value = await readNumberConfig(ctx, key);
+
+  if (value === null || value <= 0) {
+    throw new Error(`Missing required payment config: ${key}.`);
+  }
+
+  return value;
+}
+
+function roundGhs(value: number) {
+  return Math.round(value * 100) / 100;
 }

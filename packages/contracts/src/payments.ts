@@ -15,6 +15,7 @@ export type PaymentIntentStatus =
 export type CreatePaymentIntentRequest =
   | {
       purpose: "data_purchase";
+      userId?: string;
       packageId: string;
       network: "mtn" | "telecel" | "airteltigo";
       recipientPhone: string;
