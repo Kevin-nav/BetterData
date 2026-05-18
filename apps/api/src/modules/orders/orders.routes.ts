@@ -4,6 +4,7 @@ import type { PurchaseRequest } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
 
 import { getActiveDataVendor } from "../../vendors/activeVendor";
+import { mapVendorErrorToHttp } from "../../vendors/errors";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   server.post<{ Body: PurchaseRequest }>("/orders", async (request, reply) => {
@@ -15,12 +16,29 @@ export async function registerOrderRoutes(server: FastifyInstance) {
 
     const vendor = getActiveDataVendor();
     const idempotencyKey = randomUUID();
-    const result = await vendor.purchase({
-      packageId: request.body.packageId,
-      network: request.body.network,
-      recipientPhone: request.body.recipientPhone,
-      idempotencyKey
-    });
+    let result;
+
+    try {
+      result = await vendor.purchase({
+        packageId: request.body.packageId,
+        network: request.body.network,
+        recipientPhone: request.body.recipientPhone,
+        idempotencyKey
+      });
+    } catch (error) {
+      request.log.error({ error, vendorId: vendor.id }, "Vendor purchase failed");
+
+      const mapped = mapVendorErrorToHttp(error);
+
+      if (mapped.retryAfterSeconds !== undefined) {
+        reply.header("Retry-After", String(mapped.retryAfterSeconds));
+      }
+
+      return reply.code(mapped.statusCode).send({
+        message: mapped.message,
+        vendorId: vendor.id
+      });
+    }
 
     return reply.code(202).send({
       reference: result.vendorOrderReference,
@@ -32,9 +50,26 @@ export async function registerOrderRoutes(server: FastifyInstance) {
 
   server.get<{ Params: { reference: string } }>(
     "/orders/:reference/status",
-    async (request) => {
+    async (request, reply) => {
       const vendor = getActiveDataVendor();
-      const status = await vendor.getOrderStatus(request.params.reference);
+      let status;
+
+      try {
+        status = await vendor.getOrderStatus(request.params.reference);
+      } catch (error) {
+        request.log.error({ error, vendorId: vendor.id }, "Vendor status lookup failed");
+
+        const mapped = mapVendorErrorToHttp(error);
+
+        if (mapped.retryAfterSeconds !== undefined) {
+          reply.header("Retry-After", String(mapped.retryAfterSeconds));
+        }
+
+        return reply.code(mapped.statusCode).send({
+          message: mapped.message,
+          vendorId: vendor.id
+        });
+      }
 
       return {
         reference: request.params.reference,

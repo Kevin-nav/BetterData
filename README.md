@@ -25,16 +25,18 @@ pnpm dev
 
 Copy `.env.example` to `.env` and fill in Firebase, Paystack, Resend, data vendor, and database credentials before integrating live services.
 
-## Data Vendor Simulation
+## Data Vendor Modes
 
 Local development can run without real vendor API calls:
 
 - `sandbox-fast` completes purchases immediately.
 - `sandbox-delayed` keeps purchases processing for 30 minutes, or 60 minutes when the recipient phone ends in `60`.
 - `sandbox-flaky` fails purchases after about 2 minutes when the recipient phone ends in `99`.
-- `datamart` uses DataMart-shaped fake responses for now; real HTTP is intentionally disabled until credentials and production readiness are confirmed.
+- `datamart` calls the real DataMartGH API and requires `DATAMART_API_KEY`.
 
-Set `BETTERDATA_ACTIVE_DATA_VENDOR` in `.env`.
+Set `BETTERDATA_ACTIVE_DATA_VENDOR` in `.env`. Keep a sandbox vendor for local development, and use `datamart` in staging or production after configuring DataMart credentials.
+
+The real DataMart mode uses immediate single purchases at low traffic and switches to bulk purchase batches during bursts or when DataMart reports low rate-limit headroom. See `docs/operations/datamart-rollout.md` for rollout settings and smoke tests.
 
 ## Shared Backend Boundary
 

@@ -2,6 +2,7 @@ import type { DataPackage } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
 
 import { getActiveDataVendor } from "../../vendors/activeVendor";
+import { mapVendorErrorToHttp } from "../../vendors/errors";
 
 export async function registerPackageRoutes(server: FastifyInstance) {
   server.get("/data-packages", async (request, reply) => {
@@ -31,9 +32,14 @@ export async function registerPackageRoutes(server: FastifyInstance) {
       };
     } catch (error) {
       request.log.error({ error, vendorId: vendor.id }, "Vendor package listing failed");
+      const mapped = mapVendorErrorToHttp(error);
 
-      return reply.code(502).send({
-        message: "Unable to load data packages from the active vendor.",
+      if (mapped.retryAfterSeconds !== undefined) {
+        reply.header("Retry-After", String(mapped.retryAfterSeconds));
+      }
+
+      return reply.code(mapped.statusCode).send({
+        message: mapped.message,
         vendorId: vendor.id
       });
     }
