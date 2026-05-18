@@ -9,6 +9,9 @@ import { registerOrderRoutes } from "./modules/orders/orders.routes";
 import { registerPackageRoutes } from "./modules/packages/packages.routes";
 import { registerPaymentRoutes } from "./modules/payments/payments.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
+import { setupTelemetry, shutdownTelemetry } from "./telemetry/setup";
+
+await setupTelemetry();
 
 const server = Fastify({
   logger: true
@@ -29,5 +32,18 @@ await registerVendorSimulationRoutes(server);
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "0.0.0.0";
+
+const shutdown = async () => {
+  await server.close();
+  await shutdownTelemetry();
+};
+
+process.once("SIGINT", () => {
+  void shutdown().then(() => process.exit(0));
+});
+
+process.once("SIGTERM", () => {
+  void shutdown().then(() => process.exit(0));
+});
 
 await server.listen({ port, host });
