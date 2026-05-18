@@ -62,7 +62,7 @@ Configure the Paystack dashboard webhook URL as:
 https://<api-domain>/webhooks/paystack
 ```
 
-The API verifies the Paystack webhook signature and then verifies the transaction by reference before any Convex state changes. Convex owns configurable amounts through `platformConfig`: `minimumWalletTopUpGhs`, `agentOnboardingFeeGhs`, `firstPurchaseDiscountGhs`, and `agentDiscountPercentage`.
+The API verifies the Paystack webhook signature with `PAYSTACK_SECRET_KEY` and then verifies the transaction by reference before any Convex state changes. Convex owns configurable amounts through `platformConfig`: `minimumWalletTopUpGhs`, `agentOnboardingFeeGhs`, and `agentDiscountPercentage`.
 
 ## Landing Quick Purchase
 

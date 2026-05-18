@@ -159,7 +159,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         Array.isArray(signature) ||
         !verifyPaystackSignature(
           rawBody,
-          getRequiredEnv("PAYSTACK_WEBHOOK_SECRET"),
+          getRequiredEnv("PAYSTACK_SECRET_KEY"),
           signature
         )
       ) {
