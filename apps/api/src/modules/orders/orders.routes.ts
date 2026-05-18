@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 
 import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { createOrderStore } from "../../orders/orderStore";
+import { createQueueProvider, QUEUE_NAMES, type PurchaseJob } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
 import { validatePurchaseRequest } from "./orderValidation";
@@ -12,6 +13,7 @@ import { validatePurchaseRequest } from "./orderValidation";
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
   const orderStore = createOrderStore();
+  const queue = await createQueueProvider();
 
   server.post<{ Body: PurchaseRequest }>(
     "/orders",
@@ -37,24 +39,12 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       vendor,
       idempotencyKey
     });
-    let result;
-
     try {
-      result = await vendor.purchase({
-        packageId: body.packageId,
-        network: body.network,
-        recipientPhone: body.recipientPhone,
-        idempotencyKey
-      });
-      await orderStore.recordVendorResult(order.reference, {
-        vendorOrderReference: result.vendorOrderReference,
-        vendorRaw: result.raw,
-        status: result.status
-      });
+      await queue.enqueue(QUEUE_NAMES.purchaseRequested, toPurchaseJob(order));
     } catch (error) {
       request.log.error(
         { error, orderReference: order.reference, vendorId: vendor.id },
-        "Vendor purchase failed"
+        "Purchase job enqueue failed"
       );
 
       const mapped = mapVendorErrorToHttp(error);
@@ -72,9 +62,8 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       return reply.code(202).send({
         reference: order.reference,
         vendorId: vendor.id,
-        status: result.status,
-        vendorOrderReference: result.vendorOrderReference,
-        estimatedDeliverySeconds: result.estimatedDeliverySeconds
+        status: order.status,
+        estimatedDeliverySeconds: 30 * 60
       });
     }
   );
@@ -184,6 +173,29 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
     }
   );
+}
+
+function toPurchaseJob(order: {
+  reference: string;
+  packageId: string;
+  network: PurchaseJob["network"];
+  recipientPhone: string;
+  paymentMethod: PurchaseJob["paymentMethod"];
+  vendorId: string;
+  idempotencyKey: string;
+}): PurchaseJob {
+  return {
+    kind: "purchase",
+    orderReference: order.reference,
+    packageId: order.packageId,
+    network: order.network,
+    recipientPhone: order.recipientPhone,
+    paymentMethod: order.paymentMethod,
+    vendorId: order.vendorId,
+    idempotencyKey: order.idempotencyKey,
+    attempt: 0,
+    createdAt: new Date().toISOString()
+  };
 }
 
 function isWebhookValidationError(error: unknown) {
