@@ -8,6 +8,7 @@ import { createOrderStore } from "../../orders/orderStore";
 import { createQueueProvider, QUEUE_NAMES, type PurchaseJob } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
+import { verifyDataVendorWebhook } from "../../vendors/webhookVerification";
 import { validatePurchaseRequest } from "./orderValidation";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
@@ -132,6 +133,18 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     },
     async (request, reply) => {
     const vendor = getActiveDataVendor();
+    const headers = normalizeWebhookHeaders(request.headers);
+    const verification = verifyDataVendorWebhook(headers);
+
+    if (!verification.ok) {
+      request.log.warn({ vendorId: vendor.id }, "Invalid vendor webhook credentials");
+
+      return reply.code(verification.statusCode).send({
+        message: verification.message,
+        vendorId: vendor.id,
+        received: false
+      });
+    }
 
     if (!vendor.normalizeWebhook) {
       return reply.code(501).send({
@@ -144,7 +157,7 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     try {
       const event = await vendor.normalizeWebhook(
         request.body,
-        normalizeWebhookHeaders(request.headers)
+        headers
       );
 
       return {
