@@ -7,6 +7,7 @@ import { registerHealthRoutes } from "./modules/health/health.routes";
 import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.routes";
 import { registerOrderRoutes } from "./modules/orders/orders.routes";
 import { registerPackageRoutes } from "./modules/packages/packages.routes";
+import { registerPaymentRoutes } from "./modules/payments/payments.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
 
 const server = Fastify({
@@ -21,6 +22,7 @@ await server.register(cors, {
 await registerHealthRoutes(server);
 await registerPackageRoutes(server);
 await registerOrderRoutes(server);
+await registerPaymentRoutes(server);
 await registerWalletRoutes(server);
 await registerAdminRoutes(server);
 await registerVendorSimulationRoutes(server);

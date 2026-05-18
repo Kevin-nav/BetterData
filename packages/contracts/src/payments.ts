@@ -18,6 +18,7 @@ export type CreatePaymentIntentRequest =
       packageId: string;
       network: "mtn" | "telecel" | "airteltigo";
       recipientPhone: string;
+      customerEmail: string;
       confirmRecipientIsCorrect: true;
       savedNumberId?: string;
       guestContactPhone?: string;
@@ -25,11 +26,13 @@ export type CreatePaymentIntentRequest =
   | {
       purpose: "wallet_top_up";
       userId: string;
+      customerEmail: string;
       amountGhs: number;
     }
   | {
       purpose: "agent_application_fee";
       userId: string;
+      customerEmail: string;
     };
 
 export type CreatePaymentIntentResponse = {
