@@ -1,28 +1,33 @@
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 
+import { createRequireAdmin } from "../../auth/adminAuth";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
 
 export async function registerAdminRoutes(server: FastifyInstance) {
-  server.get("/admin/overview", async (request) => {
-    const vendor = getActiveDataVendor();
-    const balance = await readVendorBalance(vendor, request.log);
-    const status = classifyVendorBalance(balance.balanceGhs, process.env);
+  server.get(
+    "/admin/overview",
+    { preHandler: createRequireAdmin() },
+    async (request) => {
+      const vendor = getActiveDataVendor();
+      const balance = await readVendorBalance(vendor, request.log);
+      const status = classifyVendorBalance(balance.balanceGhs, process.env);
 
-    return {
-      revenue: { dailyGhs: 0, weeklyGhs: 0, monthlyGhs: 0 },
-      vendorBalanceGhs: balance.balanceGhs,
-      vendor: {
-        id: vendor.id,
-        displayName: vendor.displayName,
-        balanceGhs: balance.balanceGhs,
-        balanceStatus: status,
-        checkedAt: new Date().toISOString()
-      },
-      pendingAgentApplications: 0
-    };
-  });
+      return {
+        revenue: { dailyGhs: 0, weeklyGhs: 0, monthlyGhs: 0 },
+        vendorBalanceGhs: balance.balanceGhs,
+        vendor: {
+          id: vendor.id,
+          displayName: vendor.displayName,
+          balanceGhs: balance.balanceGhs,
+          balanceStatus: status,
+          checkedAt: new Date().toISOString()
+        },
+        pendingAgentApplications: 0
+      };
+    }
+  );
 }
 
 export function classifyVendorBalance(

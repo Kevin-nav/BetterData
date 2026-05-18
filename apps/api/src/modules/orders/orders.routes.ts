@@ -5,24 +5,28 @@ import type { FastifyInstance } from "fastify";
 
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
+import { validatePurchaseRequest } from "./orderValidation";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   server.post<{ Body: PurchaseRequest }>("/orders", async (request, reply) => {
-    if (!request.body.confirmRecipientIsCorrect) {
+    const validation = validatePurchaseRequest(request.body);
+
+    if (!validation.ok) {
       return reply.code(400).send({
-        message: "Recipient number confirmation is required."
+        message: validation.message
       });
     }
 
+    const body = validation.value;
     const vendor = getActiveDataVendor();
     const idempotencyKey = randomUUID();
     let result;
 
     try {
       result = await vendor.purchase({
-        packageId: request.body.packageId,
-        network: request.body.network,
-        recipientPhone: request.body.recipientPhone,
+        packageId: body.packageId,
+        network: body.network,
+        recipientPhone: body.recipientPhone,
         idempotencyKey
       });
     } catch (error) {

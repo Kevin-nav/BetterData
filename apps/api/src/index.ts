@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import Fastify from "fastify";
 
+import { isOriginAllowed } from "./config/origins";
 import { registerAdminRoutes } from "./modules/admin/admin.routes";
 import { registerHealthRoutes } from "./modules/health/health.routes";
 import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.routes";
@@ -15,7 +16,9 @@ const server = Fastify({
 
 await server.register(helmet);
 await server.register(cors, {
-  origin: true
+  origin: (origin, callback) => {
+    callback(null, isOriginAllowed(origin));
+  }
 });
 
 await registerHealthRoutes(server);
