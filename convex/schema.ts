@@ -112,6 +112,48 @@ export default defineSchema({
     .index("by_provider_reference", ["provider", "providerReference"])
     .index("by_event_type", ["eventType"]),
 
+  opsAlerts: defineTable({
+    severity: v.union(v.literal("info"), v.literal("warning"), v.literal("critical")),
+    status: v.union(v.literal("open"), v.literal("acknowledged"), v.literal("resolved")),
+    category: v.union(
+      v.literal("payment"),
+      v.literal("webhook"),
+      v.literal("fulfillment"),
+      v.literal("config"),
+      v.literal("security")
+    ),
+    reference: v.optional(v.string()),
+    message: v.string(),
+    metadata: v.optional(v.any()),
+    retryable: v.boolean(),
+    retryAction: v.optional(
+      v.union(
+        v.literal("verify_payment"),
+        v.literal("fulfill_order"),
+        v.literal("credit_wallet"),
+        v.literal("complete_agent_application")
+      )
+    ),
+    retryStatus: v.optional(
+      v.union(
+        v.literal("not_started"),
+        v.literal("queued"),
+        v.literal("running"),
+        v.literal("succeeded"),
+        v.literal("failed")
+      )
+    ),
+    retryCount: v.number(),
+    lastRetriedAt: v.optional(v.number()),
+    nextRetryAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number())
+  })
+    .index("by_status", ["status"])
+    .index("by_reference", ["reference"])
+    .index("by_retry", ["retryStatus", "nextRetryAt"]),
+
   walletTransactions: defineTable({
     userId: v.id("users"),
     type: v.union(
