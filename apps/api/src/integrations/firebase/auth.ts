@@ -1,6 +1,7 @@
 export type AuthenticatedUser = {
   id: string;
   email?: string;
+  firebaseUid: string;
 };
 
 export async function verifyFirebaseToken(_token: string): Promise<AuthenticatedUser> {

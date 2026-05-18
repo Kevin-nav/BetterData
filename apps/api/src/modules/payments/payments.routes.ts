@@ -18,6 +18,11 @@ import {
   verifyPaystackTransaction
 } from "../../integrations/paystack/client";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
+import {
+  getOptionalRequestUser,
+  requireRequestUser,
+  resolvePaystackEmail
+} from "../auth/requestUser";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -72,15 +77,24 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         validatePaymentIntentRequest(request.body);
 
         const reference = buildPaystackReference(request.body.purpose);
+        const user =
+          request.body.purpose === "data_purchase"
+            ? await getOptionalRequestUser(request)
+            : await requireRequestUser(request);
+        const customerEmail = resolvePaystackEmail(user, reference);
         const convex = createConvexClient();
         const prepared = (await convex.mutation(paymentFunctions.prepareIntent, {
-          request: request.body,
+          request: {
+            ...request.body,
+            ...(user !== null ? { userId: user.id } : {}),
+            customerEmail
+          },
           providerReference: reference
         })) as PreparedPaymentIntent;
 
         const callbackUrl = buildPaymentCallbackUrl(prepared.reference);
         const checkout = await initializeMobileMoneyPayment({
-          email: request.body.customerEmail,
+          email: customerEmail,
           amountGhs: prepared.amountGhs,
           reference: prepared.reference,
           metadata: {
@@ -266,10 +280,6 @@ function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
     throw new Error("Payment intent request body is required.");
   }
 
-  if (!isValidEmail(body.customerEmail)) {
-    throw new Error("A valid customer email is required for Paystack checkout.");
-  }
-
   if (body.purpose === "data_purchase" && !body.confirmRecipientIsCorrect) {
     throw new Error("Recipient number confirmation is required.");
   }
@@ -277,10 +287,6 @@ function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
   if (body.purpose === "wallet_top_up" && body.amountGhs <= 0) {
     throw new Error("Wallet top-up amount must be greater than zero.");
   }
-}
-
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function createConvexClient() {
