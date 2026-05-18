@@ -10,6 +10,7 @@ export type PurchaseWorkerOptions = {
   vendor: DataVendor;
   maxAttempts?: number;
   retryDelayMs?: number;
+  logger?: Pick<Console, "error">;
 };
 
 export async function startPurchaseWorker(options: PurchaseWorkerOptions) {
@@ -43,20 +44,52 @@ export async function processPurchaseMessage(
       status: result.status
     });
 
-    incrementMetric("purchase.success");
+    await incrementMetric("purchase.success");
     await message.ack();
   } catch (error) {
     if (isRetryableVendorError(error) && message.attempts + 1 < maxAttempts) {
-      incrementMetric("purchase.retry");
+      await incrementMetric("purchase.retry");
       await message.retry(retryDelayMs);
       return;
     }
 
-    incrementMetric("purchase.dead_letter");
+    await incrementMetric("purchase.dead_letter");
+    try {
+      await options.orderStore.recordOrderFailure(job.orderReference, {
+        status: "failed",
+        vendorRaw: {
+          vendorId: job.vendorId,
+          workerError: serializeError(error)
+        }
+      });
+    } catch (persistenceError) {
+      options.logger?.error(
+        {
+          error: persistenceError,
+          orderReference: job.orderReference,
+          vendorId: job.vendorId
+        },
+        "Purchase worker failed to persist terminal order failure"
+      );
+    }
+
     await message.deadLetter(
       error instanceof Error ? error.message : "Unknown purchase worker failure."
     );
   }
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack
+    };
+  }
+
+  return {
+    message: String(error)
+  };
 }
 
 function isRetryableVendorError(error: unknown) {

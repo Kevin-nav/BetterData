@@ -76,6 +76,13 @@ async function assertTopology(channel: Channel) {
       "x-dead-letter-routing-key": QUEUE_NAMES.purchaseDead
     }
   });
+  await channel.assertQueue(QUEUE_NAMES.statusRefreshRetry, {
+    durable: true,
+    arguments: {
+      "x-dead-letter-exchange": "",
+      "x-dead-letter-routing-key": QUEUE_NAMES.statusRefresh
+    }
+  });
 }
 
 async function publish(
@@ -127,9 +134,11 @@ async function handleMessage(
         channel.ack(message);
       },
       async retry(delayMs) {
+        const retryQueue = retryQueueFor(queue);
+
         await publish(
           channel as ConfirmChannel,
-          QUEUE_NAMES.purchaseRetry,
+          retryQueue,
           { ...job, attempt: attempts + 1 } as QueueJob,
           delayMs
         );
@@ -146,6 +155,15 @@ async function handleMessage(
   } catch {
     channel.nack(message, false, false);
   }
+}
+
+export function retryQueueFor(queue: QueueName): QueueName {
+  const retryQueues: Partial<Record<QueueName, QueueName>> = {
+    [QUEUE_NAMES.purchaseRequested]: QUEUE_NAMES.purchaseRetry,
+    [QUEUE_NAMES.statusRefresh]: QUEUE_NAMES.statusRefreshRetry
+  };
+
+  return retryQueues[queue] ?? (`${queue}.retry` as QueueName);
 }
 
 export async function closeAmqpConnection(connection: ChannelModel) {

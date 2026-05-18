@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { classifyVendorBalance } from "./admin.routes";
+import { classifyVendorBalance, maskPhone } from "./admin.routes";
 
 assert.equal(classifyVendorBalance(null), "unknown");
 assert.equal(classifyVendorBalance(49), "critical");
@@ -24,3 +24,9 @@ assert.equal(
   }),
   "low"
 );
+
+assert.equal(maskPhone("0551234567"), "055*****67");
+assert.equal(maskPhone("+233 55 123 4567"), "+233*******67");
+assert.equal(maskPhone("12345"), "***45");
+assert.equal(maskPhone("12"), "**");
+assert.equal(maskPhone("abc"), "");

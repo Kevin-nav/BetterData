@@ -13,6 +13,10 @@ export async function createQueueProvider(): Promise<QueueProvider> {
     });
   }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("QUEUE_PROVIDER=amqp is required in production.");
+  }
+
   return createLocalQueueProvider();
 }
 

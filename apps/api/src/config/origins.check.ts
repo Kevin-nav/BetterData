@@ -24,6 +24,10 @@ assert.equal(
 );
 assert.equal(isOriginAllowed("http://localhost:3000", productionEnv), false);
 assert.equal(shouldRegisterDevRoutes(productionEnv), false);
+assert.throws(
+  () => resolveAllowedOrigins({ NODE_ENV: "production" }),
+  /PUBLIC_APP_URL\/PUBLIC_ADMIN_URL/
+);
 assert.equal(
   shouldRegisterDevRoutes({
     NODE_ENV: "production",

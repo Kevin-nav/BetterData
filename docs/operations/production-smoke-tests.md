@@ -19,6 +19,8 @@ Required secrets:
 ```env
 DATAMART_API_KEY=...
 CLOUDAMQP_URL=...
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
 WEBHOOK_SECRET=...
 ADMIN_API_KEY=...
 FIREBASE_PROJECT_ID=...
@@ -98,6 +100,23 @@ Check CloudAMQP/LavinMQ console for these queues:
 - `orders.purchase.retry`
 - `orders.purchase.dead`
 - `orders.status.refresh`
+- `orders.status.refresh.retry`
+
+## Upstash Redis
+
+Confirm the API starts with production Redis settings. If either Upstash REST env var is missing, startup should fail fast.
+
+Check admin metrics through the overview endpoint after running package and queue checks:
+
+```bash
+curl -i https://api.betterdatagh.com/admin/overview \
+  -H "X-Admin-Api-Key: $ADMIN_API_KEY"
+```
+
+Expected:
+
+- Response includes `metrics`.
+- Repeated DataMart package/balance checks should not call DataMart on every request while cache TTLs are active.
 
 ## Purchase Flow
 

@@ -1,3 +1,5 @@
+import { readPositiveInt } from "../../config/numbers";
+
 export type DataMartConfig = {
   baseUrl: string;
   apiKey: string;
@@ -7,6 +9,9 @@ export type DataMartConfig = {
   purchaseBurstWindowMs: number;
   purchaseBurstThreshold: number;
   lowRateLimitRemainingThreshold: number;
+  packagesCacheTtlSeconds: number;
+  balanceCacheTtlSeconds: number;
+  deliveryTrackerCacheTtlSeconds: number;
 };
 
 const DEFAULT_BASE_URL = "https://api.datamartgh.shop/api/developer";
@@ -40,16 +45,22 @@ export function resolveDataMartConfig(
     lowRateLimitRemainingThreshold: readPositiveInt(
       env.DATAMART_LOW_RATE_LIMIT_REMAINING_THRESHOLD,
       20
+    ),
+    packagesCacheTtlSeconds: readPositiveInt(
+      env.DATAMART_PACKAGES_CACHE_TTL_SECONDS,
+      300
+    ),
+    balanceCacheTtlSeconds: readPositiveInt(
+      env.DATAMART_BALANCE_CACHE_TTL_SECONDS,
+      30
+    ),
+    deliveryTrackerCacheTtlSeconds: readPositiveInt(
+      env.DATAMART_DELIVERY_TRACKER_CACHE_TTL_SECONDS,
+      60
     )
   };
 }
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
-}
-
-function readPositiveInt(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

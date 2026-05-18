@@ -41,6 +41,13 @@ export type OrderStore = {
       status: OrderStatus;
     }
   ): Promise<void>;
+  recordOrderFailure(
+    reference: string,
+    failure: {
+      status: "failed";
+      vendorRaw: unknown;
+    }
+  ): Promise<void>;
 };
 
 export function createOrderStore(env: NodeJS.ProcessEnv = process.env): OrderStore {
@@ -87,6 +94,20 @@ export function createMemoryOrderStore(): OrderStore {
         ...(result.vendorRaw !== undefined ? { vendorRaw: result.vendorRaw } : {}),
         status: result.status
       });
+    },
+
+    async recordOrderFailure(reference, failure) {
+      const order = orders.get(reference);
+
+      if (!order) {
+        throw new Error(`Order ${reference} was not found.`);
+      }
+
+      orders.set(reference, {
+        ...order,
+        vendorRaw: failure.vendorRaw,
+        status: failure.status
+      });
     }
   };
 }
@@ -100,6 +121,9 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
   const listForApi = makeFunctionReference<"query">("orders:listForApi");
   const recordVendorResult = makeFunctionReference<"mutation">(
     "orders:recordVendorResult"
+  );
+  const recordFailureForApi = makeFunctionReference<"mutation">(
+    "orders:recordFailureForApi"
   );
 
   return {
@@ -143,6 +167,14 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
         vendorOrderReference: result.vendorOrderReference,
         vendorRaw: result.vendorRaw,
         status: result.status
+      });
+    },
+
+    async recordOrderFailure(reference, failure) {
+      await client.mutation(recordFailureForApi, {
+        reference,
+        vendorRaw: failure.vendorRaw,
+        status: failure.status
       });
     }
   };
@@ -191,7 +223,7 @@ function mapConvexOrder(order: Partial<StoredOrder>): StoredOrder {
 }
 
 function createOrderReference() {
-  return `BD-${randomUUID().slice(0, 8).toUpperCase()}`;
+  return `BD-${randomUUID().toUpperCase()}`;
 }
 
 function requiredString(value: unknown, field: string) {

@@ -4,7 +4,8 @@ export const QUEUE_NAMES = {
   purchaseRequested: "orders.purchase.requested",
   purchaseRetry: "orders.purchase.retry",
   purchaseDead: "orders.purchase.dead",
-  statusRefresh: "orders.status.refresh"
+  statusRefresh: "orders.status.refresh",
+  statusRefreshRetry: "orders.status.refresh.retry"
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];

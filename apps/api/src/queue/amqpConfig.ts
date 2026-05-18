@@ -1,3 +1,4 @@
+import { readPositiveInt } from "../config/numbers";
 import { QUEUE_NAMES } from "./types";
 
 export type AmqpQueueConfig = {
@@ -24,10 +25,4 @@ export function resolveAmqpQueueConfig(
 
 export function shouldUseAmqpQueue(env: NodeJS.ProcessEnv = process.env) {
   return env.QUEUE_PROVIDER === "amqp";
-}
-
-function readPositiveInt(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

@@ -38,9 +38,17 @@ DATAMART_LOW_RATE_LIMIT_REMAINING_THRESHOLD=20
 QUEUE_PROVIDER=amqp
 CLOUDAMQP_URL=amqps://...
 QUEUE_PREFETCH=5
+UPSTASH_REDIS_REST_URL=https://...
+UPSTASH_REDIS_REST_TOKEN=...
+UPSTASH_REDIS_KEY_PREFIX=betterdata
+DATAMART_PACKAGES_CACHE_TTL_SECONDS=300
+DATAMART_BALANCE_CACHE_TTL_SECONDS=30
+DATAMART_DELIVERY_TRACKER_CACHE_TTL_SECONDS=60
 ```
 
 Lower `DATAMART_PURCHASE_BURST_THRESHOLD` if DataMart starts returning rate-limit responses. Raise it only after observing stable headroom.
+
+Upstash Redis is required in production for shared metrics and DataMart read caching. The cache stores mapped package, balance, and delivery-tracker responses with the TTLs above.
 
 ## Smoke Test
 
@@ -79,6 +87,7 @@ Watch API logs for:
 - `DataMart bulk response did not include result` errors.
 - Insufficient DataMart wallet balance.
 - purchase queue depth and dead-letter depth in the admin overview.
+- shared Redis metrics in the admin overview.
 
 Do not retry a purchase with a new idempotency key after a timeout. Retry with the same logical request key or rely on the API dispatcher retry path.
 

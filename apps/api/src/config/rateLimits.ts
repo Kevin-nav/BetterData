@@ -1,3 +1,5 @@
+import { readPositiveInt } from "./numbers";
+
 export type RateLimitConfig = {
   global: { max: number; timeWindow: string };
   ordersCreate: { max: number; timeWindow: string };
@@ -31,10 +33,4 @@ export function resolveRateLimitConfig(
       timeWindow: env.API_RATE_LIMIT_WEBHOOK_WINDOW ?? "1 minute"
     }
   };
-}
-
-function readPositiveInt(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

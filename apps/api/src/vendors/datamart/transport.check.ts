@@ -15,7 +15,10 @@ const config: DataMartConfig = {
   purchaseBatchWindowMs: 5000,
   purchaseBurstWindowMs: 30000,
   purchaseBurstThreshold: 20,
-  lowRateLimitRemainingThreshold: 20
+  lowRateLimitRemainingThreshold: 20,
+  packagesCacheTtlSeconds: 300,
+  balanceCacheTtlSeconds: 30,
+  deliveryTrackerCacheTtlSeconds: 60
 };
 
 const calls: Array<{ url: string; init: RequestInit }> = [];

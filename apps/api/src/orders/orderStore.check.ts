@@ -32,6 +32,10 @@ const order = await store.createIntent({
 });
 
 assert.match(order.reference, /^BD-/);
+assert.match(
+  order.reference,
+  /^BD-[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/
+);
 assert.equal(order.vendorPackageId, "yello-5gb");
 assert.equal(order.status, "pending");
 
@@ -44,6 +48,25 @@ await store.recordVendorResult(order.reference, {
 const updated = await store.getByReference(order.reference);
 assert.equal(updated?.vendorOrderReference, "GN-123");
 assert.equal(updated?.status, "processing");
+
+await store.recordOrderFailure(order.reference, {
+  status: "failed",
+  vendorRaw: {
+    enqueueError: {
+      message: "queue unavailable"
+    },
+    vendorId: "datamart"
+  }
+});
+
+const failed = await store.getByReference(order.reference);
+assert.equal(failed?.status, "failed");
+assert.deepEqual(failed?.vendorRaw, {
+  enqueueError: {
+    message: "queue unavailable"
+  },
+  vendorId: "datamart"
+});
 
 assert.throws(
   () => createOrderStore({ NODE_ENV: "production" }),

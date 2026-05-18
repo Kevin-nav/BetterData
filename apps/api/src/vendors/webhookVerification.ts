@@ -7,7 +7,7 @@ export type WebhookVerificationResult =
 
 export function verifyDataVendorWebhook(
   headers: Record<string, string>,
-  rawBody: string,
+  rawBody: Buffer | string,
   env: NodeJS.ProcessEnv = process.env
 ): WebhookVerificationResult {
   const hmacSecret = env.WEBHOOK_HMAC_SECRET;
@@ -24,8 +24,9 @@ export function verifyDataVendorWebhook(
       };
     }
 
+    const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody);
     const expected = createHmac("sha256", hmacSecret)
-      .update(`${timestamp}.${rawBody}`)
+      .update(Buffer.concat([Buffer.from(`${timestamp}.`), body]))
       .digest("hex");
 
     return safeEqual(signature, expected)
@@ -40,15 +41,15 @@ export function verifyDataVendorWebhook(
   const secret = env.WEBHOOK_SECRET;
 
   if (!secret) {
-    if (env.NODE_ENV === "production") {
-      return {
-        ok: false,
-        statusCode: 500,
-        message: "Webhook verification is not configured."
-      };
+    if (env.WEBHOOK_ALLOW_INSECURE === "true") {
+      return { ok: true };
     }
 
-    return { ok: true };
+    return {
+      ok: false,
+      statusCode: 500,
+      message: "Webhook verification is not configured."
+    };
   }
 
   const provided =

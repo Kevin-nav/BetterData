@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 
+import { retryQueueFor } from "./amqpQueue";
+import { createQueueProvider } from "./index";
 import { createLocalQueueProvider } from "./localQueue";
-import { QUEUE_NAMES, type PurchaseJob } from "./types";
+import { QUEUE_NAMES, type PurchaseJob, type StatusRefreshJob } from "./types";
 
 const queue = createLocalQueueProvider();
 const job: PurchaseJob = {
@@ -43,3 +45,65 @@ const stopDeadLetter = await queue.consume(
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseDead), 1);
 await stopDeadLetter();
+
+await queue.enqueue(QUEUE_NAMES.purchaseRequested, job);
+const stopThrowing = await queue.consume(
+  QUEUE_NAMES.purchaseRequested,
+  async () => {
+    throw new Error("consumer failed before ack");
+  }
+);
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseRequested), 1);
+await stopThrowing();
+
+let retriedAttempts = 0;
+const stopRetry = await queue.consume(
+  QUEUE_NAMES.purchaseRequested,
+  async (message) => {
+    if (message.attempts === 0) {
+      await message.retry(1);
+      return;
+    }
+
+    retriedAttempts = message.attempts;
+    await message.ack();
+  }
+);
+await new Promise((resolve) => setTimeout(resolve, 5));
+assert.equal(retriedAttempts, 1);
+assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseRequested), 0);
+await stopRetry();
+
+const statusJob: StatusRefreshJob = {
+  kind: "status-refresh",
+  orderReference: "BD-123",
+  vendorId: "datamart",
+  vendorOrderReference: "GN-123",
+  attempt: 0,
+  createdAt: new Date(0).toISOString()
+};
+
+assert.equal(
+  retryQueueFor(QUEUE_NAMES.statusRefresh),
+  QUEUE_NAMES.statusRefreshRetry
+);
+assert.equal(retryQueueFor(QUEUE_NAMES.purchaseRequested), QUEUE_NAMES.purchaseRetry);
+await queue.enqueue(QUEUE_NAMES.statusRefresh, statusJob);
+assert.equal(await queue.getDepth(QUEUE_NAMES.statusRefresh), 1);
+
+const previousNodeEnv = process.env.NODE_ENV;
+const previousQueueProvider = process.env.QUEUE_PROVIDER;
+process.env.NODE_ENV = "production";
+process.env.QUEUE_PROVIDER = "local";
+await assert.rejects(createQueueProvider(), /QUEUE_PROVIDER=amqp/);
+if (previousNodeEnv === undefined) {
+  delete process.env.NODE_ENV;
+} else {
+  process.env.NODE_ENV = previousNodeEnv;
+}
+if (previousQueueProvider === undefined) {
+  delete process.env.QUEUE_PROVIDER;
+} else {
+  process.env.QUEUE_PROVIDER = previousQueueProvider;
+}

@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -11,11 +13,13 @@ import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.
 import { registerOrderRoutes } from "./modules/orders/orders.routes";
 import { registerPackageRoutes } from "./modules/packages/packages.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
+import { configureMetricsFromEnv } from "./observability/metrics";
 
 const server = Fastify({
   logger: true
 });
 const rateLimits = resolveRateLimitConfig();
+configureMetricsFromEnv();
 
 await server.register(helmet);
 await server.register(cors, {
@@ -30,6 +34,28 @@ await server.register(rateLimit, {
   errorResponseBuilder: () => ({
     message: "Too many requests. Try again shortly."
   })
+});
+server.addHook("preParsing", async (request, _reply, payload) => {
+  const config = request.routeOptions.config as { rawBody?: boolean } | undefined;
+
+  if (config?.rawBody !== true) {
+    return payload;
+  }
+
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of payload) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const rawBody = Buffer.concat(chunks);
+  (request as typeof request & { rawBody?: Buffer }).rawBody = rawBody;
+  const replay = Readable.from(rawBody) as Readable & {
+    receivedEncodedLength?: number;
+  };
+  replay.receivedEncodedLength = rawBody.length;
+
+  return replay;
 });
 
 await registerHealthRoutes(server);

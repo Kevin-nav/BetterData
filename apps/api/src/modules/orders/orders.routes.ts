@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { PurchaseRequest } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
+import type { FastifyRequest } from "fastify";
 
 import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { createOrderStore } from "../../orders/orderStore";
@@ -50,6 +51,7 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       idempotencyKey,
       paymentStatus: paymentSafety.paymentStatus
     });
+
     try {
       await queue.enqueue(QUEUE_NAMES.purchaseRequested, toPurchaseJob(order));
     } catch (error) {
@@ -59,6 +61,25 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       );
 
       const mapped = mapVendorErrorToHttp(error);
+
+      try {
+        await orderStore.recordOrderFailure(order.reference, {
+          status: "failed",
+          vendorRaw: {
+            enqueueError: serializeError(error),
+            vendorId: vendor.id
+          }
+        });
+      } catch (compensationError) {
+        request.log.error(
+          {
+            error: compensationError,
+            orderReference: order.reference,
+            vendorId: vendor.id
+          },
+          "Purchase intent failure compensation failed"
+        );
+      }
 
       if (mapped.retryAfterSeconds !== undefined) {
         reply.header("Retry-After", String(mapped.retryAfterSeconds));
@@ -138,7 +159,8 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     "/webhooks/data-vendor",
     {
       config: {
-        rateLimit: rateLimits.webhook
+        rateLimit: rateLimits.webhook,
+        rawBody: true
       }
     },
     async (request, reply) => {
@@ -146,7 +168,7 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     const headers = normalizeWebhookHeaders(request.headers);
     const verification = verifyDataVendorWebhook(
       headers,
-      JSON.stringify(request.body ?? {})
+      readRawBody(request)
     );
 
     if (!verification.ok) {
@@ -237,6 +259,29 @@ function isWebhookValidationError(error: unknown) {
     message.includes("invalid") ||
     message.includes("order reference")
   );
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack
+    };
+  }
+
+  return {
+    message: String(error)
+  };
+}
+
+function readRawBody(request: FastifyRequest) {
+  const rawBody = (request as FastifyRequest & { rawBody?: Buffer | string }).rawBody;
+
+  if (rawBody !== undefined) {
+    return rawBody;
+  }
+
+  return Buffer.from(JSON.stringify(request.body ?? {}));
 }
 
 function normalizeWebhookHeaders(

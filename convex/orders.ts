@@ -93,6 +93,31 @@ export const recordVendorResult = mutation({
   }
 });
 
+export const recordFailureForApi = mutation({
+  args: {
+    reference: v.string(),
+    vendorRaw: v.optional(v.any()),
+    status: v.literal("failed")
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db
+      .query("orders")
+      .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+      .first();
+
+    if (order === null) {
+      throw new Error("Order not found.");
+    }
+
+    await ctx.db.patch(order._id, {
+      status: args.status,
+      ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
+    });
+
+    return order._id;
+  }
+});
+
 export const listForUser = query({
   args: {
     userId: v.id("users")
@@ -137,10 +162,21 @@ export const getByReferenceForApi = query({
     reference: v.string()
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const caller = await requireAuthenticatedUser(ctx);
+    const order = await ctx.db
       .query("orders")
       .withIndex("by_reference", (q) => q.eq("reference", args.reference))
       .first();
+
+    if (order === null) {
+      return null;
+    }
+
+    if (!canReadOrder(caller, order)) {
+      throw new Error("Unauthorized.");
+    }
+
+    return order;
   }
 });
 
@@ -158,9 +194,11 @@ export const listForApi = query({
   },
   handler: async (ctx, args) => {
     if (args.status !== undefined) {
+      const status = args.status;
+
       return await ctx.db
         .query("orders")
-        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
         .take(100);
     }

@@ -69,3 +69,46 @@ assert.equal(updated?.vendorOrderReference, "GN-idem-worker");
 assert.equal(updated?.status, "processing");
 
 await stop();
+
+const failingQueue = createLocalQueueProvider();
+const failingOrderStore = createMemoryOrderStore();
+const failingOrder = await failingOrderStore.createIntent({
+  body: {
+    packageId: "datamart:yello-5gb",
+    network: "mtn",
+    recipientPhone: "0551234567",
+    confirmRecipientIsCorrect: true,
+    paymentMethod: "wallet"
+  },
+  vendor,
+  idempotencyKey: "idem-failing-worker"
+});
+const failingVendor: DataVendor = {
+  ...vendor,
+  async purchase() {
+    throw new Error("permanent vendor failure");
+  }
+};
+const stopFailing = await startPurchaseWorker({
+  queue: failingQueue,
+  orderStore: failingOrderStore,
+  vendor: failingVendor,
+  maxAttempts: 1,
+  logger: console
+});
+
+await failingQueue.enqueue(QUEUE_NAMES.purchaseRequested, {
+  ...job,
+  orderReference: failingOrder.reference,
+  idempotencyKey: failingOrder.idempotencyKey
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+const failed = await failingOrderStore.getByReference(failingOrder.reference);
+assert.equal(failed?.status, "failed");
+assert.deepEqual(
+  (failed?.vendorRaw as { workerError?: { message?: string } }).workerError?.message,
+  "permanent vendor failure"
+);
+assert.equal(await failingQueue.getDepth(QUEUE_NAMES.purchaseDead), 1);
+await stopFailing();

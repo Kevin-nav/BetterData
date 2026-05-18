@@ -12,55 +12,88 @@ type StoredMessage = {
 export function createLocalQueueProvider(): QueueProvider {
   const queues = new Map<QueueName, StoredMessage[]>();
   const consumers = new Map<QueueName, Set<QueueConsumer>>();
+  const inFlight = new Set<QueueName>();
 
   async function dispatch(queue: QueueName) {
+    if (inFlight.has(queue)) {
+      return;
+    }
+
     const queueConsumers = consumers.get(queue);
 
     if (!queueConsumers || queueConsumers.size === 0) {
       return;
     }
 
-    const stored = queues.get(queue)?.shift();
+    const stored = queues.get(queue)?.[0];
 
     if (!stored) {
       return;
     }
 
+    const active = stored;
     const consumer = queueConsumers.values().next().value;
 
     if (!consumer) {
-      enqueueStored(stored);
       return;
+    }
+
+    inFlight.add(queue);
+    let settled = false;
+
+    function removeHead() {
+      const current = queues.get(queue);
+
+      if (current?.[0]?.id === active.id) {
+        current.shift();
+      }
+
+      if (current?.length === 0) {
+        queues.delete(queue);
+      }
     }
 
     try {
       await consumer({
-        id: stored.id,
-        queue: stored.queue,
-        job: stored.job,
-        attempts: stored.attempts,
-        async ack() {},
+        id: active.id,
+        queue: active.queue,
+        job: active.job,
+        attempts: active.attempts,
+        async ack() {
+          removeHead();
+          settled = true;
+        },
         async retry(delayMs) {
+          removeHead();
+          settled = true;
           setTimeout(() => {
             enqueueStored({
-              ...stored,
-              attempts: stored.attempts + 1
+              ...active,
+              attempts: active.attempts + 1
             });
           }, delayMs);
         },
         async deadLetter(reason) {
+          removeHead();
+          settled = true;
           enqueueStored({
-            ...stored,
+            ...active,
             queue: QUEUE_NAMES.purchaseDead,
             job: {
-              ...stored.job,
+              ...active.job,
               deadLetterReason: reason
             }
           });
         }
       });
+    } catch {
+      settled = false;
     } finally {
-      void dispatch(queue);
+      inFlight.delete(queue);
+
+      if (settled) {
+        void dispatch(queue);
+      }
     }
   }
 

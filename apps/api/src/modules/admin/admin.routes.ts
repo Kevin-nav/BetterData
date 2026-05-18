@@ -42,7 +42,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
           purchaseDepth: await queue.getDepth(QUEUE_NAMES.purchaseRequested),
           deadLetterDepth: await queue.getDepth(QUEUE_NAMES.purchaseDead)
         },
-        metrics: snapshotMetrics(),
+        metrics: await snapshotMetrics(),
         pendingAgentApplications: 0
       };
     }
@@ -68,8 +68,24 @@ export async function registerAdminRoutes(server: FastifyInstance) {
   });
 }
 
-function maskPhone(phone: string) {
-  return phone.replace(/^(\d{3})\d+(\d{2})$/, "$1****$2");
+export function maskPhone(phone: string) {
+  const trimmed = phone.trim();
+  const prefix = trimmed.startsWith("+") ? "+" : "";
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (digits.length === 0) {
+    return "";
+  }
+
+  if (digits.length <= 2) {
+    return `${prefix}${"*".repeat(digits.length)}`;
+  }
+
+  if (digits.length <= 5) {
+    return `${prefix}${"*".repeat(digits.length - 2)}${digits.slice(-2)}`;
+  }
+
+  return `${prefix}${digits.slice(0, 3)}${"*".repeat(digits.length - 5)}${digits.slice(-2)}`;
 }
 
 export function classifyVendorBalance(

@@ -1,6 +1,14 @@
 export function resolveAllowedOrigins(env: NodeJS.ProcessEnv = process.env) {
   if (env.NODE_ENV === "production") {
-    return uniqueOrigins([env.PUBLIC_APP_URL, env.PUBLIC_ADMIN_URL]);
+    const origins = uniqueOrigins([env.PUBLIC_APP_URL, env.PUBLIC_ADMIN_URL]);
+
+    if (origins.length === 0) {
+      throw new Error(
+        "PUBLIC_APP_URL/PUBLIC_ADMIN_URL is required in production CORS configuration."
+      );
+    }
+
+    return origins;
   }
 
   return uniqueOrigins([

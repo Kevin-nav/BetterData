@@ -4,6 +4,7 @@ import type { DataMartConfig } from "./config";
 import {
   createDataMartPurchaseDispatcher,
   DataMartBatchError,
+  packageCapacity,
   type Scheduler
 } from "./purchaseDispatcher";
 import type {
@@ -21,7 +22,10 @@ const config: DataMartConfig = {
   purchaseBatchWindowMs: 5000,
   purchaseBurstWindowMs: 30000,
   purchaseBurstThreshold: 1,
-  lowRateLimitRemainingThreshold: 2
+  lowRateLimitRemainingThreshold: 2,
+  packagesCacheTtlSeconds: 300,
+  balanceCacheTtlSeconds: 30,
+  deliveryTrackerCacheTtlSeconds: 60
 };
 
 function input(idempotencyKey: string, packageId = "datamart:yello-5gb") {
@@ -247,3 +251,7 @@ const missingDispatcher = createDataMartPurchaseDispatcher({
 const missing = missingDispatcher.purchase(input("missing-1"));
 missingScheduler.advance(5000);
 await assert.rejects(missing, DataMartBatchError);
+assert.throws(
+  () => packageCapacity("datamart:yello-invalid"),
+  /Invalid DataMart packageId capacity: datamart:yello-invalid/
+);

@@ -5,6 +5,7 @@ import type {
 } from "@betterdata/contracts";
 
 import type { DataVendor } from "../types";
+import { createDataMartCache, type DataMartCache } from "./cache";
 import { resolveDataMartConfig } from "./config";
 import {
   mapDataMartBalanceResponse,
@@ -21,6 +22,7 @@ export function createDataMartVendor(): DataVendor {
     | {
         transport: DataMartTransport;
         dispatcher: ReturnType<typeof createDataMartPurchaseDispatcher>;
+        cache: DataMartCache;
       }
     | undefined;
 
@@ -30,7 +32,8 @@ export function createDataMartVendor(): DataVendor {
       const transport = createDataMartTransport({ config });
       runtime = {
         transport,
-        dispatcher: createDataMartPurchaseDispatcher({ transport, config })
+        dispatcher: createDataMartPurchaseDispatcher({ transport, config }),
+        cache: createDataMartCache(config)
       };
     }
 
@@ -42,10 +45,20 @@ export function createDataMartVendor(): DataVendor {
     displayName: "DataMartGH",
 
     async listPackages(): Promise<VendorPackage[]> {
-      const response = await getRuntime().transport.listPackages();
-      const body = response.body as { data?: Parameters<typeof mapDataMartPackageGroups>[0] };
+      const runtime = getRuntime();
+      const cached = await runtime.cache.getPackages();
 
-      return mapDataMartPackageGroups(body.data ?? {});
+      if (cached) {
+        return cached;
+      }
+
+      const response = await runtime.transport.listPackages();
+      const body = response.body as { data?: Parameters<typeof mapDataMartPackageGroups>[0] };
+      const packages = mapDataMartPackageGroups(body.data ?? {});
+
+      await runtime.cache.setPackages(packages);
+
+      return packages;
     },
 
     async purchase(input: VendorPurchaseInput): Promise<VendorPurchaseResult> {
@@ -66,19 +79,39 @@ export function createDataMartVendor(): DataVendor {
     },
 
     async getBalance() {
-      const response = await getRuntime().transport.getBalance();
+      const runtime = getRuntime();
+      const cached = await runtime.cache.getBalance();
 
-      return mapDataMartBalanceResponse(
+      if (cached) {
+        return cached;
+      }
+
+      const response = await runtime.transport.getBalance();
+      const balance = mapDataMartBalanceResponse(
         response.body as Parameters<typeof mapDataMartBalanceResponse>[0]
       );
+
+      await runtime.cache.setBalance(balance);
+
+      return balance;
     },
 
     async getDeliveryTracker() {
-      const response = await getRuntime().transport.getDeliveryTracker();
+      const runtime = getRuntime();
+      const cached = await runtime.cache.getDeliveryTracker();
 
-      return mapDataMartDeliveryTrackerResponse(
+      if (cached) {
+        return cached;
+      }
+
+      const response = await runtime.transport.getDeliveryTracker();
+      const tracker = mapDataMartDeliveryTrackerResponse(
         response.body as Parameters<typeof mapDataMartDeliveryTrackerResponse>[0]
       );
+
+      await runtime.cache.setDeliveryTracker(tracker);
+
+      return tracker;
     },
 
     async normalizeWebhook(payload) {

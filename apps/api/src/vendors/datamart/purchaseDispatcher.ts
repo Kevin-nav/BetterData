@@ -200,7 +200,11 @@ function toSinglePurchaseRequest(input: VendorPurchaseInput) {
 export function packageCapacity(packageId: string) {
   const match = packageId.match(/(\d+(?:\.\d+)?)gb/i);
 
-  return match?.[1] ?? "1";
+  if (!match?.[1]) {
+    throw new Error(`Invalid DataMart packageId capacity: ${packageId}`);
+  }
+
+  return match[1];
 }
 
 const realScheduler: Scheduler = {
