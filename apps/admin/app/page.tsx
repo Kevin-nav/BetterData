@@ -28,7 +28,11 @@ export default async function AdminDashboardPage() {
       label: "Pending agents",
       value: String(overview.pendingAgentApplications)
     },
-    { label: "Open orders", value: "0" }
+    {
+      label: "Purchase queue",
+      value: String(overview.queue?.purchaseDepth ?? 0),
+      detail: `${overview.queue?.deadLetterDepth ?? 0} dead-lettered`
+    }
   ];
 
   return (

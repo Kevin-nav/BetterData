@@ -44,6 +44,11 @@ export type AdminOverviewResponse = {
     balanceStatus: "healthy" | "low" | "critical" | "unknown";
     checkedAt: string;
   };
+  queue?: {
+    purchaseDepth: number;
+    deadLetterDepth: number;
+  };
+  metrics?: Record<string, number>;
   pendingAgentApplications: number;
 };
 

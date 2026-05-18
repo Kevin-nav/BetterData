@@ -2,7 +2,9 @@ import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
+import { snapshotMetrics } from "../../observability/metrics";
 import { createOrderStore } from "../../orders/orderStore";
+import { createQueueProvider, QUEUE_NAMES } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
@@ -10,6 +12,7 @@ type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
 export async function registerAdminRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
   const orderStore = createOrderStore();
+  const queue = await createQueueProvider();
   const adminRouteOptions = {
     preHandler: createRequireAdmin(),
     config: {
@@ -35,6 +38,11 @@ export async function registerAdminRoutes(server: FastifyInstance) {
           balanceStatus: status,
           checkedAt: new Date().toISOString()
         },
+        queue: {
+          purchaseDepth: await queue.getDepth(QUEUE_NAMES.purchaseRequested),
+          deadLetterDepth: await queue.getDepth(QUEUE_NAMES.purchaseDead)
+        },
+        metrics: snapshotMetrics(),
         pendingAgentApplications: 0
       };
     }

@@ -78,6 +78,7 @@ Watch API logs for:
 - DataMart 5xx or timeout responses.
 - `DataMart bulk response did not include result` errors.
 - Insufficient DataMart wallet balance.
+- purchase queue depth and dead-letter depth in the admin overview.
 
 Do not retry a purchase with a new idempotency key after a timeout. Retry with the same logical request key or rely on the API dispatcher retry path.
 

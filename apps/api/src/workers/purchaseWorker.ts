@@ -1,4 +1,5 @@
 import type { OrderStore } from "../orders/orderStore";
+import { incrementMetric } from "../observability/metrics";
 import { QUEUE_NAMES, type PurchaseJob, type QueueMessage, type QueueProvider } from "../queue";
 import type { DataVendor } from "../vendors/types";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
@@ -42,13 +43,16 @@ export async function processPurchaseMessage(
       status: result.status
     });
 
+    incrementMetric("purchase.success");
     await message.ack();
   } catch (error) {
     if (isRetryableVendorError(error) && message.attempts + 1 < maxAttempts) {
+      incrementMetric("purchase.retry");
       await message.retry(retryDelayMs);
       return;
     }
 
+    incrementMetric("purchase.dead_letter");
     await message.deadLetter(
       error instanceof Error ? error.message : "Unknown purchase worker failure."
     );
