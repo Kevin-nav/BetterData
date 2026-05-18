@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { requireServiceSecret } from "./serviceAuth";
 
 export const PAYMENT_CONFIG_KEYS = [
   "minimumWalletTopUpGhs",
@@ -55,6 +56,39 @@ export const setNumberConfig = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+
+    if (!Number.isFinite(args.value) || args.value < 0) {
+      throw new Error("Config value must be a non-negative number.");
+    }
+
+    const existing = await ctx.db
+      .query("platformConfig")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+
+    if (existing === null) {
+      return await ctx.db.insert("platformConfig", {
+        key: args.key,
+        value: args.value
+      });
+    }
+
+    await ctx.db.patch(existing._id, {
+      value: args.value
+    });
+
+    return existing._id;
+  }
+});
+
+export const setNumberConfigByService = mutation({
+  args: {
+    serviceSecret: v.string(),
+    key: paymentConfigKey,
+    value: v.number()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
 
     if (!Number.isFinite(args.value) || args.value < 0) {
       throw new Error("Config value must be a non-negative number.");

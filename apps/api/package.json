@@ -24,7 +24,8 @@
     "@opentelemetry/sdk-node": "^0.57.2",
     "@opentelemetry/semantic-conventions": "^1.28.0",
     "convex": "^1.33.0",
-    "fastify": "^5.2.1"
+    "fastify": "^5.2.1",
+    "firebase-admin": "^13.0.2"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

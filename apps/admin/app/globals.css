@@ -76,8 +76,137 @@ h1 {
   font-size: 28px;
 }
 
+.ops-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.4fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.ops-panel {
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.panel-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.panel-head span {
+  color: #0f7b45;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.panel-head strong {
+  font-size: 20px;
+}
+
+.config-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.config-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #edf2f7;
+  padding-top: 10px;
+}
+
+.config-row label {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+}
+
+.config-row span {
+  color: #667085;
+  font-size: 13px;
+}
+
+.config-row input {
+  width: 100%;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  padding: 9px 10px;
+}
+
+.config-row button,
+.alert-actions button {
+  border: 1px solid #0f7b45;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f7b45;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 9px 10px;
+}
+
+.alert-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.alert-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #edf2f7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.alert-list li[data-severity="critical"] {
+  border-left-color: #dc2626;
+}
+
+.alert-list strong,
+.alert-list span {
+  display: block;
+}
+
+.alert-list span,
+.empty-state {
+  color: #667085;
+  font-size: 13px;
+}
+
+.alert-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.alert-list em {
+  color: #334155;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 @media (max-width: 760px) {
   .admin-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-layout {
     grid-template-columns: 1fr;
   }
 

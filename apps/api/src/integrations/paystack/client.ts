@@ -64,6 +64,15 @@ type PaystackVerifyResponse = {
   };
 };
 
+type PaystackTimeoutResponse = {
+  status: boolean;
+  message: string;
+  data?: {
+    payment_session_timeout?: number;
+    timeout?: number;
+  };
+};
+
 export function ghsToPesewas(amountGhs: number) {
   if (!Number.isFinite(amountGhs) || amountGhs <= 0) {
     throw new Error("Paystack amount must be greater than zero.");
@@ -179,6 +188,25 @@ export async function verifyPaystackTransaction(
     ...(data.channel !== null && data.channel !== undefined ? { channel: data.channel } : {}),
     ...(Object.keys(customer).length > 0 ? { customer } : {})
   };
+}
+
+export async function getPaystackPaymentSessionTimeout(
+  options: PaystackClientOptions = {}
+) {
+  const response = await paystackRequest<PaystackTimeoutResponse>(
+    "/integration/payment_session_timeout",
+    { method: "GET" },
+    options
+  );
+
+  const timeout =
+    response.data?.payment_session_timeout ?? response.data?.timeout;
+
+  if (!response.status || typeof timeout !== "number") {
+    throw new Error(response.message || "Paystack timeout lookup failed.");
+  }
+
+  return timeout;
 }
 
 async function paystackRequest<TResponse>(

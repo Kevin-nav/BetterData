@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireServiceSecret } from "./serviceAuth";
 
 const severity = v.union(v.literal("info"), v.literal("warning"), v.literal("critical"));
 const status = v.union(v.literal("open"), v.literal("acknowledged"), v.literal("resolved"));
@@ -26,6 +27,7 @@ const retryStatus = v.union(
 
 export const create = mutation({
   args: {
+    serviceSecret: v.string(),
     severity,
     category,
     reference: v.optional(v.string()),
@@ -37,6 +39,7 @@ export const create = mutation({
     nextRetryAt: v.optional(v.number())
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const now = Date.now();
     return await ctx.db.insert("opsAlerts", {
       severity: args.severity,
@@ -58,10 +61,12 @@ export const create = mutation({
 
 export const queueRetry = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts"),
     nextRetryAt: v.number()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const alert = await ctx.db.get(args.alertId);
 
     if (alert === null) {
@@ -82,9 +87,11 @@ export const queueRetry = mutation({
 
 export const markRetryRunning = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts")
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const alert = await ctx.db.get(args.alertId);
 
     if (alert === null) {
@@ -102,9 +109,11 @@ export const markRetryRunning = mutation({
 
 export const markRetrySucceeded = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts")
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const now = Date.now();
     await ctx.db.patch(args.alertId, {
       status: "resolved",
@@ -117,17 +126,19 @@ export const markRetrySucceeded = mutation({
 
 export const markRetryFailed = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts"),
     nextRetryAt: v.optional(v.number()),
     finalFailure: v.optional(v.boolean()),
     message: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const finalFailure = args.finalFailure ?? false;
 
     await ctx.db.patch(args.alertId, {
       severity: finalFailure ? "critical" : "warning",
-      retryStatus: "failed",
+      retryStatus: finalFailure ? "failed" : "queued",
       ...(args.nextRetryAt !== undefined ? { nextRetryAt: args.nextRetryAt } : {}),
       ...(args.message !== undefined ? { message: args.message } : {}),
       updatedAt: Date.now()
@@ -137,9 +148,11 @@ export const markRetryFailed = mutation({
 
 export const listDueRetries = query({
   args: {
+    serviceSecret: v.string(),
     now: v.number()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     return await ctx.db
       .query("opsAlerts")
       .withIndex("by_retry", (q) =>
@@ -151,9 +164,11 @@ export const listDueRetries = query({
 
 export const acknowledge = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts")
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     await ctx.db.patch(args.alertId, {
       status: "acknowledged",
       updatedAt: Date.now()
@@ -163,9 +178,11 @@ export const acknowledge = mutation({
 
 export const resolve = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts")
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const now = Date.now();
     await ctx.db.patch(args.alertId, {
       status: "resolved",
@@ -177,10 +194,12 @@ export const resolve = mutation({
 
 export const escalate = mutation({
   args: {
+    serviceSecret: v.string(),
     alertId: v.id("opsAlerts"),
     message: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const alert = await ctx.db.get(args.alertId);
 
     if (alert === null) {
@@ -196,8 +215,11 @@ export const escalate = mutation({
 });
 
 export const listOpen = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    serviceSecret: v.string()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     return await ctx.db
       .query("opsAlerts")
       .withIndex("by_status", (q) => q.eq("status", "open"))

@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { readNumberConfig } from "./platformConfig";
+import { requireServiceSecret } from "./serviceAuth";
 
 const paymentPurpose = v.union(
   v.literal("data_purchase"),
@@ -51,10 +52,12 @@ const paymentIntentRequest = v.union(
 
 export const prepareIntent = mutation({
   args: {
+    serviceSecret: v.string(),
     request: paymentIntentRequest,
     providerReference: v.string()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const prepared = await resolvePaymentIntent(ctx, args.request, args.providerReference);
     const existing = await findPaystackIntent(ctx, args.providerReference);
 
@@ -98,6 +101,7 @@ export const prepareIntent = mutation({
 
 export const createPendingIntent = mutation({
   args: {
+    serviceSecret: v.string(),
     provider: v.literal("paystack"),
     purpose: paymentPurpose,
     userId: v.optional(v.id("users")),
@@ -110,6 +114,7 @@ export const createPendingIntent = mutation({
     purposeMetadata: v.any()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const now = Date.now();
     const existing = await ctx.db
       .query("paymentIntents")
@@ -136,11 +141,13 @@ export const createPendingIntent = mutation({
 
 export const markInitialized = mutation({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string(),
     providerAccessCode: v.string(),
     providerAuthorizationUrl: v.string()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const intent = await findPaystackIntent(ctx, args.providerReference);
 
     if (intent === null) {
@@ -165,9 +172,11 @@ export const markInitialized = mutation({
 
 export const getByProviderReference = query({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     return await findPaystackIntent(ctx, args.providerReference);
   }
 });
@@ -195,9 +204,11 @@ export const getPublicStatus = query({
 
 export const getDataPurchaseOrderByPaymentReference = query({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const order = await ctx.db
       .query("orders")
       .withIndex("by_paystack_reference", (q) =>
@@ -219,16 +230,18 @@ export const getDataPurchaseOrderByPaymentReference = query({
 
 export const recordProviderEvent = mutation({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string(),
     eventType: v.string(),
     payload: v.any()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     return await ctx.db.insert("paymentEvents", {
       provider: "paystack",
       providerReference: args.providerReference,
       eventType: args.eventType,
-      payload: args.payload,
+      payload: sanitizeProviderPayload(args.payload),
       receivedAt: Date.now()
     });
   }
@@ -236,6 +249,7 @@ export const recordProviderEvent = mutation({
 
 export const completeSucceededIntent = mutation({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string(),
     amountGhs: v.number(),
     amountPesewas: v.optional(v.number()),
@@ -244,6 +258,7 @@ export const completeSucceededIntent = mutation({
     providerPayload: v.optional(v.any())
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const intent = await findPaystackIntent(ctx, args.providerReference);
 
     if (intent === null) {
@@ -277,7 +292,7 @@ export const completeSucceededIntent = mutation({
       completedAt: Date.now(),
       updatedAt: Date.now(),
       ...(args.providerPayload !== undefined
-        ? { purposeMetadata: { ...asRecord(intent.purposeMetadata), providerPayload: args.providerPayload } }
+        ? { purposeMetadata: { ...asRecord(intent.purposeMetadata), providerPayload: sanitizeProviderPayload(args.providerPayload) } }
         : {})
     });
 
@@ -287,11 +302,13 @@ export const completeSucceededIntent = mutation({
 
 export const markFailed = mutation({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string(),
     status: paymentStatus,
     failureReason: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const intent = await findPaystackIntent(ctx, args.providerReference);
 
     if (intent === null) {
@@ -314,6 +331,7 @@ export const markFailed = mutation({
 
 export const markDataPurchaseFulfilled = mutation({
   args: {
+    serviceSecret: v.string(),
     providerReference: v.string(),
     vendorId: v.string(),
     vendorOrderReference: v.string(),
@@ -326,6 +344,7 @@ export const markDataPurchaseFulfilled = mutation({
     vendorRaw: v.optional(v.any())
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
     const order = await ctx.db
       .query("orders")
       .withIndex("by_paystack_reference", (q) =>
@@ -345,7 +364,7 @@ export const markDataPurchaseFulfilled = mutation({
       vendorId: args.vendorId,
       vendorOrderReference: args.vendorOrderReference,
       status: args.status,
-      ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
+      ...(args.vendorRaw !== undefined ? { vendorRaw: sanitizeProviderPayload(args.vendorRaw) } : {})
     });
 
     return order._id;
@@ -691,4 +710,37 @@ function roundGhs(value: number) {
 
 function ghsToPesewas(value: number) {
   return Math.round(value * 100);
+}
+
+function sanitizeProviderPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeProviderPayload);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !isSensitiveProviderKey(key))
+      .map(([key, nested]) => [key, sanitizeProviderPayload(nested)])
+  );
+}
+
+function isSensitiveProviderKey(key: string) {
+  const normalized = key.toLowerCase();
+    return (
+    normalized.includes("secret") ||
+    normalized.includes("token") ||
+    normalized.includes("authorization") ||
+    normalized.includes("authorization_code") ||
+    normalized.includes("email") ||
+    normalized.includes("phone") ||
+    normalized.includes("mobile") ||
+    normalized.includes("customer") ||
+    normalized.includes("password") ||
+    normalized.includes("signature") ||
+    normalized.includes("rawbody")
+  );
 }

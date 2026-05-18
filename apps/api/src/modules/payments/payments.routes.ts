@@ -1,6 +1,10 @@
 import { Readable } from "node:stream";
 
-import { opsAlertFunctions, paymentFunctions } from "@betterdata/app-api";
+import {
+  opsAlertFunctions,
+  paymentFunctions,
+  platformConfigFunctions
+} from "@betterdata/app-api";
 import { getRequiredEnv } from "@betterdata/config";
 import type {
   CreatePaymentIntentRequest,
@@ -14,6 +18,7 @@ import { ConvexHttpClient } from "convex/browser";
 import {
   buildPaystackReference,
   initializeMobileMoneyPayment,
+  getPaystackPaymentSessionTimeout,
   verifyPaystackSignature,
   verifyPaystackTransaction
 } from "../../integrations/paystack/client";
@@ -24,7 +29,7 @@ import {
   requireRequestUser,
   resolvePaystackEmail
 } from "../auth/requestUser";
-import { getNextRetryAt } from "./retryPolicy";
+import { getNextRetryAt, isFinalRetryFailure } from "./retryPolicy";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -54,6 +59,13 @@ type PaymentIntentRecord = {
   purposeMetadata: unknown;
 };
 
+type RetryableOpsAlert = {
+  _id: string;
+  reference?: string;
+  retryAction?: "verify_payment" | "fulfill_order" | "credit_wallet" | "complete_agent_application";
+  retryCount: number;
+};
+
 export async function registerPaymentRoutes(server: FastifyInstance) {
   server.addHook("preParsing", async (request, _reply, payload) => {
     if (request.url.split("?")[0] !== "/webhooks/paystack") {
@@ -79,13 +91,14 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         validatePaymentIntentRequest(request.body);
 
         const reference = buildPaystackReference(request.body.purpose);
+        const convex = createConvexClient();
         const user =
           request.body.purpose === "data_purchase"
-            ? await getOptionalRequestUser(request)
-            : await requireRequestUser(request);
+            ? await getOptionalRequestUser(request, convex)
+            : await requireRequestUser(request, convex);
         const customerEmail = resolvePaystackEmail(user, reference);
-        const convex = createConvexClient();
         const prepared = (await convex.mutation(paymentFunctions.prepareIntent, {
+          ...serviceArgs(),
           request: {
             ...request.body,
             ...(user !== null ? { userId: user.id } : {}),
@@ -120,6 +133,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         });
 
         await convex.mutation(paymentFunctions.markInitialized, {
+          ...serviceArgs(),
           providerReference: prepared.reference,
           providerAccessCode: checkout.accessCode,
           providerAuthorizationUrl: checkout.authorizationUrl
@@ -223,6 +237,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         const convex = createConvexClient();
 
         await convex.mutation(paymentFunctions.recordProviderEvent, {
+          ...serviceArgs(),
           providerReference: reference,
           eventType,
           payload: request.body
@@ -256,6 +271,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
 
         if (verified.status === "success" && verified.currency === "GHS") {
           await convex.mutation(paymentFunctions.completeSucceededIntent, {
+            ...serviceArgs(),
             providerReference: reference,
             amountGhs: verified.amountGhs,
             amountPesewas: verified.amountPesewas,
@@ -280,6 +296,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           });
         } else {
           await convex.mutation(paymentFunctions.markFailed, {
+            ...serviceArgs(),
             providerReference: reference,
             status: verified.status === "abandoned" ? "abandoned" : "failed",
             failureReason: `Paystack verification status: ${verified.status}`
@@ -324,6 +341,132 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
       }
     }
   );
+
+  server.post("/internal/payments/retries/run", async (request, reply) => {
+    requireInternalServiceRequest(request.headers);
+    const convex = createConvexClient();
+    const alerts = (await convex.query(opsAlertFunctions.listDueRetries, {
+      ...serviceArgs(),
+      now: Date.now()
+    })) as RetryableOpsAlert[];
+    const results = [];
+
+    for (const alert of alerts) {
+      const result = await processRetryAlert(convex, alert);
+      results.push(result);
+    }
+
+    return { processed: results.length, results };
+  });
+
+  server.get("/internal/payments/diagnostics/paystack-timeout", async (request) => {
+    requireInternalServiceRequest(request.headers);
+
+    const convex = createConvexClient();
+    const configuredTimeout = (await convex.query(
+      platformConfigFunctions.getNumberConfig,
+      {
+        key: "paymentIntentExpirySeconds"
+      }
+    )) as number | null;
+    const paystackTimeout = await getPaystackPaymentSessionTimeout();
+    const matches = configuredTimeout === paystackTimeout;
+
+    if (!matches) {
+      await createOpsAlertSafely(convex, {
+        severity: "warning",
+        category: "config",
+        message: "Paystack payment session timeout does not match Convex config.",
+        metadata: {
+          configuredTimeout,
+          paystackTimeout
+        }
+      });
+    }
+
+    return {
+      configuredTimeout,
+      paystackTimeout,
+      matches
+    };
+  });
+}
+
+async function processRetryAlert(convex: ConvexHttpClient, alert: RetryableOpsAlert) {
+  if (alert.reference === undefined || alert.retryAction === undefined) {
+    return { alertId: alert._id, status: "skipped", reason: "missing retry metadata" };
+  }
+
+  await convex.mutation(opsAlertFunctions.markRetryRunning, {
+    ...serviceArgs(),
+    alertId: alert._id
+  });
+
+  try {
+    if (alert.retryAction === "verify_payment") {
+      await verifyAndCompletePayment(convex, alert.reference);
+    } else if (alert.retryAction === "fulfill_order") {
+      await fulfillPaidDataPurchase(convex, alert.reference);
+    } else {
+      await verifyAndCompletePayment(convex, alert.reference);
+    }
+
+    await convex.mutation(opsAlertFunctions.markRetrySucceeded, {
+      ...serviceArgs(),
+      alertId: alert._id
+    });
+
+    return { alertId: alert._id, status: "succeeded" };
+  } catch (error) {
+    const retryKind =
+      alert.retryAction === "fulfill_order" ? "data_fulfillment" : "internal_completion";
+    const nextRetryAt = getNextRetryAt(retryKind, alert.retryCount + 1);
+    const finalFailure = nextRetryAt === null || isFinalRetryFailure(retryKind, alert.retryCount + 1);
+
+    await convex.mutation(opsAlertFunctions.markRetryFailed, {
+      ...serviceArgs(),
+      alertId: alert._id,
+      finalFailure,
+      message: error instanceof Error ? error.message : "Payment retry failed.",
+      ...(nextRetryAt !== null ? { nextRetryAt } : {})
+    });
+
+    return {
+      alertId: alert._id,
+      status: "failed",
+      finalFailure,
+      errorMessage: error instanceof Error ? error.message : "Unknown error"
+    };
+  }
+}
+
+async function verifyAndCompletePayment(
+  convex: ConvexHttpClient,
+  reference: string
+) {
+  const verified = await verifyPaystackTransaction(reference);
+
+  if (verified.reference !== reference) {
+    throw new Error("Verified Paystack reference did not match retry reference.");
+  }
+
+  if (verified.status !== "success" || verified.currency !== "GHS") {
+    throw new Error(`Paystack retry verification status: ${verified.status}.`);
+  }
+
+  await convex.mutation(paymentFunctions.completeSucceededIntent, {
+    ...serviceArgs(),
+    providerReference: reference,
+    amountGhs: verified.amountGhs,
+    amountPesewas: verified.amountPesewas,
+    currency: "GHS",
+    ...(verified.customer?.phone !== undefined
+      ? { paystackPayerPhone: verified.customer.phone }
+      : {}),
+    providerPayload: verified
+  });
+
+  await fulfillPaidDataPurchase(convex, reference);
 }
 
 async function fulfillPaidDataPurchase(
@@ -331,6 +474,7 @@ async function fulfillPaidDataPurchase(
   providerReference: string
 ) {
   const intent = (await convex.query(paymentFunctions.getByProviderReference, {
+    ...serviceArgs(),
     providerReference
   })) as PaymentIntentRecord | null;
 
@@ -341,6 +485,7 @@ async function fulfillPaidDataPurchase(
   const existingOrder = (await convex.query(
     paymentFunctions.getDataPurchaseOrderByPaymentReference,
     {
+      ...serviceArgs(),
       providerReference
     }
   )) as { vendorOrderReference?: string } | null;
@@ -372,6 +517,7 @@ async function fulfillPaidDataPurchase(
     });
 
     await convex.mutation(paymentFunctions.markDataPurchaseFulfilled, {
+      ...serviceArgs(),
       providerReference,
       vendorId: vendor.id,
       vendorOrderReference: result.vendorOrderReference,
@@ -474,8 +620,27 @@ async function createOpsAlertSafely(
   }
 ) {
   try {
-    await convex.mutation(opsAlertFunctions.create, alert);
+    await convex.mutation(opsAlertFunctions.create, {
+      ...serviceArgs(),
+      ...alert
+    });
   } catch {
     // Avoid masking payment/webhook responses when alert persistence fails.
+  }
+}
+
+function serviceArgs() {
+  return {
+    serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
+  };
+}
+
+function requireInternalServiceRequest(
+  headers: Record<string, string | string[] | undefined>
+) {
+  const provided = headers["x-betterdata-service-secret"];
+
+  if (Array.isArray(provided) || provided !== getRequiredEnv("BETTERDATA_SERVICE_SECRET")) {
+    throw new Error("Service authorization failed.");
   }
 }
