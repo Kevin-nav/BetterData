@@ -78,6 +78,9 @@ importers:
       '@fastify/rate-limit':
         specifier: ^10.3.0
         version: 10.3.0
+      amqplib:
+        specifier: ^2.0.1
+        version: 2.0.1
       convex:
         specifier: ^1.33.0
         version: 1.37.0(react@19.2.6)
@@ -88,6 +91,9 @@ importers:
         specifier: ^13.10.0
         version: 13.10.0
     devDependencies:
+      '@types/amqplib':
+        specifier: ^0.10.8
+        version: 0.10.8
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -1938,6 +1944,9 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@types/amqplib@0.10.8':
+    resolution: {integrity: sha512-vtDp8Pk1wsE/AuQ8/Rgtm6KUZYqcnTgNvEHwzCkX8rL7AGsC6zqAfKAAJhUZXFhM/Pp++tbnUHiam/8vVpPztA==}
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -2064,6 +2073,10 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  amqplib@2.0.1:
+    resolution: {integrity: sha512-a3P2MgfCf9nzVis12VxWEn0dS6hcqve7dlEAhXDtIWR27BlhtMkILOc+H9aeHjDi6i6r94dYKc2Kx2OFe3avvg==}
+    engines: {node: '>=18'}
 
   anser@1.4.10:
     resolution: {integrity: sha512-hCv9AqTQ8ycjpSd3upOJd7vFwW1JaoYQ7tpham03GJ1ca8/65rqn0RpaWpItOAd6ylW9wAw6luXYPJIyPFVOww==}
@@ -6934,6 +6947,10 @@ snapshots:
   '@turbo/windows-arm64@2.9.9':
     optional: true
 
+  '@types/amqplib@0.10.8':
+    dependencies:
+      '@types/node': 22.19.17
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.29.3
@@ -7077,6 +7094,8 @@ snapshots:
       fast-uri: 3.1.2
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
+
+  amqplib@2.0.1: {}
 
   anser@1.4.10: {}
 
