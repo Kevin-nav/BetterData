@@ -144,6 +144,31 @@ export const getByReferenceForApi = query({
   }
 });
 
+export const listForApi = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("refunded")
+      )
+    )
+  },
+  handler: async (ctx, args) => {
+    if (args.status !== undefined) {
+      return await ctx.db
+        .query("orders")
+        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .order("desc")
+        .take(100);
+    }
+
+    return await ctx.db.query("orders").order("desc").take(100);
+  }
+});
+
 export const getByVendorReference = query({
   args: {
     vendorId: v.string(),

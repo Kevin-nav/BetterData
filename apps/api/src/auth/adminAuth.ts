@@ -19,6 +19,10 @@ export function createRequireAdmin(options?: {
   const env = options?.env ?? process.env;
 
   return async (request: FastifyRequest, reply: FastifyReply) => {
+    if (isValidAdminApiKey(request.headers["x-admin-api-key"], env)) {
+      return;
+    }
+
     const token = readBearerToken(request.headers.authorization);
 
     if (!token) {
@@ -39,6 +43,21 @@ export function createRequireAdmin(options?: {
       return reply.code(403).send({ message: "Admin access is required." });
     }
   };
+}
+
+export function isValidAdminApiKey(
+  value: string | string[] | undefined,
+  env: NodeJS.ProcessEnv = process.env
+) {
+  const configured = env.ADMIN_API_KEY;
+
+  if (!configured) {
+    return false;
+  }
+
+  const provided = Array.isArray(value) ? value[0] : value;
+
+  return provided === configured;
 }
 
 export function isAdminUser(

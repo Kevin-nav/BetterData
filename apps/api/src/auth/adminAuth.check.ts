@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { isAdminUser, readBearerToken } from "./adminAuth";
+import { isAdminUser, isValidAdminApiKey, readBearerToken } from "./adminAuth";
 
 assert.equal(readBearerToken(undefined), undefined);
 assert.equal(readBearerToken("Basic abc"), undefined);
@@ -27,3 +27,15 @@ assert.equal(
   true
 );
 assert.equal(isAdminUser({ id: "u4", email: "user@example.com" }, {}), false);
+assert.equal(
+  isValidAdminApiKey("key-1", {
+    ADMIN_API_KEY: "key-1"
+  }),
+  true
+);
+assert.equal(
+  isValidAdminApiKey("bad", {
+    ADMIN_API_KEY: "key-1"
+  }),
+  false
+);

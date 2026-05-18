@@ -68,7 +68,8 @@ async function loadAdminOverview() {
   try {
     const client = createBetterDataApiClient({
       baseUrl: apiBaseUrl,
-      fetch
+      fetch,
+      ...adminApiHeaders()
     });
 
     return await client.getAdminOverview();
@@ -86,6 +87,12 @@ async function loadAdminOverview() {
       pendingAgentApplications: 0
     };
   }
+}
+
+function adminApiHeaders() {
+  return process.env.ADMIN_API_KEY
+    ? { headers: { "X-Admin-Api-Key": process.env.ADMIN_API_KEY } }
+    : {};
 }
 
 function formatGhs(value: number) {

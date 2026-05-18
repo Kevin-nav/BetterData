@@ -2,21 +2,24 @@ import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
+import { createOrderStore } from "../../orders/orderStore";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
 
 export async function registerAdminRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
+  const orderStore = createOrderStore();
+  const adminRouteOptions = {
+    preHandler: createRequireAdmin(),
+    config: {
+      rateLimit: rateLimits.admin
+    }
+  };
 
   server.get(
     "/admin/overview",
-    {
-      preHandler: createRequireAdmin(),
-      config: {
-        rateLimit: rateLimits.admin
-      }
-    },
+    adminRouteOptions,
     async (request) => {
       const vendor = getActiveDataVendor();
       const balance = await readVendorBalance(vendor, request.log);
@@ -36,6 +39,29 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       };
     }
   );
+
+  server.get("/admin/orders", adminRouteOptions, async () => {
+    const orders = await orderStore.listOrders();
+
+    return {
+      orders: orders.map((order) => ({
+        reference: order.reference,
+        vendorId: order.vendorId,
+        ...(order.vendorOrderReference
+          ? { vendorOrderReference: order.vendorOrderReference }
+          : {}),
+        network: order.network,
+        recipientPhone: maskPhone(order.recipientPhone),
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        status: order.status
+      }))
+    };
+  });
+}
+
+function maskPhone(phone: string) {
+  return phone.replace(/^(\d{3})\d+(\d{2})$/, "$1****$2");
 }
 
 export function classifyVendorBalance(

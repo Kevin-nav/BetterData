@@ -103,6 +103,61 @@ h1 {
   background: #f8fafc;
 }
 
+.table-shell {
+  overflow-x: auto;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf1f5;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: #667085;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef2f6;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-completed {
+  background: #ddf7e6;
+  color: #116b37;
+}
+
+.status-processing,
+.status-pending {
+  background: #fff3cf;
+  color: #8a5b00;
+}
+
+.status-failed,
+.status-refunded {
+  background: #ffe3df;
+  color: #a33a2d;
+}
+
 @media (max-width: 760px) {
   .admin-shell {
     grid-template-columns: 1fr;

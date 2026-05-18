@@ -5,6 +5,7 @@ type FetchLike = typeof fetch;
 export type BetterDataApiClientOptions = {
   baseUrl: string;
   fetch?: FetchLike;
+  headers?: HeadersInit;
 };
 
 export type ListDataPackagesResponse = {
@@ -46,11 +47,28 @@ export type AdminOverviewResponse = {
   pendingAgentApplications: number;
 };
 
+export type AdminOrderSummary = {
+  reference: string;
+  vendorId: string;
+  vendorOrderReference?: string;
+  network: string;
+  recipientPhone: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  status: string;
+  createdAt?: string;
+};
+
+export type AdminOrdersResponse = {
+  orders: AdminOrderSummary[];
+};
+
 export type BetterDataApiClient = {
   listDataPackages: () => Promise<ListDataPackagesResponse>;
   createOrder: (body: PurchaseRequest) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
   getAdminOverview: () => Promise<AdminOverviewResponse>;
+  listAdminOrders: () => Promise<AdminOrdersResponse>;
 };
 
 export class ApiClientError extends Error {
@@ -80,6 +98,13 @@ export function createBetterDataApiClient(
     init?: RequestInit
   ): Promise<TResponse> {
     const headers = new Headers(init?.headers);
+    const defaultHeaders = new Headers(options.headers);
+
+    defaultHeaders.forEach((value, key) => {
+      if (!headers.has(key)) {
+        headers.set(key, value);
+      }
+    });
 
     if (init?.body && !headers.get("content-type")) {
       headers.set("content-type", "application/json");
@@ -113,7 +138,8 @@ export function createBetterDataApiClient(
       request<OrderStatusResponse>(
         `/orders/${encodeURIComponent(reference)}/status`
       ),
-    getAdminOverview: () => request<AdminOverviewResponse>("/admin/overview")
+    getAdminOverview: () => request<AdminOverviewResponse>("/admin/overview"),
+    listAdminOrders: () => request<AdminOrdersResponse>("/admin/orders")
   };
 }
 
