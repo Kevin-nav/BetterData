@@ -105,7 +105,7 @@ export function createBetterDataApiClient(
     const headers = new Headers(init?.headers);
     const defaultHeaders = new Headers(options.headers);
 
-    defaultHeaders.forEach((value, key) => {
+    defaultHeaders.forEach((value: string, key: string) => {
       if (!headers.has(key)) {
         headers.set(key, value);
       }
