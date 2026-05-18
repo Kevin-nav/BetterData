@@ -18,6 +18,7 @@ import {
   verifyPaystackTransaction
 } from "../../integrations/paystack/client";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
+import { emitPaymentTelemetry } from "../../telemetry/paymentTelemetry";
 import {
   getOptionalRequestUser,
   requireRequestUser,
@@ -105,6 +106,19 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           ...(callbackUrl !== undefined ? { callbackUrl } : {})
         });
 
+        emitPaymentTelemetry({
+          name: "payment.intent.initialized",
+          paymentReference: prepared.reference,
+          purpose: prepared.purpose,
+          status: "initialized",
+          amountGhs: prepared.amountGhs,
+          currency: "GHS",
+          ...(user?.id !== undefined ? { userId: user.id } : {}),
+          ...(request.body.purpose === "data_purchase"
+            ? { recipientPhone: request.body.recipientPhone }
+            : {})
+        });
+
         await convex.mutation(paymentFunctions.markInitialized, {
           providerReference: prepared.reference,
           providerAccessCode: checkout.accessCode,
@@ -164,6 +178,11 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           signature
         )
       ) {
+        emitPaymentTelemetry({
+          name: "payment.webhook.signature_failed",
+          status: "failed",
+          errorCode: "paystack_signature_invalid"
+        });
         request.log.warn("Invalid Paystack webhook signature");
         await createOpsAlertSafely(createConvexClient(), {
           severity: "warning",
@@ -181,6 +200,11 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
       const eventType = request.body.event ?? "unknown";
 
       if (reference === undefined) {
+        emitPaymentTelemetry({
+          name: "payment.webhook.missing_reference",
+          status: "failed",
+          errorCode: "paystack_reference_missing"
+        });
         await createOpsAlertSafely(createConvexClient(), {
           severity: "warning",
           category: "webhook",
@@ -205,6 +229,17 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         });
 
         const verified = await verifyPaystackTransaction(reference);
+        emitPaymentTelemetry({
+          name: "payment.paystack.verified",
+          paymentReference: reference,
+          status: verified.status,
+          amountGhs: verified.amountGhs,
+          amountPesewas: verified.amountPesewas,
+          currency: verified.currency,
+          ...(verified.customer?.phone !== undefined
+            ? { payerPhone: verified.customer.phone }
+            : {})
+        });
 
         if (verified.reference !== reference) {
           await createOpsAlertSafely(convex, {
@@ -232,17 +267,41 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           });
 
           await fulfillPaidDataPurchase(convex, reference);
+          emitPaymentTelemetry({
+            name: "payment.intent.completed",
+            paymentReference: reference,
+            status: "succeeded",
+            amountGhs: verified.amountGhs,
+            amountPesewas: verified.amountPesewas,
+            currency: verified.currency,
+            ...(verified.customer?.phone !== undefined
+              ? { payerPhone: verified.customer.phone }
+              : {})
+          });
         } else {
           await convex.mutation(paymentFunctions.markFailed, {
             providerReference: reference,
             status: verified.status === "abandoned" ? "abandoned" : "failed",
             failureReason: `Paystack verification status: ${verified.status}`
           });
+          emitPaymentTelemetry({
+            name: "payment.intent.failed",
+            paymentReference: reference,
+            status: verified.status,
+            errorCode: "paystack_status_not_success"
+          });
         }
 
         return { received: true };
       } catch (error) {
         request.log.error({ error, reference }, "Paystack webhook processing failed");
+        emitPaymentTelemetry({
+          name: "payment.webhook.processing_failed",
+          paymentReference: reference,
+          status: "failed",
+          errorCode: "paystack_webhook_processing_failed",
+          errorMessage: error instanceof Error ? error.message : "Unknown error"
+        });
         const nextRetryAt = getNextRetryAt("internal_completion", 0);
         await createOpsAlertSafely(createConvexClient(), {
           severity: "warning",
@@ -319,7 +378,24 @@ async function fulfillPaidDataPurchase(
       status: result.status,
       ...(result.raw !== undefined ? { vendorRaw: result.raw } : {})
     });
+    emitPaymentTelemetry({
+      name: "payment.fulfillment.succeeded",
+      paymentReference: providerReference,
+      status: result.status,
+      vendorId: vendor.id,
+      vendorOrderReference: result.vendorOrderReference,
+      recipientPhone
+    });
   } catch (error) {
+    emitPaymentTelemetry({
+      name: "payment.fulfillment.failed",
+      paymentReference: providerReference,
+      status: "failed",
+      vendorId: vendor.id,
+      recipientPhone,
+      errorCode: "vendor_fulfillment_failed",
+      errorMessage: error instanceof Error ? error.message : "Unknown error"
+    });
     const nextRetryAt = getNextRetryAt("data_fulfillment", 0);
     await createOpsAlertSafely(convex, {
       severity: "warning",
