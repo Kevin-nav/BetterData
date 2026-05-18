@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 
 import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { createOrderStore } from "../../orders/orderStore";
+import { verifyPurchasePaymentSafety } from "../../payments/paymentSafety";
 import { createQueueProvider, QUEUE_NAMES, type PurchaseJob } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
@@ -33,12 +34,21 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     const body = validation.value;
+    const paymentSafety = verifyPurchasePaymentSafety(body);
+
+    if (!paymentSafety.ok) {
+      return reply.code(paymentSafety.statusCode).send({
+        message: paymentSafety.message
+      });
+    }
+
     const vendor = getActiveDataVendor();
     const idempotencyKey = randomUUID();
     const order = await orderStore.createIntent({
       body,
       vendor,
-      idempotencyKey
+      idempotencyKey,
+      paymentStatus: paymentSafety.paymentStatus
     });
     try {
       await queue.enqueue(QUEUE_NAMES.purchaseRequested, toPurchaseJob(order));

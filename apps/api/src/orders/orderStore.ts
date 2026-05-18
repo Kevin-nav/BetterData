@@ -26,6 +26,7 @@ export type CreateOrderIntentInput = {
   body: PurchaseRequest;
   vendor: DataVendor;
   idempotencyKey: string;
+  paymentStatus?: StoredOrder["paymentStatus"];
 };
 
 export type OrderStore = {
@@ -155,7 +156,7 @@ function buildStoredOrder(input: CreateOrderIntentInput): StoredOrder {
     recipientPhone: input.body.recipientPhone,
     amountGhs: 0,
     paymentMethod: input.body.paymentMethod,
-    paymentStatus: "pending",
+    paymentStatus: input.paymentStatus ?? "pending",
     status: "pending",
     idempotencyKey: input.idempotencyKey
   };
