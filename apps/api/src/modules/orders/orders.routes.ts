@@ -4,12 +4,14 @@ import type { PurchaseRequest } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
 
 import { resolveRateLimitConfig } from "../../config/rateLimits";
+import { createOrderStore } from "../../orders/orderStore";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
 import { validatePurchaseRequest } from "./orderValidation";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
+  const orderStore = createOrderStore();
 
   server.post<{ Body: PurchaseRequest }>(
     "/orders",
@@ -30,6 +32,11 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     const body = validation.value;
     const vendor = getActiveDataVendor();
     const idempotencyKey = randomUUID();
+    const order = await orderStore.createIntent({
+      body,
+      vendor,
+      idempotencyKey
+    });
     let result;
 
     try {
@@ -39,8 +46,16 @@ export async function registerOrderRoutes(server: FastifyInstance) {
         recipientPhone: body.recipientPhone,
         idempotencyKey
       });
+      await orderStore.recordVendorResult(order.reference, {
+        vendorOrderReference: result.vendorOrderReference,
+        vendorRaw: result.raw,
+        status: result.status
+      });
     } catch (error) {
-      request.log.error({ error, vendorId: vendor.id }, "Vendor purchase failed");
+      request.log.error(
+        { error, orderReference: order.reference, vendorId: vendor.id },
+        "Vendor purchase failed"
+      );
 
       const mapped = mapVendorErrorToHttp(error);
 
@@ -55,9 +70,10 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
       return reply.code(202).send({
-        reference: result.vendorOrderReference,
+        reference: order.reference,
         vendorId: vendor.id,
         status: result.status,
+        vendorOrderReference: result.vendorOrderReference,
         estimatedDeliverySeconds: result.estimatedDeliverySeconds
       });
     }
@@ -72,10 +88,29 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     },
     async (request, reply) => {
       const vendor = getActiveDataVendor();
+      const order = await orderStore.getByReference(request.params.reference);
+
+      if (order && !order.vendorOrderReference) {
+        return {
+          reference: request.params.reference,
+          vendorId: vendor.id,
+          status: order.status
+        };
+      }
+
       let status;
 
       try {
-        status = await vendor.getOrderStatus(request.params.reference);
+        status = await vendor.getOrderStatus(
+          order?.vendorOrderReference ?? request.params.reference
+        );
+
+        if (order?.vendorOrderReference) {
+          await orderStore.recordVendorResult(order.reference, {
+            vendorOrderReference: order.vendorOrderReference,
+            status
+          });
+        }
       } catch (error) {
         request.log.error({ error, vendorId: vendor.id }, "Vendor status lookup failed");
 

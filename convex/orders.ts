@@ -5,9 +5,10 @@ import { v } from "convex/values";
 
 export const createIntent = mutation({
   args: {
+    reference: v.string(),
     userId: v.optional(v.id("users")),
     guestContactPhone: v.optional(v.string()),
-    packageId: v.id("dataPackages"),
+    packageId: v.string(),
     vendorId: v.string(),
     vendorPackageId: v.optional(v.string()),
     vendorOrderReference: v.optional(v.string()),
@@ -16,6 +17,14 @@ export const createIntent = mutation({
     recipientPhone: v.string(),
     amountGhs: v.number(),
     paymentMethod: v.union(v.literal("paystack_momo"), v.literal("wallet")),
+    paymentStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("verified"),
+        v.literal("failed"),
+        v.literal("refunded")
+      )
+    ),
     idempotencyKey: v.string(),
     confirmRecipientIsCorrect: v.boolean()
   },
@@ -25,12 +34,14 @@ export const createIntent = mutation({
     }
 
     return await ctx.db.insert("orders", {
+      reference: args.reference,
       packageId: args.packageId,
       vendorId: args.vendorId,
       network: args.network,
       recipientPhone: args.recipientPhone,
       amountGhs: args.amountGhs,
       paymentMethod: args.paymentMethod,
+      paymentStatus: args.paymentStatus ?? "pending",
       status: "pending",
       idempotencyKey: args.idempotencyKey,
       recipientConfirmedAt: Date.now(),
@@ -46,6 +57,39 @@ export const createIntent = mutation({
         : {}),
       ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
     });
+  }
+});
+
+export const recordVendorResult = mutation({
+  args: {
+    reference: v.string(),
+    vendorOrderReference: v.string(),
+    vendorRaw: v.optional(v.any()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("refunded")
+    )
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db
+      .query("orders")
+      .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+      .first();
+
+    if (order === null) {
+      throw new Error("Order not found.");
+    }
+
+    await ctx.db.patch(order._id, {
+      vendorOrderReference: args.vendorOrderReference,
+      status: args.status,
+      ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
+    });
+
+    return order._id;
   }
 });
 
@@ -85,6 +129,18 @@ export const getById = query({
     }
 
     return order;
+  }
+});
+
+export const getByReferenceForApi = query({
+  args: {
+    reference: v.string()
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+      .first();
   }
 });
 

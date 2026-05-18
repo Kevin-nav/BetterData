@@ -19,6 +19,7 @@ export type CreateOrderResponse = {
   reference: string;
   vendorId: string;
   status: VendorOrderStatus;
+  vendorOrderReference?: string;
   estimatedDeliverySeconds?: number;
 };
 
