@@ -67,6 +67,48 @@ export default defineSchema({
     .index("by_vendor_order_reference", ["vendorId", "vendorOrderReference"])
     .index("by_status", ["status"]),
 
+  paymentIntents: defineTable({
+    provider: v.literal("paystack"),
+    purpose: v.union(
+      v.literal("data_purchase"),
+      v.literal("wallet_top_up"),
+      v.literal("agent_application_fee")
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("initialized"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("abandoned")
+    ),
+    userId: v.optional(v.id("users")),
+    guestContactPhone: v.optional(v.string()),
+    amountGhs: v.number(),
+    currency: v.literal("GHS"),
+    providerReference: v.string(),
+    providerAccessCode: v.optional(v.string()),
+    providerAuthorizationUrl: v.optional(v.string()),
+    purposeMetadata: v.any(),
+    failureReason: v.optional(v.string()),
+    initializedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_provider_reference", ["provider", "providerReference"])
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"]),
+
+  paymentEvents: defineTable({
+    provider: v.literal("paystack"),
+    providerReference: v.string(),
+    eventType: v.string(),
+    payload: v.any(),
+    receivedAt: v.number()
+  })
+    .index("by_provider_reference", ["provider", "providerReference"])
+    .index("by_event_type", ["eventType"]),
+
   walletTransactions: defineTable({
     userId: v.id("users"),
     type: v.union(
