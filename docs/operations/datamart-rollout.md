@@ -77,3 +77,14 @@ Watch API logs for:
 - Insufficient DataMart wallet balance.
 
 Do not retry a purchase with a new idempotency key after a timeout. Retry with the same logical request key or rely on the API dispatcher retry path.
+
+## Admin Balance Alerting
+
+The admin overview calls the active vendor balance endpoint and classifies DataMart balance with:
+
+```env
+VENDOR_BALANCE_LOW_GHS=200
+VENDOR_BALANCE_CRITICAL_GHS=50
+```
+
+The admin dashboard shows `healthy`, `low`, `critical`, or `unknown`. `unknown` means the balance check failed and should be investigated before assuming the vendor wallet is funded.

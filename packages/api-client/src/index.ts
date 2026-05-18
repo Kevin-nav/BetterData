@@ -28,10 +28,28 @@ export type OrderStatusResponse = {
   status: VendorOrderStatus;
 };
 
+export type AdminOverviewResponse = {
+  revenue: {
+    dailyGhs: number;
+    weeklyGhs: number;
+    monthlyGhs: number;
+  };
+  vendorBalanceGhs: number | null;
+  vendor: {
+    id: string;
+    displayName: string;
+    balanceGhs: number | null;
+    balanceStatus: "healthy" | "low" | "critical" | "unknown";
+    checkedAt: string;
+  };
+  pendingAgentApplications: number;
+};
+
 export type BetterDataApiClient = {
   listDataPackages: () => Promise<ListDataPackagesResponse>;
   createOrder: (body: PurchaseRequest) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
+  getAdminOverview: () => Promise<AdminOverviewResponse>;
 };
 
 export class ApiClientError extends Error {
@@ -93,7 +111,8 @@ export function createBetterDataApiClient(
     getOrderStatus: (reference) =>
       request<OrderStatusResponse>(
         `/orders/${encodeURIComponent(reference)}/status`
-      )
+      ),
+    getAdminOverview: () => request<AdminOverviewResponse>("/admin/overview")
   };
 }
 
