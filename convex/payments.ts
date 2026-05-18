@@ -186,6 +186,30 @@ export const getPublicStatus = query({
   }
 });
 
+export const getDataPurchaseOrderByPaymentReference = query({
+  args: {
+    providerReference: v.string()
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db
+      .query("orders")
+      .withIndex("by_paystack_reference", (q) =>
+        q.eq("paystackReference", args.providerReference)
+      )
+      .first();
+
+    if (order === null) {
+      return null;
+    }
+
+    return {
+      id: order._id,
+      vendorOrderReference: order.vendorOrderReference,
+      status: order.status
+    };
+  }
+});
+
 export const recordProviderEvent = mutation({
   args: {
     providerReference: v.string(),
@@ -268,6 +292,46 @@ export const markFailed = mutation({
     });
 
     return intent._id;
+  }
+});
+
+export const markDataPurchaseFulfilled = mutation({
+  args: {
+    providerReference: v.string(),
+    vendorId: v.string(),
+    vendorOrderReference: v.string(),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("refunded")
+    ),
+    vendorRaw: v.optional(v.any())
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db
+      .query("orders")
+      .withIndex("by_paystack_reference", (q) =>
+        q.eq("paystackReference", args.providerReference)
+      )
+      .first();
+
+    if (order === null) {
+      throw new Error("Paid data purchase order not found.");
+    }
+
+    if (order.vendorOrderReference !== undefined) {
+      return order._id;
+    }
+
+    await ctx.db.patch(order._id, {
+      vendorId: args.vendorId,
+      vendorOrderReference: args.vendorOrderReference,
+      status: args.status,
+      ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
+    });
+
+    return order._id;
   }
 });
 

@@ -17,6 +17,7 @@ import {
   verifyPaystackSignature,
   verifyPaystackTransaction
 } from "../../integrations/paystack/client";
+import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -38,6 +39,12 @@ type PaystackWebhookBody = {
   data?: {
     reference?: string;
   };
+};
+
+type PaymentIntentRecord = {
+  purpose: PaymentPurpose;
+  providerReference: string;
+  purposeMetadata: unknown;
 };
 
 export async function registerPaymentRoutes(server: FastifyInstance) {
@@ -178,6 +185,8 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             currency: "GHS",
             providerPayload: verified
           });
+
+          await fulfillPaidDataPurchase(convex, reference);
         } else {
           await convex.mutation(paymentFunctions.markFailed, {
             providerReference: reference,
@@ -197,6 +206,59 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
       }
     }
   );
+}
+
+async function fulfillPaidDataPurchase(
+  convex: ConvexHttpClient,
+  providerReference: string
+) {
+  const intent = (await convex.query(paymentFunctions.getByProviderReference, {
+    providerReference
+  })) as PaymentIntentRecord | null;
+
+  if (intent?.purpose !== "data_purchase") {
+    return;
+  }
+
+  const existingOrder = (await convex.query(
+    paymentFunctions.getDataPurchaseOrderByPaymentReference,
+    {
+      providerReference
+    }
+  )) as { vendorOrderReference?: string } | null;
+
+  if (existingOrder?.vendorOrderReference !== undefined) {
+    return;
+  }
+
+  const metadata = asRecord(intent.purposeMetadata);
+  const packageId = metadata.vendorPackageId ?? metadata.packageId;
+  const network = metadata.network;
+  const recipientPhone = metadata.recipientPhone;
+
+  if (
+    typeof packageId !== "string" ||
+    !isNetworkCode(network) ||
+    typeof recipientPhone !== "string"
+  ) {
+    throw new Error("Paid data purchase metadata is invalid for fulfillment.");
+  }
+
+  const vendor = getActiveDataVendor();
+  const result = await vendor.purchase({
+    packageId,
+    network,
+    recipientPhone,
+    idempotencyKey: providerReference
+  });
+
+  await convex.mutation(paymentFunctions.markDataPurchaseFulfilled, {
+    providerReference,
+    vendorId: vendor.id,
+    vendorOrderReference: result.vendorOrderReference,
+    status: result.status,
+    ...(result.raw !== undefined ? { vendorRaw: result.raw } : {})
+  });
 }
 
 function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
@@ -233,4 +295,16 @@ function buildPaymentCallbackUrl(reference: string) {
   }
 
   return `${appUrl.replace(/\/+$/, "")}/payments/${encodeURIComponent(reference)}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function isNetworkCode(value: unknown): value is "mtn" | "telecel" | "airteltigo" {
+  return value === "mtn" || value === "telecel" || value === "airteltigo";
 }
