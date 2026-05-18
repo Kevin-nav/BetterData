@@ -75,6 +75,9 @@ importers:
       '@fastify/helmet':
         specifier: ^13.0.1
         version: 13.0.2
+      '@fastify/rate-limit':
+        specifier: ^10.3.0
+        version: 10.3.0
       fastify:
         specifier: ^5.2.1
         version: 5.8.5
@@ -1399,6 +1402,9 @@ packages:
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
 
+  '@fastify/rate-limit@10.3.0':
+    resolution: {integrity: sha512-eIGkG9XKQs0nyynatApA3EVrojHOuq4l6fhB4eeCk4PIOeadvOJz9/4w3vGI44Go17uaXOWEcPkaD8kuKm7g6Q==}
+
   '@firebase/app-check-interop-types@0.3.4':
     resolution: {integrity: sha512-zz3i6e13B8BfWiLy8MABtTh8aGIACgKbf9UVnyHcWs+yQzJXgQcl8A46b0zfaiJHdQ+niF0ouAfcpuf+3LMPQg==}
 
@@ -1669,6 +1675,10 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
+
+  '@lukeed/ms@2.0.2':
+    resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
+    engines: {node: '>=8'}
 
   '@next/env@15.5.16':
     resolution: {integrity: sha512-9QMKolCl+JnJtaRAQSXy4RQrhgfe8W7/G1+Hl3QSB/HZY7zQMzTwPDdTRwwio8BS96ps1MHpHhbS8qxoNV3JIQ==}
@@ -6235,6 +6245,12 @@ snapshots:
       '@fastify/forwarded': 3.0.1
       ipaddr.js: 2.4.0
 
+  '@fastify/rate-limit@10.3.0':
+    dependencies:
+      '@lukeed/ms': 2.0.2
+      fastify-plugin: 5.1.0
+      toad-cache: 3.7.0
+
   '@firebase/app-check-interop-types@0.3.4': {}
 
   '@firebase/app-types@0.9.5':
@@ -6550,6 +6566,8 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2':
     optional: true
+
+  '@lukeed/ms@2.0.2': {}
 
   '@next/env@15.5.16': {}
 

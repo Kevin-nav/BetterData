@@ -3,12 +3,22 @@ import { randomUUID } from "node:crypto";
 import type { PurchaseRequest } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
 
+import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
 import { validatePurchaseRequest } from "./orderValidation";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
-  server.post<{ Body: PurchaseRequest }>("/orders", async (request, reply) => {
+  const rateLimits = resolveRateLimitConfig();
+
+  server.post<{ Body: PurchaseRequest }>(
+    "/orders",
+    {
+      config: {
+        rateLimit: rateLimits.ordersCreate
+      }
+    },
+    async (request, reply) => {
     const validation = validatePurchaseRequest(request.body);
 
     if (!validation.ok) {
@@ -44,16 +54,22 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       });
     }
 
-    return reply.code(202).send({
-      reference: result.vendorOrderReference,
-      vendorId: vendor.id,
-      status: result.status,
-      estimatedDeliverySeconds: result.estimatedDeliverySeconds
-    });
-  });
+      return reply.code(202).send({
+        reference: result.vendorOrderReference,
+        vendorId: vendor.id,
+        status: result.status,
+        estimatedDeliverySeconds: result.estimatedDeliverySeconds
+      });
+    }
+  );
 
   server.get<{ Params: { reference: string } }>(
     "/orders/:reference/status",
+    {
+      config: {
+        rateLimit: rateLimits.orderStatus
+      }
+    },
     async (request, reply) => {
       const vendor = getActiveDataVendor();
       let status;
@@ -83,7 +99,14 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
   );
 
-  server.post("/webhooks/data-vendor", async (request, reply) => {
+  server.post(
+    "/webhooks/data-vendor",
+    {
+      config: {
+        rateLimit: rateLimits.webhook
+      }
+    },
+    async (request, reply) => {
     const vendor = getActiveDataVendor();
 
     if (!vendor.normalizeWebhook) {
@@ -124,7 +147,8 @@ export async function registerOrderRoutes(server: FastifyInstance) {
         received: false
       });
     }
-  });
+    }
+  );
 }
 
 function isWebhookValidationError(error: unknown) {

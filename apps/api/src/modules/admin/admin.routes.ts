@@ -1,14 +1,22 @@
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 
 import { createRequireAdmin } from "../../auth/adminAuth";
+import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
 
 export async function registerAdminRoutes(server: FastifyInstance) {
+  const rateLimits = resolveRateLimitConfig();
+
   server.get(
     "/admin/overview",
-    { preHandler: createRequireAdmin() },
+    {
+      preHandler: createRequireAdmin(),
+      config: {
+        rateLimit: rateLimits.admin
+      }
+    },
     async (request) => {
       const vendor = getActiveDataVendor();
       const balance = await readVendorBalance(vendor, request.log);
