@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 
+import { shouldRegisterDevRoutes } from "../../config/origins";
 import {
   listSimulatedOrders,
   setSimulatedOrderStatus
 } from "../../vendors/simulation/store";
 
 export async function registerVendorSimulationRoutes(server: FastifyInstance) {
-  if (process.env.NODE_ENV === "production") {
+  if (!shouldRegisterDevRoutes()) {
     return;
   }
 

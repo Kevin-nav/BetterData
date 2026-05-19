@@ -2,39 +2,150 @@ import { randomUUID } from "node:crypto";
 
 import type { PurchaseRequest } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
+import type { FastifyRequest } from "fastify";
 
+import { resolveRateLimitConfig } from "../../config/rateLimits";
+import { createOrderStore } from "../../orders/orderStore";
+import { verifyPurchasePaymentSafety } from "../../payments/paymentSafety";
+import { createQueueProvider, QUEUE_NAMES, type PurchaseJob } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
+import { mapVendorErrorToHttp } from "../../vendors/errors";
+import { verifyDataVendorWebhook } from "../../vendors/webhookVerification";
+import { validatePurchaseRequest } from "./orderValidation";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
-  server.post<{ Body: PurchaseRequest }>("/orders", async (request, reply) => {
-    if (!request.body.confirmRecipientIsCorrect) {
+  const rateLimits = resolveRateLimitConfig();
+  const orderStore = createOrderStore();
+  const queue = await createQueueProvider();
+
+  server.post<{ Body: PurchaseRequest }>(
+    "/orders",
+    {
+      config: {
+        rateLimit: rateLimits.ordersCreate
+      }
+    },
+    async (request, reply) => {
+    const validation = validatePurchaseRequest(request.body);
+
+    if (!validation.ok) {
       return reply.code(400).send({
-        message: "Recipient number confirmation is required."
+        message: validation.message
+      });
+    }
+
+    const body = validation.value;
+    const paymentSafety = verifyPurchasePaymentSafety(body);
+
+    if (!paymentSafety.ok) {
+      return reply.code(paymentSafety.statusCode).send({
+        message: paymentSafety.message
       });
     }
 
     const vendor = getActiveDataVendor();
     const idempotencyKey = randomUUID();
-    const result = await vendor.purchase({
-      packageId: request.body.packageId,
-      network: request.body.network,
-      recipientPhone: request.body.recipientPhone,
-      idempotencyKey
+    const order = await orderStore.createIntent({
+      body,
+      vendor,
+      idempotencyKey,
+      paymentStatus: paymentSafety.paymentStatus
     });
 
-    return reply.code(202).send({
-      reference: result.vendorOrderReference,
-      vendorId: vendor.id,
-      status: result.status,
-      estimatedDeliverySeconds: result.estimatedDeliverySeconds
-    });
-  });
+    try {
+      await queue.enqueue(QUEUE_NAMES.purchaseRequested, toPurchaseJob(order));
+    } catch (error) {
+      request.log.error(
+        { error, orderReference: order.reference, vendorId: vendor.id },
+        "Purchase job enqueue failed"
+      );
+
+      const mapped = mapVendorErrorToHttp(error);
+
+      try {
+        await orderStore.recordOrderFailure(order.reference, {
+          status: "failed",
+          vendorRaw: {
+            enqueueError: serializeError(error),
+            vendorId: vendor.id
+          }
+        });
+      } catch (compensationError) {
+        request.log.error(
+          {
+            error: compensationError,
+            orderReference: order.reference,
+            vendorId: vendor.id
+          },
+          "Purchase intent failure compensation failed"
+        );
+      }
+
+      if (mapped.retryAfterSeconds !== undefined) {
+        reply.header("Retry-After", String(mapped.retryAfterSeconds));
+      }
+
+      return reply.code(mapped.statusCode).send({
+        message: mapped.message,
+        vendorId: vendor.id
+      });
+    }
+
+      return reply.code(202).send({
+        reference: order.reference,
+        vendorId: vendor.id,
+        status: order.status,
+        estimatedDeliverySeconds: 30 * 60
+      });
+    }
+  );
 
   server.get<{ Params: { reference: string } }>(
     "/orders/:reference/status",
-    async (request) => {
+    {
+      config: {
+        rateLimit: rateLimits.orderStatus
+      }
+    },
+    async (request, reply) => {
       const vendor = getActiveDataVendor();
-      const status = await vendor.getOrderStatus(request.params.reference);
+      const order = await orderStore.getByReference(request.params.reference);
+
+      if (order && !order.vendorOrderReference) {
+        return {
+          reference: request.params.reference,
+          vendorId: vendor.id,
+          status: order.status
+        };
+      }
+
+      let status;
+
+      try {
+        status = await vendor.getOrderStatus(
+          order?.vendorOrderReference ?? request.params.reference
+        );
+
+        if (order?.vendorOrderReference) {
+          await orderStore.recordVendorResult(order.reference, {
+            vendorOrderReference: order.vendorOrderReference,
+            status
+          });
+        }
+      } catch (error) {
+        request.log.error({ error, vendorId: vendor.id }, "Vendor status lookup failed");
+
+        const mapped = mapVendorErrorToHttp(error);
+
+        if (mapped.retryAfterSeconds !== undefined) {
+          reply.header("Retry-After", String(mapped.retryAfterSeconds));
+        }
+
+        return reply.code(mapped.statusCode).send({
+          message: mapped.message,
+          vendorId: vendor.id
+        });
+      }
 
       return {
         reference: request.params.reference,
@@ -44,8 +155,31 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
   );
 
-  server.post("/webhooks/data-vendor", async (request, reply) => {
+  server.post(
+    "/webhooks/data-vendor",
+    {
+      config: {
+        rateLimit: rateLimits.webhook,
+        rawBody: true
+      }
+    },
+    async (request, reply) => {
     const vendor = getActiveDataVendor();
+    const headers = normalizeWebhookHeaders(request.headers);
+    const verification = verifyDataVendorWebhook(
+      headers,
+      readRawBody(request)
+    );
+
+    if (!verification.ok) {
+      request.log.warn({ vendorId: vendor.id }, "Invalid vendor webhook credentials");
+
+      return reply.code(verification.statusCode).send({
+        message: verification.message,
+        vendorId: vendor.id,
+        received: false
+      });
+    }
 
     if (!vendor.normalizeWebhook) {
       return reply.code(501).send({
@@ -58,7 +192,7 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     try {
       const event = await vendor.normalizeWebhook(
         request.body,
-        normalizeWebhookHeaders(request.headers)
+        headers
       );
 
       return {
@@ -85,7 +219,31 @@ export async function registerOrderRoutes(server: FastifyInstance) {
         received: false
       });
     }
-  });
+    }
+  );
+}
+
+function toPurchaseJob(order: {
+  reference: string;
+  packageId: string;
+  network: PurchaseJob["network"];
+  recipientPhone: string;
+  paymentMethod: PurchaseJob["paymentMethod"];
+  vendorId: string;
+  idempotencyKey: string;
+}): PurchaseJob {
+  return {
+    kind: "purchase",
+    orderReference: order.reference,
+    packageId: order.packageId,
+    network: order.network,
+    recipientPhone: order.recipientPhone,
+    paymentMethod: order.paymentMethod,
+    vendorId: order.vendorId,
+    idempotencyKey: order.idempotencyKey,
+    attempt: 0,
+    createdAt: new Date().toISOString()
+  };
 }
 
 function isWebhookValidationError(error: unknown) {
@@ -101,6 +259,29 @@ function isWebhookValidationError(error: unknown) {
     message.includes("invalid") ||
     message.includes("order reference")
   );
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack
+    };
+  }
+
+  return {
+    message: String(error)
+  };
+}
+
+function readRawBody(request: FastifyRequest) {
+  const rawBody = (request as FastifyRequest & { rawBody?: Buffer | string }).rawBody;
+
+  if (rawBody !== undefined) {
+    return rawBody;
+  }
+
+  throw new Error("rawBody missing: cannot verify webhook signature");
 }
 
 function normalizeWebhookHeaders(
