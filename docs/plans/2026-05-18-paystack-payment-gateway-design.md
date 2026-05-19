@@ -40,7 +40,7 @@ Missing required payment configuration should fail closed. For example, an agent
 5. Backend initializes Paystack server-side with the secret key, GHS amount in pesewas, a generated reference, and Mobile Money as the allowed channel.
 6. Client receives only public checkout data such as `authorizationUrl`, `accessCode`, and `reference`.
 7. Paystack sends a webhook to the API.
-8. API verifies the webhook signature with `PAYSTACK_WEBHOOK_SECRET` or the configured secret material, then verifies the transaction with Paystack by reference.
+8. API fetches the configured Paystack webhook signing secret from the system secret material, using the canonical `PAYSTACK_SECRET_KEY` secret per the payment hardening contract, verifies the `x-paystack-signature` HMAC against that secret, then verifies the transaction with Paystack by reference.
 9. If Paystack confirms success and the local intent is still pending, the API marks the payment as successful and runs the purpose-specific completion exactly once.
 10. Convex state updates drive real-time client updates for orders, wallet balances, and agent application state.
 

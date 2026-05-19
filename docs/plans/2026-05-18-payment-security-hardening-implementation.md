@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Tighten Shared Payment Contracts
+## Task 1: Tighten Shared Payment Contracts
 
 **Files:**
 - Modify: `packages/contracts/src/payments.ts`

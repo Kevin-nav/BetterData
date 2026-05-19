@@ -47,12 +47,10 @@ export type CreatePaymentIntentRequest =
     }
   | {
       purpose: "wallet_top_up";
-      userId: string;
       amountGhs: number;
     }
   | {
       purpose: "agent_application_fee";
-      userId: string;
     };
 
 export type CreatePaymentIntentResponse = {
@@ -76,6 +74,8 @@ export type PaymentIntentStatusResponse = {
 ```
 
 Keep the existing wallet transaction types in the same file.
+
+The server derives the user identity for wallet top-ups and agent application fees from the Firebase token. Clients must not provide `userId` in payment intent requests.
 
 **Step 2: Verify exports**
 
@@ -613,12 +613,12 @@ Ensure `.env.example` includes:
 
 ```text
 PAYSTACK_SECRET_KEY=
+# Server-only. Do not expose this value to web or mobile clients; it is also used for Paystack webhook signature verification.
 PAYSTACK_PUBLIC_KEY=
-PAYSTACK_WEBHOOK_SECRET=
 PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Add a comment that `PAYSTACK_SECRET_KEY` and `PAYSTACK_WEBHOOK_SECRET` are server-only.
+Do not add `PAYSTACK_WEBHOOK_SECRET`; it is obsolete. `PAYSTACK_SECRET_KEY` is the single authoritative Paystack server secret for initialization, verification, and webhook signature checks.
 
 **Step 2: Document webhook setup**
 

@@ -2,6 +2,7 @@ import { opsAlertFunctions, platformConfigFunctions } from "@betterdata/app-api"
 import { getRequiredEnv } from "@betterdata/config";
 import { ConvexHttpClient } from "convex/browser";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
@@ -11,6 +12,13 @@ import { createQueueProvider, QUEUE_NAMES } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
+type PaymentConfigKey =
+  | "minimumWalletTopUpGhs"
+  | "maximumWalletTopUpGhs"
+  | "agentOnboardingFeeGhs"
+  | "firstPurchaseDiscountGhs"
+  | "agentDiscountPercentage"
+  | "paymentIntentExpirySeconds";
 
 export async function registerAdminRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -120,7 +128,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
       await convex.mutation(opsAlertFunctions.acknowledge, {
         serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
-        alertId: request.params.alertId
+        alertId: request.params.alertId as Id<"opsAlerts">
       });
 
       return { updated: true };
@@ -134,7 +142,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
       await convex.mutation(opsAlertFunctions.resolve, {
         serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
-        alertId: request.params.alertId
+        alertId: request.params.alertId as Id<"opsAlerts">
       });
 
       return { updated: true };
@@ -184,7 +192,7 @@ export function classifyVendorBalance(
   return "healthy";
 }
 
-function isPaymentConfigKey(value: unknown): value is string {
+function isPaymentConfigKey(value: unknown): value is PaymentConfigKey {
   return (
     value === "minimumWalletTopUpGhs" ||
     value === "maximumWalletTopUpGhs" ||

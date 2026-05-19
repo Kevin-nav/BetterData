@@ -70,9 +70,12 @@ export const findOrCreateFromFirebase = mutation({
 
 export const getByFirebaseUid = query({
   args: {
+    serviceSecret: v.string(),
     firebaseUid: v.string()
   },
   handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+
     return await ctx.db
       .query("users")
       .withIndex("by_firebase_uid", (q) => q.eq("firebaseUid", args.firebaseUid))

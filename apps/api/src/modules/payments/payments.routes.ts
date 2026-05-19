@@ -12,6 +12,7 @@ import type {
 } from "@betterdata/contracts";
 import type { FastifyInstance } from "fastify";
 import { ConvexHttpClient } from "convex/browser";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 import {
   buildPaystackReference,
@@ -25,7 +26,8 @@ import { emitPaymentTelemetry } from "../../telemetry/paymentTelemetry";
 import {
   getOptionalRequestUser,
   requireRequestUser,
-  resolvePaystackEmail
+  resolvePaystackEmail,
+  type ResolvedRequestUser
 } from "../auth/requestUser";
 import { getNextRetryAt, isFinalRetryFailure } from "./retryPolicy";
 
@@ -62,7 +64,7 @@ type PaymentIntentRecord = {
 };
 
 type RetryableOpsAlert = {
-  _id: string;
+  _id: Id<"opsAlerts">;
   reference?: string;
   retryAction?: "verify_payment" | "fulfill_order" | "credit_wallet" | "complete_agent_application";
   retryCount: number;
@@ -82,13 +84,14 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             ? await getOptionalRequestUser(request, convex)
             : await requireRequestUser(request, convex);
         const customerEmail = resolvePaystackEmail(user, reference);
+        const paymentRequest = buildConvexPaymentIntentRequest(
+          request.body,
+          user,
+          customerEmail
+        );
         const prepared = (await convex.mutation(paymentFunctions.prepareIntent, {
           ...serviceArgs(),
-          request: {
-            ...request.body,
-            ...(user !== null ? { userId: user.id } : {}),
-            customerEmail
-          },
+          request: paymentRequest,
           providerReference: reference
         })) as PreparedPaymentIntent;
 
@@ -579,6 +582,48 @@ function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
   if (body.purpose === "wallet_top_up" && body.amountGhs <= 0) {
     throw new Error("Wallet top-up amount must be greater than zero.");
   }
+}
+
+function buildConvexPaymentIntentRequest(
+  body: CreatePaymentIntentRequest,
+  user: ResolvedRequestUser | null,
+  customerEmail: string
+) {
+  if (body.purpose === "wallet_top_up") {
+    if (user === null) {
+      throw new Error("Authentication is required.");
+    }
+
+    return {
+      purpose: body.purpose,
+      userId: user.id as Id<"users">,
+      customerEmail,
+      amountGhs: body.amountGhs
+    };
+  }
+
+  if (body.purpose === "agent_application_fee") {
+    if (user === null) {
+      throw new Error("Authentication is required.");
+    }
+
+    return {
+      purpose: body.purpose,
+      userId: user.id as Id<"users">,
+      customerEmail
+    };
+  }
+
+  return {
+    purpose: body.purpose,
+    ...(user !== null ? { userId: user.id as Id<"users"> } : {}),
+    packageId: body.packageId as Id<"dataPackages">,
+    network: body.network,
+    recipientPhone: body.recipientPhone,
+    customerEmail,
+    confirmRecipientIsCorrect: body.confirmRecipientIsCorrect,
+    ...(body.savedNumberId !== undefined ? { savedNumberId: body.savedNumberId } : {})
+  };
 }
 
 function createConvexClient() {
