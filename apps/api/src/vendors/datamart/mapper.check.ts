@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   fromDataMartProviderCode,
+  mapDataMartBulkPurchaseResponse,
   mapDataMartPackage,
   mapDataMartPurchaseResponse,
   mapDataMartStatus,
@@ -62,3 +63,31 @@ const purchase = mapDataMartPurchaseResponse({
 
 assert.equal(purchase.vendorOrderReference, "GN-AB12CD34");
 assert.equal(purchase.status, "completed");
+
+const bulk = mapDataMartBulkPurchaseResponse({
+  status: "success",
+  data: {
+    results: [
+      {
+        ref: "idem-1",
+        orderReference: "MY-001",
+        status: "queued"
+      },
+      {
+        ref: "idem-2",
+        orderReference: "MY-002",
+        status: "completed"
+      },
+      {
+        ref: "missing-reference",
+        status: "queued"
+      }
+    ],
+    validationErrors: [{ index: 3, message: "Invalid phone" }]
+  }
+});
+
+assert.equal(bulk.size, 2);
+assert.equal(bulk.get("idem-1")?.vendorOrderReference, "MY-001");
+assert.equal(bulk.get("idem-1")?.status, "processing");
+assert.equal(bulk.get("idem-2")?.status, "completed");

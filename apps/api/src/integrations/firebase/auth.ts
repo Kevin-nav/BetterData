@@ -9,6 +9,7 @@ export type AuthenticatedUser = {
   firebaseUid: string;
   phone?: string;
   displayName?: string;
+  claims?: Record<string, unknown>;
 };
 
 export async function verifyFirebaseToken(token: string): Promise<AuthenticatedUser> {
@@ -21,7 +22,8 @@ export async function verifyFirebaseToken(token: string): Promise<AuthenticatedU
     firebaseUid: decoded.uid,
     ...(decoded.email !== undefined ? { email: decoded.email } : {}),
     ...(decoded.phone_number !== undefined ? { phone: decoded.phone_number } : {}),
-    ...(decoded.name !== undefined ? { displayName: decoded.name } : {})
+    ...(decoded.name !== undefined ? { displayName: decoded.name } : {}),
+    claims: decoded
   };
 }
 

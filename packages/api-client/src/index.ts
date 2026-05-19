@@ -12,6 +12,7 @@ type FetchLike = typeof fetch;
 export type BetterDataApiClientOptions = {
   baseUrl: string;
   fetch?: FetchLike;
+  headers?: HeadersInit;
 };
 
 export type ListDataPackagesResponse = {
@@ -26,6 +27,7 @@ export type CreateOrderResponse = {
   reference: string;
   vendorId: string;
   status: VendorOrderStatus;
+  vendorOrderReference?: string;
   estimatedDeliverySeconds?: number;
 };
 
@@ -33,6 +35,44 @@ export type OrderStatusResponse = {
   reference: string;
   vendorId: string;
   status: VendorOrderStatus;
+};
+
+export type AdminOverviewResponse = {
+  revenue: {
+    dailyGhs: number;
+    weeklyGhs: number;
+    monthlyGhs: number;
+  };
+  vendorBalanceGhs: number | null;
+  vendor: {
+    id: string;
+    displayName: string;
+    balanceGhs: number | null;
+    balanceStatus: "healthy" | "low" | "critical" | "unknown";
+    checkedAt: string;
+  };
+  queue?: {
+    purchaseDepth: number;
+    deadLetterDepth: number;
+  };
+  metrics?: Record<string, number>;
+  pendingAgentApplications: number;
+};
+
+export type AdminOrderSummary = {
+  reference: string;
+  vendorId: string;
+  vendorOrderReference?: string;
+  network: string;
+  recipientPhone: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  status: string;
+  createdAt?: string;
+};
+
+export type AdminOrdersResponse = {
+  orders: AdminOrderSummary[];
 };
 
 export type BetterDataApiClient = {
@@ -45,6 +85,8 @@ export type BetterDataApiClient = {
   getPaymentIntentStatus: (
     reference: string
   ) => Promise<PaymentIntentStatusResponse>;
+  getAdminOverview: () => Promise<AdminOverviewResponse>;
+  listAdminOrders: () => Promise<AdminOrdersResponse>;
 };
 
 export class ApiClientError extends Error {
@@ -74,6 +116,13 @@ export function createBetterDataApiClient(
     init?: RequestInit
   ): Promise<TResponse> {
     const headers = new Headers(init?.headers);
+    const defaultHeaders = new Headers(options.headers);
+
+    defaultHeaders.forEach((value: string, key: string) => {
+      if (!headers.has(key)) {
+        headers.set(key, value);
+      }
+    });
 
     if (init?.body && !headers.get("content-type")) {
       headers.set("content-type", "application/json");
@@ -115,7 +164,9 @@ export function createBetterDataApiClient(
     getPaymentIntentStatus: (reference) =>
       request<PaymentIntentStatusResponse>(
         `/payments/intents/${encodeURIComponent(reference)}`
-      )
+      ),
+    getAdminOverview: () => request<AdminOverviewResponse>("/admin/overview"),
+    listAdminOrders: () => request<AdminOrdersResponse>("/admin/orders")
   };
 }
 

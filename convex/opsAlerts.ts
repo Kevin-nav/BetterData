@@ -36,11 +36,24 @@ export const create = mutation({
     retryable: v.optional(v.boolean()),
     retryAction: v.optional(retryAction),
     retryStatus: v.optional(retryStatus),
+    retryCount: v.optional(v.number()),
     nextRetryAt: v.optional(v.number())
   },
   handler: async (ctx, args) => {
     requireServiceSecret(args.serviceSecret);
     const now = Date.now();
+    const retryable = args.retryable ?? false;
+    const retryStatusValue = args.retryStatus ?? "not_started";
+    const retryCount = retryable ? args.retryCount ?? 0 : 0;
+
+    validateRetryState({
+      retryable,
+      retryAction: args.retryAction,
+      retryStatus: retryStatusValue,
+      retryCount: args.retryCount ?? 0,
+      nextRetryAt: args.nextRetryAt
+    });
+
     return await ctx.db.insert("opsAlerts", {
       severity: args.severity,
       status: "open",
@@ -48,16 +61,50 @@ export const create = mutation({
       ...(args.reference !== undefined ? { reference: args.reference } : {}),
       message: args.message,
       ...(args.metadata !== undefined ? { metadata: sanitizeMetadata(args.metadata) } : {}),
-      retryable: args.retryable ?? false,
+      retryable,
       ...(args.retryAction !== undefined ? { retryAction: args.retryAction } : {}),
-      retryStatus: args.retryStatus ?? "not_started",
-      retryCount: 0,
+      retryStatus: retryable ? retryStatusValue : "not_started",
+      retryCount,
       ...(args.nextRetryAt !== undefined ? { nextRetryAt: args.nextRetryAt } : {}),
       createdAt: now,
       updatedAt: now
     });
   }
 });
+
+function validateRetryState(input: {
+  retryable: boolean;
+  retryAction: "verify_payment" | "fulfill_order" | "credit_wallet" | "complete_agent_application" | undefined;
+  retryStatus: "not_started" | "queued" | "running" | "succeeded" | "failed";
+  retryCount: number;
+  nextRetryAt: number | undefined;
+}) {
+  if (!Number.isFinite(input.retryCount) || input.retryCount < 0) {
+    throw new Error("Invalid retry alert state: retryCount must be greater than or equal to 0.");
+  }
+
+  if (!input.retryable) {
+    if (
+      input.retryAction !== undefined ||
+      input.retryStatus !== "not_started" ||
+      input.retryCount > 0 ||
+      input.nextRetryAt !== undefined
+    ) {
+      throw new Error("Invalid retry alert state: non-retryable alerts cannot include retry metadata.");
+    }
+
+    return;
+  }
+
+  if (
+    input.retryStatus === "queued" &&
+    (input.nextRetryAt === undefined ||
+      !Number.isFinite(input.nextRetryAt) ||
+      input.nextRetryAt <= 0)
+  ) {
+    throw new Error("Invalid retry alert state: queued retries require a valid nextRetryAt timestamp.");
+  }
+}
 
 export const queueRetry = mutation({
   args: {

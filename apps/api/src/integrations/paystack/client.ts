@@ -35,6 +35,7 @@ export type PaystackClientOptions = {
   secretKey?: string;
   baseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
 };
 
 type PaystackInitializeResponse = {
@@ -78,7 +79,15 @@ export function ghsToPesewas(amountGhs: number) {
     throw new Error("Paystack amount must be greater than zero.");
   }
 
-  return Math.round(amountGhs * 100);
+  const pesewas = Math.round(amountGhs * 100);
+
+  if (pesewas < 1) {
+    throw new Error(
+      `Paystack amount is too small after conversion: ${pesewas} pesewas.`
+    );
+  }
+
+  return pesewas;
 }
 
 export function buildPaystackReference(purpose: PaymentPurpose) {
@@ -222,17 +231,41 @@ async function paystackRequest<TResponse>(
 
   const secretKey = options.secretKey ?? getRequiredEnv("PAYSTACK_SECRET_KEY");
   const baseUrl = options.baseUrl ?? "https://api.paystack.co";
+  const timeoutMs = resolvePaystackRequestTimeoutMs(options.timeoutMs);
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${secretKey}`);
   headers.set("content-type", "application/json");
+  const url = `${baseUrl}${path}`;
 
-  const response = await fetcher(`${baseUrl}${path}`, {
-    ...init,
-    headers
-  });
+  const response = await withTimeout(
+    fetcher(url, {
+      ...init,
+      headers
+    }),
+    timeoutMs,
+    url
+  );
 
-  const responseText = await response.text();
-  const parsed = responseText ? (JSON.parse(responseText) as TResponse) : ({} as TResponse);
+  let responseText = "";
+  let parsed: TResponse;
+
+  try {
+    responseText = await response.text();
+    parsed = responseText ? (JSON.parse(responseText) as TResponse) : ({} as TResponse);
+  } catch (error) {
+    const message = buildPaystackParseErrorMessage({
+      url,
+      status: response.status,
+      responseText,
+      error
+    });
+
+    if (response.ok) {
+      throw new Error(message);
+    }
+
+    parsed = { message } as TResponse;
+  }
 
   if (!response.ok) {
     const message =
@@ -246,4 +279,46 @@ async function paystackRequest<TResponse>(
   }
 
   return parsed;
+}
+
+function resolvePaystackRequestTimeoutMs(configuredTimeoutMs: number | undefined) {
+  const parsed = configuredTimeoutMs ?? Number(process.env.PAYSTACK_REQUEST_TIMEOUT_MS ?? 15000);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 15000;
+  }
+
+  return parsed;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, url: string) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`Paystack request timed out after ${timeoutMs}ms for ${url}.`));
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function buildPaystackParseErrorMessage(input: {
+  url: string;
+  status: number;
+  responseText: string;
+  error: unknown;
+}) {
+  const errorMessage =
+    input.error instanceof Error ? input.error.message : String(input.error);
+  const body = input.responseText.length > 0 ? input.responseText : "<empty>";
+
+  return `Paystack response parsing failed for ${input.url} with HTTP ${input.status}. Body: ${body}. Parse error: ${errorMessage}`;
 }

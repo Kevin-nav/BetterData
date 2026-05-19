@@ -11,6 +11,7 @@ assert.equal(ghsToPesewas(10), 1000);
 assert.equal(ghsToPesewas(10.5), 1050);
 assert.throws(() => ghsToPesewas(0), /greater than zero/);
 assert.throws(() => ghsToPesewas(-1), /greater than zero/);
+assert.throws(() => ghsToPesewas(0.001), /too small after conversion: 0 pesewas/);
 
 const rawBody = JSON.stringify({
   event: "charge.success",

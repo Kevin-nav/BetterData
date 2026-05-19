@@ -1,5 +1,3 @@
-import { Readable } from "node:stream";
-
 import {
   opsAlertFunctions,
   paymentFunctions,
@@ -33,7 +31,11 @@ import { getNextRetryAt, isFinalRetryFailure } from "./retryPolicy";
 
 declare module "fastify" {
   interface FastifyRequest {
-    rawBody?: string;
+    rawBody?: string | Buffer;
+  }
+
+  interface FastifyContextConfig {
+    rawBody?: boolean;
   }
 }
 
@@ -67,23 +69,6 @@ type RetryableOpsAlert = {
 };
 
 export async function registerPaymentRoutes(server: FastifyInstance) {
-  server.addHook("preParsing", async (request, _reply, payload) => {
-    if (request.url.split("?")[0] !== "/webhooks/paystack") {
-      return payload;
-    }
-
-    const chunks: Buffer[] = [];
-
-    for await (const chunk of payload) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-
-    const rawBody = Buffer.concat(chunks);
-    request.rawBody = rawBody.toString("utf8");
-
-    return Readable.from(rawBody);
-  });
-
   server.post<{ Body: CreatePaymentIntentRequest }>(
     "/payments/intents",
     async (request, reply) => {
@@ -179,12 +164,13 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
 
   server.post<{ Body: PaystackWebhookBody }>(
     "/webhooks/paystack",
+    { config: { rawBody: true } },
     async (request, reply) => {
       const rawBody = request.rawBody;
       const signature = request.headers["x-paystack-signature"];
 
       if (
-        typeof rawBody !== "string" ||
+        rawBody === undefined ||
         Array.isArray(signature) ||
         !verifyPaystackSignature(
           rawBody,
@@ -403,12 +389,21 @@ async function processRetryAlert(convex: ConvexHttpClient, alert: RetryableOpsAl
   });
 
   try {
-    if (alert.retryAction === "verify_payment") {
-      await verifyAndCompletePayment(convex, alert.reference);
-    } else if (alert.retryAction === "fulfill_order") {
-      await fulfillPaidDataPurchase(convex, alert.reference);
-    } else {
-      await verifyAndCompletePayment(convex, alert.reference);
+    switch (alert.retryAction) {
+      case "verify_payment":
+        await verifyAndCompletePayment(convex, alert.reference);
+        break;
+      case "fulfill_order":
+        await fulfillPaidDataPurchase(convex, alert.reference);
+        break;
+      case "credit_wallet":
+        await creditWalletHandler(convex, alert.reference);
+        break;
+      case "complete_agent_application":
+        await completeAgentApplicationHandler(convex, alert.reference);
+        break;
+      default:
+        throw new Error(`Unsupported payment retry action: ${alert.retryAction}.`);
     }
 
     await convex.mutation(opsAlertFunctions.markRetrySucceeded, {
@@ -438,6 +433,17 @@ async function processRetryAlert(convex: ConvexHttpClient, alert: RetryableOpsAl
       errorMessage: error instanceof Error ? error.message : "Unknown error"
     };
   }
+}
+
+async function creditWalletHandler(convex: ConvexHttpClient, reference: string) {
+  await verifyAndCompletePayment(convex, reference);
+}
+
+async function completeAgentApplicationHandler(
+  convex: ConvexHttpClient,
+  reference: string
+) {
+  await verifyAndCompletePayment(convex, reference);
 }
 
 async function verifyAndCompletePayment(

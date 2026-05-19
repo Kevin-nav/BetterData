@@ -11,6 +11,7 @@
     "test": "echo \"No tests yet for admin\""
   },
   "dependencies": {
+    "@betterdata/api-client": "workspace:*",
     "@betterdata/contracts": "workspace:*",
     "@betterdata/ui": "workspace:*",
     "convex": "^1.33.0",

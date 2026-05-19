@@ -26,6 +26,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@betterdata/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@betterdata/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -75,6 +78,9 @@ importers:
       '@fastify/helmet':
         specifier: ^13.0.1
         version: 13.0.2
+      '@fastify/rate-limit':
+        specifier: ^10.3.0
+        version: 10.3.0
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.1
@@ -90,6 +96,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.28.0
         version: 1.41.1
+      amqplib:
+        specifier: ^2.0.1
+        version: 2.0.1
       convex:
         specifier: ^1.33.0
         version: 1.37.0(react@19.2.6)
@@ -97,9 +106,12 @@ importers:
         specifier: ^5.2.1
         version: 5.8.5
       firebase-admin:
-        specifier: ^13.0.2
+        specifier: ^13.10.0
         version: 13.10.0
     devDependencies:
+      '@types/amqplib':
+        specifier: ^0.10.8
+        version: 0.10.8
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -1305,7 +1317,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {'0': node >=0.10.0}
+    engines: {node: '>=0.10.0'}
 
   '@expo/cli@0.22.28':
     resolution: {integrity: sha512-lvt72KNitGuixYD2l3SZmRKVu2G4zJpmg5V7WfUBNpmUU5oODBw/6qmiJ6kSLAlfDozscUk+BBGknBBzxUrwrA==}
@@ -1416,6 +1428,9 @@ packages:
 
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
+
+  '@fastify/rate-limit@10.3.0':
+    resolution: {integrity: sha512-eIGkG9XKQs0nyynatApA3EVrojHOuq4l6fhB4eeCk4PIOeadvOJz9/4w3vGI44Go17uaXOWEcPkaD8kuKm7g6Q==}
 
   '@firebase/app-check-interop-types@0.3.4':
     resolution: {integrity: sha512-zz3i6e13B8BfWiLy8MABtTh8aGIACgKbf9UVnyHcWs+yQzJXgQcl8A46b0zfaiJHdQ+niF0ouAfcpuf+3LMPQg==}
@@ -1687,6 +1702,10 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
+
+  '@lukeed/ms@2.0.2':
+    resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
+    engines: {node: '>=8'}
 
   '@next/env@15.5.16':
     resolution: {integrity: sha512-9QMKolCl+JnJtaRAQSXy4RQrhgfe8W7/G1+Hl3QSB/HZY7zQMzTwPDdTRwwio8BS96ps1MHpHhbS8qxoNV3JIQ==}
@@ -2105,6 +2124,9 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@types/amqplib@0.10.8':
+    resolution: {integrity: sha512-vtDp8Pk1wsE/AuQ8/Rgtm6KUZYqcnTgNvEHwzCkX8rL7AGsC6zqAfKAAJhUZXFhM/Pp++tbnUHiam/8vVpPztA==}
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -2239,6 +2261,10 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  amqplib@2.0.1:
+    resolution: {integrity: sha512-a3P2MgfCf9nzVis12VxWEn0dS6hcqve7dlEAhXDtIWR27BlhtMkILOc+H9aeHjDi6i6r94dYKc2Kx2OFe3avvg==}
+    engines: {node: '>=18'}
 
   anser@1.4.10:
     resolution: {integrity: sha512-hCv9AqTQ8ycjpSd3upOJd7vFwW1JaoYQ7tpham03GJ1ca8/65rqn0RpaWpItOAd6ylW9wAw6luXYPJIyPFVOww==}
@@ -6439,6 +6465,12 @@ snapshots:
       '@fastify/forwarded': 3.0.1
       ipaddr.js: 2.4.0
 
+  '@fastify/rate-limit@10.3.0':
+    dependencies:
+      '@lukeed/ms': 2.0.2
+      fastify-plugin: 5.1.0
+      toad-cache: 3.7.0
+
   '@firebase/app-check-interop-types@0.3.4': {}
 
   '@firebase/app-types@0.9.5':
@@ -6751,6 +6783,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@js-sdsl/ordered-map@4.4.2': {}
+
+  '@lukeed/ms@2.0.2': {}
 
   '@next/env@15.5.16': {}
 
@@ -7334,6 +7368,10 @@ snapshots:
   '@turbo/windows-arm64@2.9.9':
     optional: true
 
+  '@types/amqplib@0.10.8':
+    dependencies:
+      '@types/node': 22.19.17
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.29.3
@@ -7483,6 +7521,8 @@ snapshots:
       fast-uri: 3.1.2
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
+
+  amqplib@2.0.1: {}
 
   anser@1.4.10: {}
 

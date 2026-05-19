@@ -40,9 +40,10 @@ export default defineSchema({
     .index("by_network", ["network"]),
 
   orders: defineTable({
+    reference: v.string(),
     userId: v.optional(v.id("users")),
     guestContactPhone: v.optional(v.string()),
-    packageId: v.id("dataPackages"),
+    packageId: v.string(),
     vendorId: v.string(),
     vendorPackageId: v.optional(v.string()),
     vendorOrderReference: v.optional(v.string()),
@@ -51,6 +52,12 @@ export default defineSchema({
     recipientPhone: v.string(),
     amountGhs: v.number(),
     paymentMethod: v.union(v.literal("paystack_momo"), v.literal("wallet")),
+    paymentStatus: v.union(
+      v.literal("pending"),
+      v.literal("verified"),
+      v.literal("failed"),
+      v.literal("refunded")
+    ),
     paystackReference: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -62,6 +69,8 @@ export default defineSchema({
     idempotencyKey: v.string(),
     recipientConfirmedAt: v.number()
   })
+    .index("by_reference", ["reference"])
+    .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_user", ["userId"])
     .index("by_paystack_reference", ["paystackReference"])
     .index("by_vendor_order_reference", ["vendorId", "vendorOrderReference"])
@@ -169,7 +178,7 @@ export default defineSchema({
   }).index("by_user", ["userId"]),
 
   pricingRules: defineTable({
-    packageId: v.optional(v.id("dataPackages")),
+    packageId: v.optional(v.string()),
     mode: v.union(v.literal("percentage"), v.literal("fixed")),
     value: v.number(),
     isGlobal: v.boolean(),

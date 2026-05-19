@@ -36,14 +36,14 @@ export async function resolveOpsAlert(formData: FormData) {
 
 async function adminApiRequest(path: string, init: RequestInit) {
   const baseUrl = process.env.API_BASE_URL;
-  const serviceSecret = process.env.BETTERDATA_SERVICE_SECRET;
+  const adminApiKey = process.env.ADMIN_API_KEY;
 
-  if (!baseUrl || !serviceSecret) {
+  if (!baseUrl || !adminApiKey) {
     throw new Error("Admin API configuration is missing.");
   }
 
   const headers = new Headers(init.headers);
-  headers.set("x-betterdata-service-secret", serviceSecret);
+  headers.set("X-Admin-Api-Key", adminApiKey);
 
   if (init.body !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");

@@ -1,4 +1,6 @@
-import { api } from "../../../convex/_generated/api";
+import { anyApi } from "convex/server";
+
+const api = anyApi;
 
 export const convexApi = api;
 export const orderFunctions = api.orders;

@@ -1,7 +1,9 @@
 import type {
   NetworkCode,
+  VendorDeliveryTracker,
   VendorOrderStatus,
-  VendorPackage
+  VendorPackage,
+  VendorPurchaseResult
 } from "@betterdata/contracts";
 
 export const DATAMART_NETWORK_CODES = {
@@ -105,6 +107,34 @@ export function mapDataMartPurchaseResponse(response: {
   };
 }
 
+export function mapDataMartBulkPurchaseResponse(response: {
+  status?: string;
+  data?: {
+    results?: Array<{
+      ref?: string;
+      orderReference?: string;
+      status?: string;
+    }>;
+    validationErrors?: unknown[];
+  };
+}) {
+  const results = new Map<string, VendorPurchaseResult>();
+
+  for (const item of response.data?.results ?? []) {
+    if (!item.ref || !item.orderReference) {
+      continue;
+    }
+
+    results.set(item.ref, {
+      vendorOrderReference: item.orderReference,
+      status: mapDataMartStatus(item.status ?? "processing"),
+      raw: item
+    });
+  }
+
+  return results;
+}
+
 export function mapDataMartStatusResponse(response: {
   data?: {
     orderStatus?: string;
@@ -120,6 +150,41 @@ export function mapDataMartBalanceResponse(response: {
 }) {
   return {
     balanceGhs: response.data?.balance ?? 0,
+    raw: response
+  };
+}
+
+export function mapDataMartDeliveryTrackerResponse(response: {
+  data?: {
+    message?: string;
+    scanner?: {
+      active?: boolean;
+      waiting?: boolean;
+      waitSeconds?: number;
+    };
+    stats?: {
+      checked?: number;
+      delivered?: number;
+      partial?: number;
+      pending?: number;
+      failed?: number;
+    };
+  };
+}): VendorDeliveryTracker {
+  return {
+    message: response.data?.message ?? "Delivery tracker unavailable.",
+    scanner: {
+      active: response.data?.scanner?.active ?? false,
+      waiting: response.data?.scanner?.waiting ?? false,
+      waitSeconds: response.data?.scanner?.waitSeconds ?? 0
+    },
+    stats: {
+      checked: response.data?.stats?.checked ?? 0,
+      delivered: response.data?.stats?.delivered ?? 0,
+      partial: response.data?.stats?.partial ?? 0,
+      pending: response.data?.stats?.pending ?? 0,
+      failed: response.data?.stats?.failed ?? 0
+    },
     raw: response
   };
 }
