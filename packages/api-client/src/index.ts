@@ -1,4 +1,11 @@
-import type { DataPackage, PurchaseRequest, VendorOrderStatus } from "@betterdata/contracts";
+import type {
+  CreatePaymentIntentRequest,
+  CreatePaymentIntentResponse,
+  DataPackage,
+  PaymentIntentStatusResponse,
+  PurchaseRequest,
+  VendorOrderStatus
+} from "@betterdata/contracts";
 
 type FetchLike = typeof fetch;
 
@@ -72,6 +79,12 @@ export type BetterDataApiClient = {
   listDataPackages: () => Promise<ListDataPackagesResponse>;
   createOrder: (body: PurchaseRequest) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
+  createPaymentIntent: (
+    body: CreatePaymentIntentRequest
+  ) => Promise<CreatePaymentIntentResponse>;
+  getPaymentIntentStatus: (
+    reference: string
+  ) => Promise<PaymentIntentStatusResponse>;
   getAdminOverview: () => Promise<AdminOverviewResponse>;
   listAdminOrders: () => Promise<AdminOrdersResponse>;
 };
@@ -142,6 +155,15 @@ export function createBetterDataApiClient(
     getOrderStatus: (reference) =>
       request<OrderStatusResponse>(
         `/orders/${encodeURIComponent(reference)}/status`
+      ),
+    createPaymentIntent: (body) =>
+      request<CreatePaymentIntentResponse>("/payments/intents", {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
+    getPaymentIntentStatus: (reference) =>
+      request<PaymentIntentStatusResponse>(
+        `/payments/intents/${encodeURIComponent(reference)}`
       ),
     getAdminOverview: () => request<AdminOverviewResponse>("/admin/overview"),
     listAdminOrders: () => request<AdminOrdersResponse>("/admin/orders")

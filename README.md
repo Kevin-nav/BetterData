@@ -50,6 +50,30 @@ Web, mobile, and admin should share one app-facing backend contract:
 
 Both `NEXT_PUBLIC_CONVEX_URL` and `EXPO_PUBLIC_CONVEX_URL` should point to the same Convex deployment for a given environment.
 
+## Paystack Payments
+
+The API exposes a unified payment intent flow for Paystack Mobile Money:
+
+- `POST /payments/intents` initializes checkout for data purchases, wallet top-ups, and agent application fees.
+- `GET /payments/intents/:reference` returns public-safe payment status.
+- `POST /webhooks/paystack` receives Paystack webhooks.
+
+Configure the Paystack dashboard webhook URL as:
+
+```text
+https://<api-domain>/webhooks/paystack
+```
+
+The API verifies the Paystack webhook signature with `PAYSTACK_SECRET_KEY` and then verifies the transaction by reference before any Convex state changes. Convex owns configurable amounts through `platformConfig`: `minimumWalletTopUpGhs`, `agentOnboardingFeeGhs`, and `agentDiscountPercentage`.
+
+Guest data purchases do not require Firebase auth and do not ask for guest email. The API generates a placeholder Paystack email and uses the recipient phone as the guest fallback support contact. Wallet top-ups, agent application payments, and logged-in purchases require Firebase auth; the API derives payment ownership from the verified Firebase token.
+
+Payment operations create durable `opsAlerts` records for suspicious webhooks and post-payment failures. Retry metadata is stored with the alert so fulfillment, wallet credit, and agent completion retries can be automated and escalated to admins.
+
+Production telemetry can be sent to Honeycomb through OpenTelemetry. Set `HONEYCOMB_API_KEY` and `TELEMETRY_HASH_SECRET` outside development to enable it. Telemetry sends keyed hashes for user and phone correlation, not raw PII, secrets, auth headers, or full provider payloads.
+
+Full raw Paystack payload archiving is intentionally out of scope for now. If dispute or compliance needs require it later, use an encrypted short-retention store such as Cloudflare R2 rather than Convex or Honeycomb.
+
 ## Landing Quick Purchase
 
 The homepage quick purchase widget uses `@betterdata/api-client` for the guest purchase simulation:

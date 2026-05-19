@@ -1,4 +1,8 @@
+import { opsAlertFunctions, platformConfigFunctions } from "@betterdata/app-api";
+import { getRequiredEnv } from "@betterdata/config";
+import { ConvexHttpClient } from "convex/browser";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
@@ -8,6 +12,13 @@ import { createQueueProvider, QUEUE_NAMES } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
+type PaymentConfigKey =
+  | "minimumWalletTopUpGhs"
+  | "maximumWalletTopUpGhs"
+  | "agentOnboardingFeeGhs"
+  | "firstPurchaseDiscountGhs"
+  | "agentDiscountPercentage"
+  | "paymentIntentExpirySeconds";
 
 export async function registerAdminRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -66,6 +77,77 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       }))
     };
   });
+
+  server.get("/admin/payment-ops", adminRouteOptions, async () => {
+    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const [config, alerts] = await Promise.all([
+      convex.query(platformConfigFunctions.listPaymentConfig, {}),
+      convex.query(opsAlertFunctions.listOpen, {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
+      })
+    ]);
+
+    return {
+      config,
+      alerts
+    };
+  });
+
+  server.patch<{
+    Body: { key: string; value: number };
+  }>("/admin/payment-config", adminRouteOptions, async (request, reply) => {
+    const body = request.body;
+
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("key" in body) ||
+      !("value" in body)
+    ) {
+      return reply.code(400).send({ message: "Invalid payment config." });
+    }
+
+    if (!isPaymentConfigKey(body.key) || !Number.isFinite(body.value)) {
+      return reply.code(400).send({ message: "Invalid payment config." });
+    }
+
+    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    await convex.mutation(platformConfigFunctions.setNumberConfigByService, {
+      serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+      key: body.key,
+      value: body.value
+    });
+
+    return { updated: true };
+  });
+
+  server.post<{ Params: { alertId: string } }>(
+    "/admin/ops-alerts/:alertId/acknowledge",
+    adminRouteOptions,
+    async (request) => {
+      const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+      await convex.mutation(opsAlertFunctions.acknowledge, {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+        alertId: request.params.alertId as Id<"opsAlerts">
+      });
+
+      return { updated: true };
+    }
+  );
+
+  server.post<{ Params: { alertId: string } }>(
+    "/admin/ops-alerts/:alertId/resolve",
+    adminRouteOptions,
+    async (request) => {
+      const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+      await convex.mutation(opsAlertFunctions.resolve, {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+        alertId: request.params.alertId as Id<"opsAlerts">
+      });
+
+      return { updated: true };
+    }
+  );
 }
 
 export function maskPhone(phone: string) {
@@ -108,6 +190,17 @@ export function classifyVendorBalance(
   }
 
   return "healthy";
+}
+
+function isPaymentConfigKey(value: unknown): value is PaymentConfigKey {
+  return (
+    value === "minimumWalletTopUpGhs" ||
+    value === "maximumWalletTopUpGhs" ||
+    value === "agentOnboardingFeeGhs" ||
+    value === "firstPurchaseDiscountGhs" ||
+    value === "agentDiscountPercentage" ||
+    value === "paymentIntentExpirySeconds"
+  );
 }
 
 async function readVendorBalance(

@@ -2,9 +2,8 @@
 
 import {
   createBetterDataApiClient,
-  type CreateOrderResponse,
 } from "@betterdata/api-client";
-import type { DataPackage } from "@betterdata/contracts";
+import type { CreatePaymentIntentResponse, DataPackage } from "@betterdata/contracts";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -107,7 +106,7 @@ const NETWORKS = [
 
 type NetworkId = (typeof NETWORKS)[number]["id"];
 
-type OrderResult = CreateOrderResponse;
+type PaymentResult = CreatePaymentIntentResponse;
 
 const API_BASE_URL = requirePublicEnv(
   process.env.NEXT_PUBLIC_API_BASE_URL,
@@ -229,7 +228,7 @@ export default function HomePage() {
   const [packageError, setPackageError] = useState("");
   const [loadKey, setLoadKey] = useState(0);
   const [recipientConfirmed, setRecipientConfirmed] = useState(false);
-  const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [orderError, setOrderError] = useState("");
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
@@ -380,7 +379,7 @@ export default function HomePage() {
   const submitQuickPurchase = async (event: React.FormEvent) => {
     event.preventDefault();
     setOrderError("");
-    setOrderResult(null);
+    setPaymentResult(null);
 
     if (!selectedPackage) {
       setOrderError("Choose a package before continuing.");
@@ -400,24 +399,25 @@ export default function HomePage() {
     try {
       setSubmittingOrder(true);
 
-      const data = await betterDataApi.createOrder({
-        packageId: selectedPackage.vendorPackageId,
+      const data = await betterDataApi.createPaymentIntent({
+        purpose: "data_purchase",
+        packageId: selectedPackage.id,
         network,
         recipientPhone: phone.trim(),
         confirmRecipientIsCorrect: true,
-        paymentMethod: "paystack_momo",
       });
 
-      setOrderResult(data);
+      setPaymentResult(data);
+      window.location.href = data.authorizationUrl;
     } catch (error) {
-      setOrderError(readApiError(error, "Unable to place order."));
+      setOrderError(readApiError(error, "Unable to initialize payment."));
     } finally {
       setSubmittingOrder(false);
     }
   };
 
   const refreshOrderStatus = async () => {
-    if (!orderResult) {
+    if (!paymentResult) {
       return;
     }
 
@@ -425,8 +425,8 @@ export default function HomePage() {
       setRefreshingStatus(true);
       setOrderError("");
 
-      const data = await betterDataApi.getOrderStatus(orderResult.reference);
-      setOrderResult((current) =>
+      const data = await betterDataApi.getPaymentIntentStatus(paymentResult.reference);
+      setPaymentResult((current: PaymentResult | null) =>
         current
           ? {
               ...current,
@@ -435,7 +435,7 @@ export default function HomePage() {
           : current,
       );
     } catch (error) {
-      setOrderError(readApiError(error, "Unable to refresh order status."));
+      setOrderError(readApiError(error, "Unable to refresh payment status."));
     } finally {
       setRefreshingStatus(false);
     }
@@ -526,7 +526,7 @@ export default function HomePage() {
                       data-active={network === n.id}
                       onClick={() => {
                         setNetwork(n.id);
-                        setOrderResult(null);
+                        setPaymentResult(null);
                       }}
                     >
                       <div className="net-icon">
@@ -563,7 +563,7 @@ export default function HomePage() {
                         data-active={selectedPackage?.id === item.id}
                         onClick={() => {
                           setSelectedPackageId(item.id);
-                          setOrderResult(null);
+                          setPaymentResult(null);
                         }}
                       >
                         <span>{formatPackageSize(item.sizeMb)}</span>
@@ -583,7 +583,7 @@ export default function HomePage() {
                   value={phone}
                   onChange={(e) => {
                     setPhone(e.target.value);
-                    setOrderResult(null);
+                    setPaymentResult(null);
                   }}
                 />
               </div>
@@ -613,29 +613,27 @@ export default function HomePage() {
                   !recipientConfirmed
                 }
               >
-                {submittingOrder ? "Placing Order..." : "Place Test Order"}
+                {submittingOrder ? "Opening Paystack..." : "Pay with Mobile Money"}
               </button>
 
               {orderError ? (
                 <div className="order-message order-error">{orderError}</div>
               ) : null}
 
-              {orderResult ? (
+              {paymentResult ? (
                 <div className="order-result">
                   <div>
-                    <span>Order Reference</span>
-                    <strong>{orderResult.reference}</strong>
+                    <span>Payment Reference</span>
+                    <strong>{paymentResult.reference}</strong>
                   </div>
                   <div className="order-result-grid">
                     <div>
                       <span>Status</span>
-                      <strong>{formatStatus(orderResult.status)}</strong>
+                      <strong>{formatStatus(paymentResult.status)}</strong>
                     </div>
                     <div>
-                      <span>ETA</span>
-                      <strong>
-                        {formatEta(orderResult.estimatedDeliverySeconds)}
-                      </strong>
+                      <span>Amount</span>
+                      <strong>GHS {paymentResult.amountGhs.toFixed(2)}</strong>
                     </div>
                   </div>
                   <button
@@ -644,14 +642,14 @@ export default function HomePage() {
                     onClick={refreshOrderStatus}
                     disabled={refreshingStatus}
                   >
-                    {refreshingStatus ? "Checking..." : "Check status"}
+                    {refreshingStatus ? "Checking..." : "Check payment"}
                   </button>
                 </div>
               ) : null}
 
               <div className="widget-footer">
                 <LockIcon />
-                <span>Simulation mode. Paystack comes next.</span>
+                <span>Secured by Paystack Mobile Money.</span>
               </div>
             </form>
           </div>
@@ -902,7 +900,7 @@ function formatPackageSize(sizeMb: number) {
   return `${sizeMb}MB`;
 }
 
-function formatStatus(status: OrderResult["status"]) {
+function formatStatus(status: PaymentResult["status"]) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 

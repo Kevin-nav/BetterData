@@ -1,38 +1,42 @@
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+
+import { getRequiredEnv } from "@betterdata/config";
+
 export type AuthenticatedUser = {
   id: string;
   email?: string;
+  firebaseUid: string;
+  phone?: string;
+  displayName?: string;
   claims?: Record<string, unknown>;
 };
 
 export async function verifyFirebaseToken(token: string): Promise<AuthenticatedUser> {
-  const { cert, getApps, initializeApp } = await import("firebase-admin/app");
-  const { getAuth } = await import("firebase-admin/auth");
+  ensureFirebaseAdmin();
 
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId: requiredEnv("FIREBASE_PROJECT_ID"),
-        clientEmail: requiredEnv("FIREBASE_CLIENT_EMAIL"),
-        privateKey: requiredEnv("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n")
-      })
-    });
-  }
-
-  const decoded = await getAuth().verifyIdToken(token);
+  const decoded = await getAuth().verifyIdToken(token, true);
 
   return {
     id: decoded.uid,
-    ...(decoded.email ? { email: decoded.email } : {}),
+    firebaseUid: decoded.uid,
+    ...(decoded.email !== undefined ? { email: decoded.email } : {}),
+    ...(decoded.phone_number !== undefined ? { phone: decoded.phone_number } : {}),
+    ...(decoded.name !== undefined ? { displayName: decoded.name } : {}),
     claims: decoded
   };
 }
 
-function requiredEnv(name: string) {
-  const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`${name} is required for Firebase authentication.`);
+function ensureFirebaseAdmin() {
+  if (getApps().length > 0) {
+    return;
   }
 
-  return value;
+  initializeApp({
+    credential: cert({
+      projectId: getRequiredEnv("FIREBASE_PROJECT_ID"),
+      clientEmail: getRequiredEnv("FIREBASE_CLIENT_EMAIL"),
+      privateKey: getRequiredEnv("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n")
+    })
+  });
 }

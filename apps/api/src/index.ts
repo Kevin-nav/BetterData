@@ -12,8 +12,12 @@ import { registerHealthRoutes } from "./modules/health/health.routes";
 import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.routes";
 import { registerOrderRoutes } from "./modules/orders/orders.routes";
 import { registerPackageRoutes } from "./modules/packages/packages.routes";
+import { registerPaymentRoutes } from "./modules/payments/payments.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
 import { configureMetricsFromEnv } from "./observability/metrics";
+import { setupTelemetry, shutdownTelemetry } from "./telemetry/setup";
+
+await setupTelemetry();
 
 const server = Fastify({
   logger: true
@@ -61,11 +65,25 @@ server.addHook("preParsing", async (request, _reply, payload) => {
 await registerHealthRoutes(server);
 await registerPackageRoutes(server);
 await registerOrderRoutes(server);
+await registerPaymentRoutes(server);
 await registerWalletRoutes(server);
 await registerAdminRoutes(server);
 await registerVendorSimulationRoutes(server);
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "0.0.0.0";
+
+const shutdown = async () => {
+  await server.close();
+  await shutdownTelemetry();
+};
+
+process.once("SIGINT", () => {
+  void shutdown().then(() => process.exit(0));
+});
+
+process.once("SIGTERM", () => {
+  void shutdown().then(() => process.exit(0));
+});
 
 await server.listen({ port, host });

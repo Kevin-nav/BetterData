@@ -32,10 +32,25 @@ API side effects must write resulting state back to the same Convex deployment u
 
 1. Client selects a network, package, and recipient number.
 2. Client creates or reads app workflow state through Convex.
-3. API initializes payment through Paystack or debits wallet balance when private side effects are needed.
-4. API places fulfillment requests with DataMartGH using idempotency keys.
-5. DataMartGH webhooks update order status in Convex.
-6. Web and mobile clients subscribe to Convex status updates from the same deployment.
+3. API initializes a Paystack payment intent or debits wallet balance when private side effects are needed.
+4. Paystack webhooks are verified by signature and transaction reference before Convex state changes.
+5. API places fulfillment requests with DataMartGH using idempotency keys after successful collection.
+6. DataMartGH webhooks update order status in Convex.
+7. Web and mobile clients subscribe to Convex status updates from the same deployment.
+
+## Payment Boundary
+
+Payments use one core intent model with purpose-specific completion. The first gateway is Paystack, and the supported purposes are data purchase, wallet top-up, and agent application fee.
+
+Convex owns configurable amounts and payment state. Package prices come from `dataPackages` plus active `pricingRules`; platform payment config lives in `platformConfig` with keys for minimum wallet top-up, agent onboarding fee, first-purchase discount, and agent discount percentage. Client apps never provide trusted final amounts.
+
+The API owns Paystack secrets, transaction initialization, webhook signature checks, transaction verification, and vendor fulfillment after verified payment. Webhook processing is idempotent by Paystack reference so retries cannot double-credit wallets, double-create agent applications, or double-submit vendor purchases.
+
+Guest data purchases are the only unauthenticated Paystack payment flow. Wallet top-ups, agent application fees, and logged-in purchases require Firebase auth, and the API derives ownership from the verified token instead of request body IDs. Guest checkout uses a generated Paystack email and treats the recipient phone as the fallback support contact. Optional Paystack payer phone is stored only when the provider returns it.
+
+Payment telemetry uses OpenTelemetry and Honeycomb only when configured outside development. Telemetry uses keyed HMAC hashes for user and phone correlation and never sends raw PII, secrets, tokens, auth headers, or full provider payloads. Convex stores sanitized payment facts and durable ops alerts. Cloudflare R2 is the preferred future option for encrypted, short-retention raw provider payload archives if the business later needs dispute evidence storage.
+
+Payment failure recovery is alert-driven. `opsAlerts` records capture suspicious webhooks, config issues, and downstream failures after verified payments. Retry schedules are stored as metadata: data fulfillment retries use 1m, 5m, 15m, 30m, and 1h delays; wallet and agent completion retries use 30s, 2m, 5m, 15m, and 30m delays. Final retry failure escalates the alert to critical for manual admin handling.
 
 ## Environment Contract
 
