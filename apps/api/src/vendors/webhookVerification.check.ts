@@ -19,6 +19,17 @@ assert.deepEqual(
   { ok: true }
 );
 assert.deepEqual(
+  verifyDataVendorWebhook({}, "{}", {
+    NODE_ENV: "production",
+    WEBHOOK_ALLOW_INSECURE: "true"
+  }),
+  {
+    ok: false,
+    statusCode: 500,
+    message: "Webhook verification is not configured."
+  }
+);
+assert.deepEqual(
   verifyDataVendorWebhook({}, "{}", { NODE_ENV: "production" }),
   {
     ok: false,

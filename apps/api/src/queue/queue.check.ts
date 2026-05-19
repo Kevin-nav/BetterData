@@ -30,9 +30,10 @@ const stop = await queue.consume(QUEUE_NAMES.purchaseRequested, async (message) 
   await message.ack();
 });
 
-await new Promise((resolve) => setTimeout(resolve, 0));
-assert.equal(consumed, 1);
-assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseRequested), 0);
+await waitFor(() => consumed === 1);
+await waitFor(
+  async () => (await queue.getDepth(QUEUE_NAMES.purchaseRequested)) === 0
+);
 await stop();
 
 await queue.enqueue(QUEUE_NAMES.purchaseRequested, job);
@@ -42,21 +43,31 @@ const stopDeadLetter = await queue.consume(
     await message.deadLetter("test failure");
   }
 );
-await new Promise((resolve) => setTimeout(resolve, 0));
-assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseDead), 1);
+await waitFor(async () => (await queue.getDepth(QUEUE_NAMES.purchaseDead)) === 1);
 await stopDeadLetter();
 
 await queue.enqueue(QUEUE_NAMES.purchaseRequested, job);
+let throwingAttempts = 0;
 const stopThrowing = await queue.consume(
   QUEUE_NAMES.purchaseRequested,
-  async () => {
-    throw new Error("consumer failed before ack");
+  async (message) => {
+    throwingAttempts += 1;
+
+    if (throwingAttempts === 1) {
+      throw new Error("consumer failed before ack");
+    }
+
+    assert.equal(message.attempts, 1);
+    await message.ack();
   }
 );
-await new Promise((resolve) => setTimeout(resolve, 0));
-assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseRequested), 1);
+await waitFor(() => throwingAttempts === 2);
+await waitFor(
+  async () => (await queue.getDepth(QUEUE_NAMES.purchaseRequested)) === 0
+);
 await stopThrowing();
 
+await queue.enqueue(QUEUE_NAMES.purchaseRequested, job);
 let retriedAttempts = 0;
 const stopRetry = await queue.consume(
   QUEUE_NAMES.purchaseRequested,
@@ -70,9 +81,10 @@ const stopRetry = await queue.consume(
     await message.ack();
   }
 );
-await new Promise((resolve) => setTimeout(resolve, 5));
-assert.equal(retriedAttempts, 1);
-assert.equal(await queue.getDepth(QUEUE_NAMES.purchaseRequested), 0);
+await waitFor(() => retriedAttempts === 1);
+await waitFor(
+  async () => (await queue.getDepth(QUEUE_NAMES.purchaseRequested)) === 0
+);
 await stopRetry();
 
 const statusJob: StatusRefreshJob = {
@@ -96,14 +108,35 @@ const previousNodeEnv = process.env.NODE_ENV;
 const previousQueueProvider = process.env.QUEUE_PROVIDER;
 process.env.NODE_ENV = "production";
 process.env.QUEUE_PROVIDER = "local";
-await assert.rejects(createQueueProvider(), /QUEUE_PROVIDER=amqp/);
-if (previousNodeEnv === undefined) {
-  delete process.env.NODE_ENV;
-} else {
-  process.env.NODE_ENV = previousNodeEnv;
+try {
+  await assert.rejects(createQueueProvider(), /QUEUE_PROVIDER=amqp/);
+} finally {
+  if (previousNodeEnv === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = previousNodeEnv;
+  }
+  if (previousQueueProvider === undefined) {
+    delete process.env.QUEUE_PROVIDER;
+  } else {
+    process.env.QUEUE_PROVIDER = previousQueueProvider;
+  }
 }
-if (previousQueueProvider === undefined) {
-  delete process.env.QUEUE_PROVIDER;
-} else {
-  process.env.QUEUE_PROVIDER = previousQueueProvider;
+
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 1000,
+  intervalMs = 5
+) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("Timed out waiting for queue condition.");
 }

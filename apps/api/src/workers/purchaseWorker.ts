@@ -44,7 +44,16 @@ export async function processPurchaseMessage(
       status: result.status
     });
 
-    await incrementMetric("purchase.success");
+    if (result.status === "completed") {
+      await incrementMetric("purchase.success");
+    } else if (result.status === "failed") {
+      await incrementMetric("purchase.failure");
+    } else if (result.status === "refunded") {
+      await incrementMetric("purchase.refunded");
+    } else {
+      await incrementMetric("purchase.processing");
+    }
+
     await message.ack();
   } catch (error) {
     if (isRetryableVendorError(error) && message.attempts + 1 < maxAttempts) {

@@ -281,7 +281,7 @@ function readRawBody(request: FastifyRequest) {
     return rawBody;
   }
 
-  return Buffer.from(JSON.stringify(request.body ?? {}));
+  throw new Error("rawBody missing: cannot verify webhook signature");
 }
 
 function normalizeWebhookHeaders(

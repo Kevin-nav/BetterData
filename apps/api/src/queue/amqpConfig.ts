@@ -10,10 +10,12 @@ export type AmqpQueueConfig = {
 export function resolveAmqpQueueConfig(
   env: NodeJS.ProcessEnv = process.env
 ): AmqpQueueConfig {
-  const url = env.CLOUDAMQP_URL;
+  const url = env.CLOUDAMQP_URL?.trim();
 
-  if (!url) {
-    throw new Error("CLOUDAMQP_URL is required when QUEUE_PROVIDER=amqp.");
+  if (!url || !isValidUrl(url)) {
+    throw new Error(
+      "CLOUDAMQP_URL must be a non-empty valid URL when QUEUE_PROVIDER=amqp."
+    );
   }
 
   return {
@@ -25,4 +27,13 @@ export function resolveAmqpQueueConfig(
 
 export function shouldUseAmqpQueue(env: NodeJS.ProcessEnv = process.env) {
   return env.QUEUE_PROVIDER === "amqp";
+}
+
+function isValidUrl(value: string) {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
 }

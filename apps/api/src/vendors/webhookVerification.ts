@@ -41,7 +41,10 @@ export function verifyDataVendorWebhook(
   const secret = env.WEBHOOK_SECRET;
 
   if (!secret) {
-    if (env.WEBHOOK_ALLOW_INSECURE === "true") {
+    if (
+      env.NODE_ENV !== "production" &&
+      env.WEBHOOK_ALLOW_INSECURE === "true"
+    ) {
       return { ok: true };
     }
 

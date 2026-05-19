@@ -14,6 +14,7 @@ export type UpstashRedisConfig = {
   restUrl: string;
   restToken: string;
   keyPrefix: string;
+  requestTimeoutMs: number;
 };
 
 export function resolveUpstashRedisConfig(
@@ -35,7 +36,8 @@ export function resolveUpstashRedisConfig(
   return {
     restUrl: restUrl.replace(/\/+$/, ""),
     restToken,
-    keyPrefix: env.UPSTASH_REDIS_KEY_PREFIX ?? "betterdata"
+    keyPrefix: env.UPSTASH_REDIS_KEY_PREFIX ?? "betterdata",
+    requestTimeoutMs: readPositiveInt(env.UPSTASH_REDIS_REQUEST_TIMEOUT_MS, 5000)
   };
 }
 
@@ -46,29 +48,46 @@ export function createUpstashRedisClient(options: {
   const fetchImpl = options.fetch ?? fetch;
 
   async function command<T = unknown>(redisCommand: string[]) {
-    const response = await fetchImpl(options.config.restUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${options.config.restToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(redisCommand)
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      options.config.requestTimeoutMs
+    );
 
-    if (!response.ok) {
-      throw new Error(`Upstash Redis command failed with HTTP ${response.status}.`);
+    try {
+      const response = await fetchImpl(options.config.restUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${options.config.restToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(redisCommand),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upstash Redis command failed with HTTP ${response.status}.`);
+      }
+
+      const body = (await response.json()) as {
+        result?: T;
+        error?: string;
+      };
+
+      if (body.error) {
+        throw new Error(`Upstash Redis command failed: ${body.error}`);
+      }
+
+      return body.result as T;
+    } catch (error) {
+      if (controller.signal.aborted || isAbortError(error)) {
+        throw new Error("Upstash Redis command timed out.");
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const body = (await response.json()) as {
-      result?: T;
-      error?: string;
-    };
-
-    if (body.error) {
-      throw new Error(`Upstash Redis command failed: ${body.error}`);
-    }
-
-    return body.result as T;
   }
 
   function key(name: string) {
@@ -134,4 +153,14 @@ function parseNumber(value: unknown) {
   const parsed = Number(value);
 
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readPositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }

@@ -5,6 +5,7 @@ import { v } from "convex/values";
 
 export const createIntent = mutation({
   args: {
+    apiSecret: v.string(),
     reference: v.string(),
     userId: v.optional(v.id("users")),
     guestContactPhone: v.optional(v.string()),
@@ -29,6 +30,8 @@ export const createIntent = mutation({
     confirmRecipientIsCorrect: v.boolean()
   },
   handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
     if (!args.confirmRecipientIsCorrect) {
       throw new Error("Recipient number confirmation is required.");
     }
@@ -62,6 +65,7 @@ export const createIntent = mutation({
 
 export const recordVendorResult = mutation({
   args: {
+    apiSecret: v.string(),
     reference: v.string(),
     vendorOrderReference: v.string(),
     vendorRaw: v.optional(v.any()),
@@ -74,6 +78,8 @@ export const recordVendorResult = mutation({
     )
   },
   handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
     const order = await ctx.db
       .query("orders")
       .withIndex("by_reference", (q) => q.eq("reference", args.reference))
@@ -95,11 +101,14 @@ export const recordVendorResult = mutation({
 
 export const recordFailureForApi = mutation({
   args: {
+    apiSecret: v.string(),
     reference: v.string(),
     vendorRaw: v.optional(v.any()),
     status: v.literal("failed")
   },
   handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
     const order = await ctx.db
       .query("orders")
       .withIndex("by_reference", (q) => q.eq("reference", args.reference))
@@ -159,10 +168,12 @@ export const getById = query({
 
 export const getByReferenceForApi = query({
   args: {
+    apiSecret: v.string(),
     reference: v.string()
   },
   handler: async (ctx, args) => {
-    const caller = await requireAuthenticatedUser(ctx);
+    requireApiSecret(args.apiSecret);
+
     const order = await ctx.db
       .query("orders")
       .withIndex("by_reference", (q) => q.eq("reference", args.reference))
@@ -172,16 +183,13 @@ export const getByReferenceForApi = query({
       return null;
     }
 
-    if (!canReadOrder(caller, order)) {
-      throw new Error("Unauthorized.");
-    }
-
     return order;
   }
 });
 
 export const listForApi = query({
   args: {
+    apiSecret: v.string(),
     status: v.optional(
       v.union(
         v.literal("pending"),
@@ -193,6 +201,8 @@ export const listForApi = query({
     )
   },
   handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
     if (args.status !== undefined) {
       const status = args.status;
 
@@ -252,6 +262,14 @@ async function requireAuthenticatedUser(ctx: QueryCtx) {
   }
 
   return user;
+}
+
+function requireApiSecret(apiSecret: string) {
+  const expected = process.env.CONVEX_API_SECRET;
+
+  if (!expected || apiSecret !== expected) {
+    throw new Error("Unauthorized.");
+  }
 }
 
 function canReadUserOrders(caller: Doc<"users">, userId: Id<"users">) {

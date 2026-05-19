@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { createMemoryOrderStore } from "../orders/orderStore";
+import { createMemoryOrderStore, type StoredOrder } from "../orders/orderStore";
 import { createLocalQueueProvider } from "../queue/localQueue";
 import { QUEUE_NAMES, type StatusRefreshJob } from "../queue/types";
 import { DataMartHttpError } from "../vendors/datamart/transport";
@@ -48,12 +48,14 @@ const job: StatusRefreshJob = {
 
 const stop = await startStatusWorker({ queue, orderStore, vendor });
 await queue.enqueue(QUEUE_NAMES.statusRefresh, job);
-await new Promise((resolve) => setTimeout(resolve, 0));
-
-const updated = await orderStore.getByReference(order.reference);
+const updated = await waitForOrder(order.reference, (current) =>
+  current !== null &&
+  current.status === "completed" &&
+  current.vendorOrderReference === "GN-STATUS"
+);
 assert.equal(updated?.status, "completed");
 assert.equal(updated?.vendorOrderReference, "GN-STATUS");
-assert.equal(await queue.getDepth(QUEUE_NAMES.statusRefresh), 0);
+await waitFor(async () => (await queue.getDepth(QUEUE_NAMES.statusRefresh)) === 0);
 await stop();
 
 const retryQueue = createLocalQueueProvider();
@@ -76,9 +78,10 @@ const stopRetry = await startStatusWorker({
   retryDelayMs: 1
 });
 await retryQueue.enqueue(QUEUE_NAMES.statusRefresh, job);
-await new Promise((resolve) => setTimeout(resolve, 5));
-assert.equal(retryAttempts, 2);
-assert.equal(await retryQueue.getDepth(QUEUE_NAMES.statusRefresh), 0);
+await waitFor(() => retryAttempts === 2);
+await waitFor(
+  async () => (await retryQueue.getDepth(QUEUE_NAMES.statusRefresh)) === 0
+);
 await stopRetry();
 
 const deadQueue = createLocalQueueProvider();
@@ -95,7 +98,46 @@ const stopDead = await startStatusWorker({
   maxAttempts: 1
 });
 await deadQueue.enqueue(QUEUE_NAMES.statusRefresh, job);
-await new Promise((resolve) => setTimeout(resolve, 0));
-assert.equal(await deadQueue.getDepth(QUEUE_NAMES.purchaseDead), 1);
-assert.equal(await deadQueue.getDepth(QUEUE_NAMES.statusRefresh), 0);
+await waitFor(
+  async () => (await deadQueue.getDepth(QUEUE_NAMES.purchaseDead)) === 1
+);
+await waitFor(
+  async () => (await deadQueue.getDepth(QUEUE_NAMES.statusRefresh)) === 0
+);
 await stopDead();
+
+async function waitForOrder(
+  reference: string,
+  predicate: (
+    order: StoredOrder | null
+  ) => boolean,
+  timeoutMs = 1000
+): Promise<StoredOrder> {
+  let latest: StoredOrder | null = null;
+
+  await waitFor(async () => {
+    latest = await orderStore.getByReference(reference);
+    return predicate(latest);
+  }, timeoutMs);
+
+  assert.ok(latest);
+  return latest;
+}
+
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 1000,
+  intervalMs = 5
+) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("Timed out waiting for status worker condition.");
+}

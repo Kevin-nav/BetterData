@@ -41,6 +41,7 @@ export function createDataMartPurchaseDispatcher(options: {
   const queue: QueueItem[] = [];
   let latestRateLimit: DataMartRateLimit | undefined;
   let flushTimer: unknown;
+  let flushInProgress: Promise<void> | undefined;
 
   async function purchase(input: VendorPurchaseInput): Promise<VendorPurchaseResult> {
     const now = scheduler.now();
@@ -65,7 +66,7 @@ export function createDataMartPurchaseDispatcher(options: {
     });
 
     if (queue.length >= 50) {
-      void flush();
+      void runFlush();
       return promise;
     }
 
@@ -75,7 +76,7 @@ export function createDataMartPurchaseDispatcher(options: {
   }
 
   function scheduleFlush() {
-    if (flushTimer !== undefined) {
+    if (flushTimer !== undefined || flushInProgress !== undefined) {
       return;
     }
 
@@ -86,11 +87,34 @@ export function createDataMartPurchaseDispatcher(options: {
 
     flushTimer = scheduler.setTimeout(() => {
       flushTimer = undefined;
-      void flush();
+      void runFlush();
     }, delayMs);
   }
 
   async function flush() {
+    await runFlush();
+  }
+
+  async function runFlush() {
+    if (flushInProgress !== undefined) {
+      await flushInProgress;
+      return;
+    }
+
+    flushInProgress = flushBatch();
+
+    try {
+      await flushInProgress;
+    } finally {
+      flushInProgress = undefined;
+
+      if (queue.length > 0) {
+        scheduleFlush();
+      }
+    }
+  }
+
+  async function flushBatch() {
     if (flushTimer !== undefined) {
       scheduler.clearTimeout(flushTimer);
       flushTimer = undefined;
@@ -141,10 +165,6 @@ export function createDataMartPurchaseDispatcher(options: {
     } catch (error) {
       for (const item of batch) {
         item.reject(error);
-      }
-    } finally {
-      if (queue.length > 0) {
-        scheduleFlush();
       }
     }
   }

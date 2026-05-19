@@ -87,7 +87,16 @@ export function createLocalQueueProvider(): QueueProvider {
         }
       });
     } catch {
-      settled = false;
+      if (!settled) {
+        removeHead();
+        settled = true;
+        setTimeout(() => {
+          enqueueStored({
+            ...active,
+            attempts: active.attempts + 1
+          });
+        }, 0);
+      }
     } finally {
       inFlight.delete(queue);
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { NetworkCode, OrderStatus, PurchaseRequest } from "@betterdata/contracts";
+import { NETWORK_CODES, type NetworkCode, type OrderStatus, type PurchaseRequest } from "@betterdata/contracts";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
@@ -113,6 +113,12 @@ export function createMemoryOrderStore(): OrderStore {
 }
 
 function createConvexOrderStore(convexUrl: string): OrderStore {
+  const apiSecret = process.env.CONVEX_API_SECRET;
+
+  if (!apiSecret) {
+    throw new Error("CONVEX_API_SECRET is required for Convex order API access.");
+  }
+
   const client = new ConvexHttpClient(convexUrl);
   const createIntent = makeFunctionReference<"mutation">("orders:createIntent");
   const getByReferenceForApi = makeFunctionReference<"query">(
@@ -131,6 +137,7 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
       const order = buildStoredOrder(input);
 
       await client.mutation(createIntent, {
+        apiSecret,
         reference: order.reference,
         packageId: order.packageId,
         vendorId: order.vendorId,
@@ -148,13 +155,16 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
     },
 
     async getByReference(reference) {
-      const order = await client.query(getByReferenceForApi, { reference });
+      const order = await client.query(getByReferenceForApi, {
+        reference,
+        apiSecret
+      });
 
       return order ? mapConvexOrder(order as Partial<StoredOrder>) : null;
     },
 
     async listOrders() {
-      const orders = await client.query(listForApi, {});
+      const orders = await client.query(listForApi, { apiSecret });
 
       return Array.isArray(orders)
         ? orders.map((order) => mapConvexOrder(order as Partial<StoredOrder>))
@@ -164,6 +174,7 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
     async recordVendorResult(reference, result) {
       await client.mutation(recordVendorResult, {
         reference,
+        apiSecret,
         vendorOrderReference: result.vendorOrderReference,
         vendorRaw: result.vendorRaw,
         status: result.status
@@ -173,6 +184,7 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
     async recordOrderFailure(reference, failure) {
       await client.mutation(recordFailureForApi, {
         reference,
+        apiSecret,
         vendorRaw: failure.vendorRaw,
         status: failure.status
       });
@@ -203,6 +215,8 @@ function vendorPackageIdFrom(packageId: string) {
 }
 
 function mapConvexOrder(order: Partial<StoredOrder>): StoredOrder {
+  const network = requiredNetwork(order.network);
+
   return {
     reference: requiredString(order.reference, "reference"),
     packageId: requiredString(order.packageId, "packageId"),
@@ -212,7 +226,7 @@ function mapConvexOrder(order: Partial<StoredOrder>): StoredOrder {
       ? { vendorOrderReference: order.vendorOrderReference }
       : {}),
     ...(order.vendorRaw !== undefined ? { vendorRaw: order.vendorRaw } : {}),
-    network: order.network as NetworkCode,
+    network,
     recipientPhone: requiredString(order.recipientPhone, "recipientPhone"),
     amountGhs: typeof order.amountGhs === "number" ? order.amountGhs : 0,
     paymentMethod: order.paymentMethod ?? "wallet",
@@ -220,6 +234,14 @@ function mapConvexOrder(order: Partial<StoredOrder>): StoredOrder {
     status: order.status ?? "pending",
     idempotencyKey: requiredString(order.idempotencyKey, "idempotencyKey")
   };
+}
+
+function requiredNetwork(value: unknown) {
+  if (Object.values(NETWORK_CODES).includes(value as NetworkCode)) {
+    return value as NetworkCode;
+  }
+
+  throw new Error(`Order network is invalid: ${String(value)}`);
 }
 
 function createOrderReference() {
