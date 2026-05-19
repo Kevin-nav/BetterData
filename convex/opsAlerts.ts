@@ -145,6 +145,10 @@ export const markRetryRunning = mutation({
       throw new Error("Ops alert not found.");
     }
 
+    if (!alert.retryable || alert.retryStatus !== "queued") {
+      throw new Error("Ops alert retry is not queued.");
+    }
+
     await ctx.db.patch(args.alertId, {
       retryStatus: "running",
       retryCount: alert.retryCount + 1,

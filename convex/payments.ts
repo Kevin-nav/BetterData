@@ -18,6 +18,10 @@ const paymentStatus = v.union(
   v.literal("failed"),
   v.literal("abandoned")
 );
+const paymentFailureStatus = v.union(
+  v.literal("failed"),
+  v.literal("abandoned")
+);
 
 const networkCode = v.union(
   v.literal("mtn"),
@@ -68,7 +72,7 @@ export const prepareIntent = mutation({
         purpose: prepared.purpose,
         status: "pending",
         ...(prepared.userId !== undefined ? { userId: prepared.userId } : {}),
-        ...(prepared.guestContactPhone !== undefined
+        ...("guestContactPhone" in prepared && prepared.guestContactPhone !== undefined
           ? { guestContactPhone: prepared.guestContactPhone }
           : {}),
         amountGhs: prepared.amountGhs,
@@ -83,7 +87,9 @@ export const prepareIntent = mutation({
     } else if (
       existing.amountGhs !== prepared.amountGhs ||
       existing.currency !== "GHS" ||
-      existing.purpose !== prepared.purpose
+      existing.purpose !== prepared.purpose ||
+      !sameOptionalId(existing.userId, prepared.userId) ||
+      !deepEqual(existing.purposeMetadata, prepared.metadata)
     ) {
       throw new Error("Existing payment intent does not match resolved payment details.");
     }
@@ -304,7 +310,7 @@ export const markFailed = mutation({
   args: {
     serviceSecret: v.string(),
     providerReference: v.string(),
-    status: paymentStatus,
+    status: paymentFailureStatus,
     failureReason: v.optional(v.string())
   },
   handler: async (ctx, args) => {
@@ -356,13 +362,13 @@ export const markDataPurchaseFulfilled = mutation({
       throw new Error("Paid data purchase order not found.");
     }
 
-    if (order.vendorOrderReference !== undefined) {
-      return order._id;
-    }
-
     await ctx.db.patch(order._id, {
-      vendorId: args.vendorId,
-      vendorOrderReference: args.vendorOrderReference,
+      ...(order.vendorOrderReference === undefined
+        ? {
+            vendorId: args.vendorId,
+            vendorOrderReference: args.vendorOrderReference
+          }
+        : {}),
       status: args.status,
       ...(args.vendorRaw !== undefined ? { vendorRaw: sanitizeProviderPayload(args.vendorRaw) } : {})
     });
@@ -407,10 +413,11 @@ async function completeWalletTopUp(
   if (intent.userId === undefined) {
     throw new Error("Wallet top-up requires a user.");
   }
+  const userId = intent.userId;
 
   const existing = await ctx.db
     .query("walletTransactions")
-    .withIndex("by_user", (q) => q.eq("userId", intent.userId))
+    .withIndex("by_user", (q) => q.eq("userId", userId))
     .filter((q) => q.eq(q.field("reference"), intent.providerReference))
     .first();
 
@@ -418,18 +425,18 @@ async function completeWalletTopUp(
     return;
   }
 
-  const user = await ctx.db.get(intent.userId);
+  const user = await ctx.db.get(userId);
 
   if (user === null) {
     throw new Error("Wallet top-up user not found.");
   }
 
-  await ctx.db.patch(intent.userId, {
+  await ctx.db.patch(userId, {
     walletBalanceGhs: user.walletBalanceGhs + intent.amountGhs
   });
 
   await ctx.db.insert("walletTransactions", {
-    userId: intent.userId,
+    userId,
     type: "top_up",
     amountGhs: intent.amountGhs,
     reference: intent.providerReference,
@@ -444,10 +451,11 @@ async function completeAgentApplicationFee(
   if (intent.userId === undefined) {
     throw new Error("Agent application payment requires a user.");
   }
+  const userId = intent.userId;
 
   const existing = await ctx.db
     .query("agentApplications")
-    .withIndex("by_user", (q) => q.eq("userId", intent.userId))
+    .withIndex("by_user", (q) => q.eq("userId", userId))
     .first();
 
   if (existing !== null) {
@@ -459,7 +467,7 @@ async function completeAgentApplicationFee(
   }
 
   await ctx.db.insert("agentApplications", {
-    userId: intent.userId,
+    userId,
     paymentReference: intent.providerReference,
     status: "pending"
   });
@@ -496,6 +504,7 @@ async function completeDataPurchase(
   }
 
   await ctx.db.insert("orders", {
+    reference: intent.providerReference,
     ...(intent.userId !== undefined ? { userId: intent.userId } : {}),
     ...(intent.guestContactPhone !== undefined
       ? { guestContactPhone: intent.guestContactPhone }
@@ -509,6 +518,7 @@ async function completeDataPurchase(
     recipientPhone,
     amountGhs: intent.amountGhs,
     paymentMethod: "paystack_momo",
+    paymentStatus: "verified",
     paystackReference: intent.providerReference,
     status: "pending",
     idempotencyKey: intent.providerReference,
@@ -706,6 +716,49 @@ async function requirePositiveConfig(ctx: MutationCtx, key: string) {
 
 function roundGhs(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function sameOptionalId(left: string | undefined, right: string | undefined) {
+  return left === right;
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((value, index) => deepEqual(value, right[index]));
+  }
+
+  if (
+    typeof left === "object" &&
+    left !== null &&
+    typeof right === "object" &&
+    right !== null
+  ) {
+    const leftEntries = Object.entries(left as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    const rightEntries = Object.entries(right as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+
+    if (leftEntries.length !== rightEntries.length) {
+      return false;
+    }
+
+    return leftEntries.every(([key, value], index) => {
+      const rightEntry = rightEntries[index];
+      return rightEntry !== undefined && rightEntry[0] === key && deepEqual(value, rightEntry[1]);
+    });
+  }
+
+  return false;
 }
 
 function ghsToPesewas(value: number) {

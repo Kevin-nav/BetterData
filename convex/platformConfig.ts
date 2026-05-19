@@ -57,9 +57,7 @@ export const setNumberConfig = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    if (!Number.isFinite(args.value) || args.value < 0) {
-      throw new Error("Config value must be a non-negative number.");
-    }
+    await validatePaymentConfigValue(ctx, args.key, args.value);
 
     const existing = await ctx.db
       .query("platformConfig")
@@ -90,9 +88,7 @@ export const setNumberConfigByService = mutation({
   handler: async (ctx, args) => {
     requireServiceSecret(args.serviceSecret);
 
-    if (!Number.isFinite(args.value) || args.value < 0) {
-      throw new Error("Config value must be a non-negative number.");
-    }
+    await validatePaymentConfigValue(ctx, args.key, args.value);
 
     const existing = await ctx.db
       .query("platformConfig")
@@ -127,6 +123,50 @@ export async function readNumberConfig(ctx: QueryCtx | MutationCtx, key: string)
   }
 
   return config.value;
+}
+
+async function validatePaymentConfigValue(
+  ctx: QueryCtx | MutationCtx,
+  key: (typeof PAYMENT_CONFIG_KEYS)[number],
+  value: number
+) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Config value must be a non-negative number.");
+  }
+
+  switch (key) {
+    case "agentDiscountPercentage":
+      if (value > 100) {
+        throw new Error("Agent discount percentage must be between 0 and 100.");
+      }
+      return;
+    case "paymentIntentExpirySeconds":
+      if (value <= 0) {
+        throw new Error("Payment intent expiry must be greater than zero seconds.");
+      }
+      return;
+    case "agentOnboardingFeeGhs":
+      if (value <= 0) {
+        throw new Error("Agent onboarding fee must be greater than zero.");
+      }
+      return;
+    case "minimumWalletTopUpGhs": {
+      const maximumWalletTopUpGhs = await readNumberConfig(ctx, "maximumWalletTopUpGhs");
+      if (maximumWalletTopUpGhs !== null && value > maximumWalletTopUpGhs) {
+        throw new Error("Minimum wallet top-up cannot exceed maximum wallet top-up.");
+      }
+      return;
+    }
+    case "maximumWalletTopUpGhs": {
+      const minimumWalletTopUpGhs = await readNumberConfig(ctx, "minimumWalletTopUpGhs");
+      if (minimumWalletTopUpGhs !== null && value < minimumWalletTopUpGhs) {
+        throw new Error("Maximum wallet top-up cannot be less than minimum wallet top-up.");
+      }
+      return;
+    }
+    case "firstPurchaseDiscountGhs":
+      return;
+  }
 }
 
 async function requireAdmin(ctx: MutationCtx) {
