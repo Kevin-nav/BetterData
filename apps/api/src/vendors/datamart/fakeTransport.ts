@@ -122,5 +122,9 @@ function packageCapacity(packageId: string) {
 }
 
 function packagePrice(network: string, capacity: number) {
-  return packages[network]?.find((item) => item.capacity === capacity)?.price ?? 4;
+  const price = packages[network]?.find(
+    (item) => Number(item.capacity) === capacity
+  )?.price;
+
+  return price === undefined ? 4 : Number(price);
 }

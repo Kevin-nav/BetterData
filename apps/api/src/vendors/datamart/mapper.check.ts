@@ -37,6 +37,19 @@ assert.equal(mappedPackage?.network, "mtn");
 assert.equal(mappedPackage?.name, "MTN 5GB");
 assert.equal(mappedPackage?.sizeMb, 5120);
 assert.equal(mappedPackage?.costGhs, 23);
+
+const mappedStringPackage = mapDataMartPackage({
+  capacity: "1",
+  mb: "1000",
+  network: "YELLO",
+  price: "4"
+});
+
+assert.equal(mappedStringPackage?.vendorPackageId, "yello-1gb");
+assert.equal(mappedStringPackage?.network, "mtn");
+assert.equal(mappedStringPackage?.name, "MTN 1GB");
+assert.equal(mappedStringPackage?.sizeMb, 1000);
+assert.equal(mappedStringPackage?.costGhs, 4);
 assert.equal(
   mapDataMartPackage({
     capacity: 5,
@@ -50,6 +63,24 @@ assert.equal(
     capacity: 5,
     mb: 5120,
     network: "YELLO"
+  }),
+  undefined
+);
+assert.equal(
+  mapDataMartPackage({
+    capacity: 5,
+    mb: "unknown",
+    network: "YELLO",
+    price: "23"
+  }),
+  undefined
+);
+assert.equal(
+  mapDataMartPackage({
+    capacity: 5,
+    mb: "5120",
+    network: "YELLO",
+    price: "unknown"
   }),
   undefined
 );

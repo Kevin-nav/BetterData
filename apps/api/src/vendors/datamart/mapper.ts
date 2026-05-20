@@ -40,29 +40,29 @@ export function mapDataMartStatus(status: string): VendorOrderStatus {
 export type DataMartPackagePayload = {
   id?: string;
   package_id?: string;
-  capacity?: number;
-  mb?: number;
+  capacity?: number | string;
+  mb?: number | string;
   network?: string;
   name?: string;
-  size_mb?: number;
-  cost?: number;
-  price?: number;
+  size_mb?: number | string;
+  cost?: number | string;
+  price?: number | string;
   available?: boolean;
 };
 
 export function mapDataMartPackage(
   raw: DataMartPackagePayload
 ): VendorPackage | undefined {
+  const capacityGb = readFiniteNumber(raw.capacity);
+  const sizeMb = readFiniteNumber(raw.size_mb ?? raw.mb);
+  const costGhs = readFiniteNumber(raw.cost ?? raw.price);
   const vendorPackageId =
     raw.id ??
     raw.package_id ??
-    (raw.network && raw.capacity !== undefined
-      ? `${raw.network.toLowerCase()}-${raw.capacity}gb`
+    (raw.network && capacityGb !== undefined
+      ? `${raw.network.toLowerCase()}-${capacityGb}gb`
       : undefined);
   const network = raw.network ? fromDataMartProviderCode(raw.network) : undefined;
-
-  const sizeMb = raw.size_mb ?? raw.mb;
-  const costGhs = raw.cost ?? raw.price;
 
   if (!vendorPackageId || !network || sizeMb === undefined || costGhs === undefined) {
     return undefined;
@@ -71,9 +71,9 @@ export function mapDataMartPackage(
   return {
     vendorPackageId,
     network,
-    name: raw.name ?? `${networkLabel(network)} ${raw.capacity ?? sizeMb / 1024}GB`,
+    name: raw.name ?? `${networkLabel(network)} ${capacityGb ?? sizeMb / 1024}GB`,
     sizeMb,
-    costGhs: raw.cost ?? raw.price ?? 0,
+    costGhs,
     isAvailable: raw.available ?? true,
     raw
   };
@@ -218,4 +218,17 @@ function networkLabel(network: NetworkCode) {
     case "airteltigo":
       return "AirtelTigo";
   }
+}
+
+function readFiniteNumber(value: number | string | undefined): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
 }
