@@ -318,6 +318,10 @@ Use these as the operating rules for future deployment work:
   production keys fail before workload rollout begins.
 - Rollback: only run after workload rollout starts, and roll back to captured
   previous image refs.
+- Smoke tests: gate deployment on the internal Kubernetes service using
+  `kubectl port-forward`. Treat public `API_BASE_URL` health as an edge/DNS
+  warning so a transient Cloudflare or DNS issue does not roll back healthy
+  application pods.
 - Capacity: the current single-node VPS cannot provide true zero-downtime
   rolling updates or weighted traffic shifting. Keep single-replica replacement
   until there is enough capacity for at least two web pods and two API pods.

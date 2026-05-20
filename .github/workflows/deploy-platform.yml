@@ -375,8 +375,28 @@ jobs:
           set -e
           sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-web betterdata-api betterdata-worker
           sudo -n kubectl -n "$NAMESPACE" get secret betterdata-api-env betterdata-web-env
-          curl -fsS "$API_BASE_URL/health"
-          curl -fsS "$API_BASE_URL/data-packages" >/dev/null
+          local_port="$((18000 + RANDOM % 1000))"
+          sudo -n kubectl -n "$NAMESPACE" port-forward service/betterdata-api "$local_port:4000" >/tmp/betterdata-api-port-forward.log 2>&1 &
+          port_forward_pid="$!"
+          trap 'kill "$port_forward_pid" >/dev/null 2>&1 || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$local_port/health"; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Internal API health smoke failed." >&2
+              cat /tmp/betterdata-api-port-forward.log >&2 || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+          curl -fsS "http://127.0.0.1:$local_port/data-packages" >/dev/null
+
+          if [ -n "$API_BASE_URL" ] && ! curl -fsS --max-time 15 "$API_BASE_URL/health" >/dev/null; then
+            echo "::warning::External API health smoke failed for API_BASE_URL. Internal Kubernetes service smoke passed, so rollout will not be rolled back."
+          fi
 
       - name: Roll back on failure
         if: failure()
