@@ -49,7 +49,7 @@ Add a multi-stage Dockerfile that prunes `@betterdata/api`, installs with pnpm, 
 The same image must also support the worker by overriding the command in Kubernetes to:
 
 ```bash
-node apps/api/dist/apps/api/src/worker.js
+apps/api/node_modules/.bin/tsx apps/api/src/worker.ts
 ```
 
 **Step 3: Verify image build syntax**
@@ -137,7 +137,7 @@ Expose the API deployment on port `4000` as `betterdata-api`.
 
 **Step 3: Add worker deployment**
 
-Use the API image with command `node apps/api/dist/apps/api/src/worker.js`, `replicas: 0`, and `betterdata-api-env`.
+Use the API image with command `apps/api/node_modules/.bin/tsx apps/api/src/worker.ts`, `replicas: 0`, and `betterdata-api-env`.
 
 **Step 4: Harden web deployment**
 

@@ -26,8 +26,8 @@ spec:
           image: ghcr.io/kevin-nav/betterdata-api:master
           imagePullPolicy: Always
           command:
-            - node
-            - apps/api/dist/apps/api/src/worker.js
+            - apps/api/node_modules/.bin/tsx
+            - apps/api/src/worker.ts
           env:
             - name: NODE_ENV
               value: production

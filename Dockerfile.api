@@ -36,4 +36,4 @@ USER nodejs
 
 EXPOSE 4000
 
-CMD ["node", "apps/api/dist/apps/api/src/index.js"]
+CMD ["apps/api/node_modules/.bin/tsx", "apps/api/src/index.ts"]

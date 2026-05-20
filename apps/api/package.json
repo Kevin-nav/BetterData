@@ -7,8 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "dev:worker": "tsx watch src/worker.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/apps/api/src/index.js",
-    "start:worker": "node dist/apps/api/src/worker.js",
+    "start": "tsx src/index.ts",
+    "start:worker": "tsx src/worker.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx src/config/origins.check.ts && tsx src/config/rateLimits.check.ts && tsx src/auth/adminAuth.check.ts && tsx src/modules/orders/orderValidation.check.ts && tsx src/modules/packages/packages.routes.check.ts && tsx src/modules/payments/payments.routes.check.ts && tsx src/orders/orderStore.check.ts && tsx src/payments/paymentSafety.check.ts && tsx src/queue/amqpConfig.check.ts && tsx src/queue/queue.check.ts && tsx src/redis/upstash.check.ts && tsx src/observability/observability.check.ts && tsx src/workers/purchaseWorker.check.ts && tsx src/workers/statusWorker.check.ts && tsx src/vendors/datamart/config.check.ts && tsx src/vendors/datamart/cache.check.ts && tsx src/vendors/datamart/transport.check.ts && tsx src/vendors/datamart/mapper.check.ts && tsx src/vendors/datamart/purchaseDispatcher.check.ts && tsx src/vendors/errors.check.ts && tsx src/vendors/webhookVerification.check.ts && tsx src/vendors/simulation/simulation.check.ts && tsx src/modules/admin/admin.check.ts && tsx src/integrations/paystack/client.check.ts"
