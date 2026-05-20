@@ -9,6 +9,12 @@ import type { Order } from "@betterdata/contracts";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 const apiClient = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "32px", height: "32px", stroke: "var(--text-secondary)" }}>
+    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
 export default function OrderHistoryPage() {
   const { getAuthHeaders } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -126,7 +132,9 @@ export default function OrderHistoryPage() {
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="empty-state-card">
-            <span className="empty-state-icon">🔍</span>
+            <span className="empty-state-icon" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <SearchIcon />
+            </span>
             <div className="empty-state-text">
               No transactions match your search filter criteria.
             </div>

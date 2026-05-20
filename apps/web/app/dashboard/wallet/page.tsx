@@ -6,6 +6,14 @@ import { createBetterDataApiClient, type WalletTransaction } from "@betterdata/a
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
+const CoinsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "32px", height: "32px", stroke: "var(--text-secondary)" }}>
+    <circle cx="8" cy="8" r="6" />
+    <circle cx="18" cy="18" r="6" />
+    <path d="M12 18a6 6 0 0 0-6-6" />
+  </svg>
+);
+
 export default function WalletPage() {
   const { getAuthHeaders, refreshProfile } = useAuth();
   const [balance, setBalance] = useState(0);
@@ -168,7 +176,9 @@ export default function WalletPage() {
             </div>
           ) : transactions.length === 0 ? (
             <div className="empty-state-card">
-              <span className="empty-state-icon">💸</span>
+              <span className="empty-state-icon" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <CoinsIcon />
+              </span>
               <div className="empty-state-text">
                 No wallet transactions found. Fill your account balance to buy data.
               </div>

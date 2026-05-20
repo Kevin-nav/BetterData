@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+const PhoneIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "32px", height: "32px", stroke: "var(--text-secondary)" }}>
+    <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+    <line x1="12" y1="18" x2="12.01" y2="18" />
+  </svg>
+);
+
 type SavedNumber = {
   id: string;
   label: string;
@@ -167,7 +174,9 @@ export default function SavedNumbersPage() {
           </div>
         ) : numbers.length === 0 ? (
           <div className="empty-state-card">
-            <span className="empty-state-icon">📱</span>
+            <span className="empty-state-icon" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <PhoneIcon />
+            </span>
             <div className="empty-state-text">
               You haven&apos;t saved any numbers yet. Save contacts to purchase data even faster!
             </div>
@@ -198,7 +207,7 @@ export default function SavedNumbersPage() {
                   </div>
                   <div style={{ display: "flex", gap: "8px", justifySelf: "end" }}>
                     <Link
-                      href={`/buy?phone=${encodeURIComponent(num.phone)}`}
+                      href={`/dashboard/buy?phone=${encodeURIComponent(num.phone)}`}
                       className="btn btn-secondary"
                       style={{ padding: "6px 12px", fontSize: "0.8rem" }}
                     >

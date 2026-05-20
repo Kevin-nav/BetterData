@@ -627,6 +627,7 @@ img{display:block;max-width:100%}
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 .pkg-badge--popular {
   background: var(--accent-gold);

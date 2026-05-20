@@ -125,7 +125,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const navigationItems = [
     { label: "Dashboard", href: "/dashboard", icon: HomeIcon },
-    { label: "Buy Data", href: "/buy", icon: BuyIcon },
+    { label: "Buy Data", href: "/dashboard/buy", icon: BuyIcon },
     { label: "Order History", href: "/dashboard/history", icon: HistoryIcon },
     { label: "Saved Numbers", href: "/dashboard/saved-numbers", icon: SavedIcon },
     { label: "My Wallet", href: "/dashboard/wallet", icon: WalletIcon },

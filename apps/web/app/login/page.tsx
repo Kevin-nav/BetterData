@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FirebaseError } from "firebase/app";
@@ -74,8 +74,13 @@ export default function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
   if (!authLoading && isAuthenticated) {
-    router.replace("/dashboard");
     return null;
   }
 
@@ -99,7 +104,7 @@ export default function LoginPage() {
     try {
       setSubmitting(true);
       await signInWithEmail(email.trim(), password);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof FirebaseError) {
         setError(getFirebaseErrorMessage(err));
@@ -117,7 +122,7 @@ export default function LoginPage() {
     try {
       setGoogleLoading(true);
       await signInWithGoogle();
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof FirebaseError) {
         setError(getFirebaseErrorMessage(err));
