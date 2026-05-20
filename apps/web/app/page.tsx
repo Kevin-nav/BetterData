@@ -900,9 +900,11 @@ export default function HomePage() {
   );
 }
 
+const DATA_MB_PER_GB = 1000;
+
 function formatPackageSize(sizeMb: number) {
-  if (sizeMb >= 1024) {
-    return `${Number(sizeMb / 1024).toLocaleString("en-GH", {
+  if (sizeMb >= DATA_MB_PER_GB) {
+    return `${Number(sizeMb / DATA_MB_PER_GB).toLocaleString("en-GH", {
       maximumFractionDigits: 1,
     })}GB`;
   }

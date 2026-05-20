@@ -17,8 +17,9 @@ export function toDataMartProviderCode(network: NetworkCode): string {
 }
 
 export function fromDataMartProviderCode(code: string): NetworkCode | undefined {
+  const normalized = code.trim().toUpperCase();
   const entry = Object.entries(DATAMART_NETWORK_CODES).find(
-    ([, value]) => value === code
+    ([, value]) => value.toUpperCase() === normalized
   );
   return entry?.[0] as NetworkCode | undefined;
 }
@@ -82,8 +83,13 @@ export function mapDataMartPackage(
 export function mapDataMartPackageGroups(
   groups: Record<string, DataMartPackagePayload[]>
 ): VendorPackage[] {
-  return Object.values(groups)
-    .flat()
+  return Object.entries(groups)
+    .flatMap(([network, items]) =>
+      items.map((item) => ({
+        ...item,
+        network: item.network?.trim() ? item.network : network
+      }))
+    )
     .map(mapDataMartPackage)
     .filter((item): item is VendorPackage => Boolean(item));
 }
@@ -226,7 +232,12 @@ function readFiniteNumber(value: number | string | undefined): number | undefine
   }
 
   if (typeof value === "string") {
-    const parsed = Number(value.trim());
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : undefined;
   }
 

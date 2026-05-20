@@ -4,6 +4,7 @@ import {
   fromDataMartProviderCode,
   mapDataMartBulkPurchaseResponse,
   mapDataMartPackage,
+  mapDataMartPackageGroups,
   mapDataMartPurchaseResponse,
   mapDataMartStatus,
   toDataMartProviderCode
@@ -14,8 +15,10 @@ assert.equal(toDataMartProviderCode("telecel"), "TELECEL");
 assert.equal(toDataMartProviderCode("airteltigo"), "AT_PREMIUM");
 
 assert.equal(fromDataMartProviderCode("YELLO"), "mtn");
+assert.equal(fromDataMartProviderCode(" yello "), "mtn");
 assert.equal(fromDataMartProviderCode("TELECEL"), "telecel");
 assert.equal(fromDataMartProviderCode("AT_PREMIUM"), "airteltigo");
+assert.equal(fromDataMartProviderCode("at_premium"), "airteltigo");
 
 assert.equal(mapDataMartStatus("success"), "completed");
 assert.equal(mapDataMartStatus("completed"), "completed");
@@ -68,6 +71,24 @@ assert.equal(
 );
 assert.equal(
   mapDataMartPackage({
+    capacity: " ",
+    mb: "5120",
+    network: "YELLO",
+    price: "23"
+  }),
+  undefined
+);
+assert.equal(
+  mapDataMartPackage({
+    capacity: "5",
+    mb: "",
+    network: "YELLO",
+    price: "23"
+  }),
+  undefined
+);
+assert.equal(
+  mapDataMartPackage({
     capacity: 5,
     mb: "unknown",
     network: "YELLO",
@@ -84,6 +105,15 @@ assert.equal(
   }),
   undefined
 );
+
+const mappedGroupedPackages = mapDataMartPackageGroups({
+  YELLO: [{ capacity: "1", mb: "1000", price: "4" }],
+  unknown: [{ capacity: "1", mb: "1000", price: "4" }]
+});
+
+assert.equal(mappedGroupedPackages.length, 1);
+assert.equal(mappedGroupedPackages[0]?.network, "mtn");
+assert.equal(mappedGroupedPackages[0]?.sizeMb, 1000);
 
 const purchase = mapDataMartPurchaseResponse({
   data: {

@@ -43,7 +43,7 @@ export async function registerPackageRoutes(server: FastifyInstance) {
             customerPriceGhs: item.costGhs,
             isAvailable: item.isAvailable
           })
-        )
+        ).sort(compareDataPackages)
       };
     } catch (error) {
       request.log.error({ error, vendorId: vendor.id }, "Vendor package listing failed");
@@ -74,6 +74,16 @@ export async function registerPackageRoutes(server: FastifyInstance) {
   });
 }
 
+function compareDataPackages(a: DataPackage, b: DataPackage) {
+  const networkOrder: Record<DataPackage["network"], number> = {
+    mtn: 0,
+    telecel: 1,
+    airteltigo: 2
+  };
+
+  return networkOrder[a.network] - networkOrder[b.network] || a.sizeMb - b.sizeMb;
+}
+
 export function mapConvexFallbackPackages(
   packages: ConvexPackageRecord[]
 ): DataPackage[] {
@@ -87,7 +97,7 @@ export function mapConvexFallbackPackages(
     costGhs: item.providerCostGhs,
     customerPriceGhs: item.customerPriceGhs,
     isAvailable: item.isAvailable
-  }));
+  })).sort(compareDataPackages);
 }
 
 async function listConvexPackageFallback() {

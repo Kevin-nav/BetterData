@@ -40,21 +40,11 @@ const NETWORK_NAMES: Record<NetworkCode, string> = {
 };
 
 /* ── Package Helpers ── */
-const VALID_SIZES_GB = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50];
-
-function suggestSizes(input: number) {
-  let lower: number | null = null;
-  let higher: number | null = null;
-  for (const size of VALID_SIZES_GB) {
-    if (size < input) lower = size;
-    if (size > input && higher === null) higher = size;
-  }
-  return { lower, higher };
-}
+const DATA_MB_PER_GB = 1000;
 
 function formatPackageSize(sizeMb: number) {
-  if (sizeMb >= 1024) {
-    return `${Number(sizeMb / 1024).toLocaleString("en-GH", {
+  if (sizeMb >= DATA_MB_PER_GB) {
+    return `${Number(sizeMb / DATA_MB_PER_GB).toLocaleString("en-GH", {
       maximumFractionDigits: 1,
     })}GB`;
   }
@@ -62,7 +52,9 @@ function formatPackageSize(sizeMb: number) {
 }
 
 function formatSizeGb(sizeMb: number) {
-  return sizeMb >= 1024 ? `${(sizeMb / 1024).toFixed(0)}GB` : `${sizeMb / 1024}GB`;
+  return sizeMb >= DATA_MB_PER_GB
+    ? `${(sizeMb / DATA_MB_PER_GB).toFixed(0)}GB`
+    : `${sizeMb / DATA_MB_PER_GB}GB`;
 }
 
 function readApiError(error: unknown, fallback: string) {
@@ -115,7 +107,9 @@ export default function BuyPage() {
   const bulkInputRef = useRef<HTMLInputElement>(null);
 
   /* Derived */
-  const networkPkgs = packages.filter((p) => p.network === network && p.isAvailable);
+  const networkPkgs = packages
+    .filter((p) => p.network === network && p.isAvailable)
+    .sort((a, b) => a.sizeMb - b.sizeMb);
   const selectedPkg = networkPkgs.find((p) => p.id === selectedPkgId) ?? null;
   const detectedNet = phone.replace(/\D/g, "").length >= 3 ? detectNetwork(phone) : null;
   const mtnCount = bulkPills.filter((p) => p.network === "mtn").length;
@@ -124,15 +118,11 @@ export default function BuyPage() {
   const invalidCount = bulkPills.filter((p) => !p.isValid).length;
   const totalCostGhs = bulkPills.reduce((total, p) => total + (p.isValid ? p.priceGhs : 0), 0);
 
-  // Bulk helper to find package ID by network & size in GB (flexible matching)
+  // Bulk helper to find package ID by network & size in GB.
   const findPackageByGb = (net: NetworkCode, gb: number): DataPackage | null => {
     return packages.find(p => {
       if (p.network !== net || !p.isAvailable) return false;
-      const gb1024 = p.sizeMb / 1024;
-      const gb1000 = p.sizeMb / 1000;
-      const diff1024 = Math.abs(gb1024 - gb);
-      const diff1000 = Math.abs(gb1000 - gb);
-      return diff1024 < 0.05 || diff1000 < 0.05;
+      return Math.abs(p.sizeMb / DATA_MB_PER_GB - gb) < 0.05;
     }) ?? null;
   };
 
@@ -142,12 +132,7 @@ export default function BuyPage() {
     const sizes = Array.from(
       new Set(
         netPkgs.map(p => {
-          const gb1024 = p.sizeMb / 1024;
-          const rem1024 = gb1024 % 0.5;
-          if (rem1024 < 0.01 || rem1024 > 0.49) {
-            return Math.round(gb1024 * 2) / 2;
-          }
-          return Math.round(p.sizeMb / 1000);
+          return Math.round((p.sizeMb / DATA_MB_PER_GB) * 2) / 2;
         })
       )
     ).sort((a, b) => a - b);
@@ -431,7 +416,7 @@ export default function BuyPage() {
           setPendingPillId(lastPill.id);
           setTempPhone(lastPill.phone);
           setTempNetwork(lastPill.network);
-          setBulkInputVal(lastPill.isValid ? (lastPill.sizeMb / 1024).toString() : "");
+          setBulkInputVal(lastPill.isValid ? (lastPill.sizeMb / DATA_MB_PER_GB).toString() : "");
           // Re-insert it as a pending pill so it can be updated
           setBulkPills((prev) => [
             ...prev,
@@ -496,7 +481,7 @@ export default function BuyPage() {
         id: Math.random().toString(36).substring(2, 9),
         phone: phonePart || "Empty",
         network: detected || "mtn",
-        sizeMb: isNaN(gbVal) ? 0 : gbVal * 1024,
+        sizeMb: isNaN(gbVal) ? 0 : gbVal * DATA_MB_PER_GB,
         priceGhs: 0,
         packageId: "",
         isValid: false,
@@ -572,7 +557,7 @@ export default function BuyPage() {
           id: Math.random().toString(36).substring(2, 9),
           phone: phonePart || "Empty",
           network: detected || "mtn",
-          sizeMb: isNaN(gbVal) ? 0 : gbVal * 1024,
+          sizeMb: isNaN(gbVal) ? 0 : gbVal * DATA_MB_PER_GB,
           priceGhs: 0,
           packageId: "",
           isValid: false,
@@ -736,10 +721,10 @@ export default function BuyPage() {
                   <div className="catalog-empty">No packages available for this network.</div>
                 ) : (
                   networkPkgs.map((pkg) => {
-                    const sizeGb = pkg.sizeMb / 1024;
+                    const sizeGb = pkg.sizeMb / DATA_MB_PER_GB;
                     const perGb = pkg.customerPriceGhs / sizeGb;
-                    const isPopular = pkg.sizeMb === 5120 || pkg.sizeMb === 10240;
-                    const isBestValue = pkg.sizeMb === 10240 || pkg.sizeMb === 15360;
+                    const isPopular = pkg.sizeMb === 5000 || pkg.sizeMb === 10000;
+                    const isBestValue = pkg.sizeMb === 10000 || pkg.sizeMb === 15000;
                     return (
                       <div
                         key={pkg.id}
@@ -902,19 +887,21 @@ export default function BuyPage() {
                         Quick-Select Data Size
                       </div>
                       <div className="gb-chips">
-                        {[1, 2, 3, 5, 10, 15, 20, 50].map((gb) => {
-                          const pkg = findPackageByGb(activeNet, gb);
-                          if (!pkg) return null;
-                          return (
-                            <button
-                              key={gb}
-                              className="gb-chip"
-                              onClick={() => handleGbSubmit(gb)}
-                            >
-                              {gb}GB (GHS {pkg.customerPriceGhs.toFixed(2)})
-                            </button>
-                          );
-                        })}
+                        {packages
+                          .filter((pkg) => pkg.network === activeNet && pkg.isAvailable)
+                          .sort((a, b) => a.sizeMb - b.sizeMb)
+                          .map((pkg) => {
+                            const gb = pkg.sizeMb / DATA_MB_PER_GB;
+                            return (
+                              <button
+                                key={pkg.id}
+                                className="gb-chip"
+                                onClick={() => handleGbSubmit(gb)}
+                              >
+                                {formatPackageSize(pkg.sizeMb)} (GHS {pkg.customerPriceGhs.toFixed(2)})
+                              </button>
+                            );
+                          })}
                       </div>
                     </div>
                   );
