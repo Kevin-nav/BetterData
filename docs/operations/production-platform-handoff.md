@@ -257,6 +257,18 @@ Pushes to `master` should build and publish web/API images. The platform deploy
 workflow then runs on the self-hosted k3s runner and deploys the matching image
 tags.
 
+Build workflows are path-aware:
+
+- API builds run for `apps/api`, `packages`, `convex`, API Dockerfile, lockfile,
+  and shared repo build config changes.
+- Web builds run for `apps/web`, `packages`, `convex`, web Dockerfile, lockfile,
+  and shared repo build config changes.
+- Docs-only and unrelated deployment-doc changes do not build images.
+- If only one service changes, deploy uses that service's SHA image and keeps
+  the other service on the current `master` image.
+- If shared code changes, both service images are built and the deploy workflow
+  waits for both SHA tags before rollout.
+
 The first production strategy uses Kubernetes rolling updates rather than a
 separate canary controller:
 

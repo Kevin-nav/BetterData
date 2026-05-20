@@ -4,9 +4,31 @@ on:
   push:
     branches:
       - master
+    paths:
+      - ".github/workflows/build-web.yml"
+      - "Dockerfile.web"
+      - "apps/web/**"
+      - "convex/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - "turbo.json"
   pull_request:
     branches:
       - master
+    paths:
+      - ".github/workflows/build-web.yml"
+      - "Dockerfile.web"
+      - "apps/web/**"
+      - "convex/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - "turbo.json"
   workflow_dispatch:
 
 permissions:
