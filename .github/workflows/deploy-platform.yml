@@ -200,6 +200,14 @@ jobs:
             echo "Ignored invalid Infisical env key names: $invalid_keys"
           fi
 
+      - name: Capture current deployment images
+        id: current-images
+        run: |
+          current_api="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}' 2>/dev/null || true)"
+          current_web="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-web -o jsonpath='{.spec.template.spec.containers[?(@.name=="web")].image}' 2>/dev/null || true)"
+          echo "api_image=${current_api:-$API_IMAGE:master}" >> "$GITHUB_OUTPUT"
+          echo "web_image=${current_web:-$WEB_IMAGE:master}" >> "$GITHUB_OUTPUT"
+
       - name: Apply base manifests
         run: sudo -n kubectl apply -k deploy/k8s/base
 
@@ -247,9 +255,17 @@ jobs:
         id: deploy-images
         run: |
           echo "DEPLOY_STARTED=true" >> "$GITHUB_ENV"
-          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$WEB_IMAGE:${{ steps.deploy-inputs.outputs.web_tag }}"
-          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-api api="$API_IMAGE:${{ steps.deploy-inputs.outputs.api_tag }}"
-          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-worker worker="$API_IMAGE:${{ steps.deploy-inputs.outputs.api_tag }}"
+          api_ref="$API_IMAGE:${{ steps.deploy-inputs.outputs.api_tag }}"
+          web_ref="$WEB_IMAGE:${{ steps.deploy-inputs.outputs.web_tag }}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "${{ steps.deploy-inputs.outputs.wait_api }}" != "true" ]; then
+            api_ref="${{ steps.current-images.outputs.api_image }}"
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "${{ steps.deploy-inputs.outputs.wait_web }}" != "true" ]; then
+            web_ref="${{ steps.current-images.outputs.web_image }}"
+          fi
+          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$web_ref"
+          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-api api="$api_ref"
+          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-worker worker="$api_ref"
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=300s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=300s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-cloudflared --timeout=180s
