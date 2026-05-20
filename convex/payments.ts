@@ -125,6 +125,7 @@ export const createPendingIntent = mutation({
   },
   handler: async (ctx, args) => {
     requireServiceSecret(args.serviceSecret);
+    const { serviceSecret: _serviceSecret, ...intent } = args;
     const now = Date.now();
     const existing = await ctx.db
       .query("paymentIntents")
@@ -138,7 +139,7 @@ export const createPendingIntent = mutation({
     }
 
     return await ctx.db.insert("paymentIntents", {
-      ...args,
+      ...intent,
       status: "pending",
       baseAmountPesewas: args.baseAmountPesewas ?? ghsToPesewas(args.amountGhs),
       providerAmountPesewas:

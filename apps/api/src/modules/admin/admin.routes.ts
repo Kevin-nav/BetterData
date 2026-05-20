@@ -1,11 +1,11 @@
 import { opsAlertFunctions, platformConfigFunctions } from "@betterdata/app-api";
 import { getRequiredEnv } from "@betterdata/config";
-import { ConvexHttpClient } from "convex/browser";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
+import { createConvexHttpClient } from "../../convexClient";
 import { snapshotMetrics } from "../../observability/metrics";
 import { createOrderStore } from "../../orders/orderStore";
 import { createQueueProvider, QUEUE_NAMES } from "../../queue";
@@ -79,7 +79,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
   });
 
   server.get("/admin/payment-ops", adminRouteOptions, async () => {
-    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const convex = createConvexHttpClient();
     const [config, alerts] = await Promise.all([
       convex.query(platformConfigFunctions.listPaymentConfig, {}),
       convex.query(opsAlertFunctions.listOpen, {
@@ -111,7 +111,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       return reply.code(400).send({ message: "Invalid payment config." });
     }
 
-    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const convex = createConvexHttpClient();
     await convex.mutation(platformConfigFunctions.setNumberConfigByService, {
       serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
       key: body.key,
@@ -125,7 +125,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
     "/admin/ops-alerts/:alertId/acknowledge",
     adminRouteOptions,
     async (request) => {
-      const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+      const convex = createConvexHttpClient();
       await convex.mutation(opsAlertFunctions.acknowledge, {
         serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
         alertId: request.params.alertId as Id<"opsAlerts">
@@ -139,7 +139,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
     "/admin/ops-alerts/:alertId/resolve",
     adminRouteOptions,
     async (request) => {
-      const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+      const convex = createConvexHttpClient();
       await convex.mutation(opsAlertFunctions.resolve, {
         serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
         alertId: request.params.alertId as Id<"opsAlerts">

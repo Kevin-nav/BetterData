@@ -1,13 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { requireRequestUser } from "../auth/requestUser";
-import { ConvexHttpClient } from "convex/browser";
-import { getRequiredEnv } from "@betterdata/config";
 import { walletFunctions } from "@betterdata/app-api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { createConvexHttpClient } from "../../convexClient";
 
 export async function registerWalletRoutes(server: FastifyInstance) {
   server.get("/wallet", async (request, reply) => {
-    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const convex = createConvexHttpClient();
 
     let user;
     try {

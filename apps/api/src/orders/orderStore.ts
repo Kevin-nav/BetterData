@@ -4,6 +4,7 @@ import { NETWORK_CODES, type NetworkCode, type OrderStatus, type PurchaseRequest
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
+import { normalizeConvexUrl } from "../convexClient";
 import type { DataVendor } from "../vendors/types";
 
 export type StoredOrder = {
@@ -119,7 +120,7 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
     throw new Error("CONVEX_API_SECRET is required for Convex order API access.");
   }
 
-  const client = new ConvexHttpClient(convexUrl);
+  const client = new ConvexHttpClient(normalizeConvexUrl(convexUrl));
   const createIntent = makeFunctionReference<"mutation">("orders:createIntent");
   const getByReferenceForApi = makeFunctionReference<"query">(
     "orders:getByReferenceForApi"

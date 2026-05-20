@@ -1,9 +1,9 @@
 import type { DataPackage } from "@betterdata/contracts";
 import { getRequiredEnv } from "@betterdata/config";
-import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import type { FastifyInstance } from "fastify";
 
+import { createConvexHttpClient } from "../../convexClient";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
 
@@ -108,7 +108,7 @@ async function listConvexPackageFallback() {
   const listAvailableForApi = makeFunctionReference<"query">(
     "packages:listAvailableForApi"
   );
-  const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+  const convex = createConvexHttpClient();
   const packages = (await convex.query(listAvailableForApi, {
     serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
   })) as ConvexPackageRecord[];

@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { ConvexHttpClient } from "convex/browser";
 import { getRequiredEnv } from "@betterdata/config";
 import { userFunctions } from "@betterdata/app-api";
 
+import { createConvexHttpClient } from "../../convexClient";
 import {
   verifyFirebaseToken
 } from "../../integrations/firebase/auth";
@@ -30,7 +30,7 @@ export async function registerAuthRoutes(server: FastifyInstance) {
       return reply.code(401).send({ message: "Invalid or expired token." });
     }
 
-    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const convex = createConvexHttpClient();
 
     try {
       const user = (await convex.mutation(userFunctions.findOrCreateFromFirebase, {
@@ -86,7 +86,7 @@ export async function registerAuthRoutes(server: FastifyInstance) {
       return reply.code(401).send({ message: "Invalid or expired token." });
     }
 
-    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const convex = createConvexHttpClient();
 
     try {
       const user = await convex.query(userFunctions.getByFirebaseUid, {

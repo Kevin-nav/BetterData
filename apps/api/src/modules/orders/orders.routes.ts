@@ -13,10 +13,9 @@ import { mapVendorErrorToHttp } from "../../vendors/errors";
 import { verifyDataVendorWebhook } from "../../vendors/webhookVerification";
 import { validatePurchaseRequest } from "./orderValidation";
 import { requireRequestUser } from "../auth/requestUser";
-import { ConvexHttpClient } from "convex/browser";
-import { getRequiredEnv } from "@betterdata/config";
 import { orderFunctions } from "@betterdata/app-api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { createConvexHttpClient } from "../../convexClient";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -233,7 +232,7 @@ export async function registerOrderRoutes(server: FastifyInstance) {
    * Fetches order history for the authenticated user.
    */
   server.get("/orders", async (request, reply) => {
-    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+    const convex = createConvexHttpClient();
 
     let user;
     try {

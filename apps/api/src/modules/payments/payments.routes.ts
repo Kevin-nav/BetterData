@@ -10,10 +10,11 @@ import type {
   PaymentIntentStatusResponse,
   PaymentPurpose
 } from "@betterdata/contracts";
+import type { ConvexHttpClient } from "convex/browser";
 import type { FastifyInstance } from "fastify";
-import { ConvexHttpClient } from "convex/browser";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
+import { createConvexHttpClient } from "../../convexClient";
 import {
   buildPaystackReference,
   initializeMobileMoneyPayment,
@@ -678,7 +679,7 @@ async function resolveDataPurchasePackage(
 }
 
 function createConvexClient() {
-  return new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+  return createConvexHttpClient();
 }
 
 function buildPaymentCallbackUrl(reference: string) {
@@ -758,6 +759,13 @@ function readErrorMessage(error: unknown, fallback: string) {
       const message = (data as { message?: unknown }).message;
       if (typeof message === "string" && message.trim()) {
         return message;
+      }
+    }
+
+    if (typeof data === "object" && data !== null && "code" in data) {
+      const code = (data as { code?: unknown }).code;
+      if (code === "service_auth_failed") {
+        return "Service authorization failed.";
       }
     }
   }
