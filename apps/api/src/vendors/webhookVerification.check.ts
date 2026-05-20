@@ -64,10 +64,21 @@ const rawBodyBuffer = Buffer.from(rawBody);
 const signature = createHmac("sha256", "hmac-secret")
   .update(Buffer.concat([Buffer.from(`${timestamp}.`), rawBodyBuffer]))
   .digest("hex");
+const dataMartSignature = createHmac("sha256", "hmac-secret")
+  .update(rawBodyBuffer)
+  .digest("hex");
 
 assert.deepEqual(
   verifyDataVendorWebhook(
     { "x-signature": signature, "x-timestamp": timestamp },
+    rawBodyBuffer,
+    { NODE_ENV: "production", WEBHOOK_HMAC_SECRET: "hmac-secret" }
+  ),
+  { ok: true }
+);
+assert.deepEqual(
+  verifyDataVendorWebhook(
+    { "x-datamart-signature": dataMartSignature },
     rawBodyBuffer,
     { NODE_ENV: "production", WEBHOOK_HMAC_SECRET: "hmac-secret" }
   ),

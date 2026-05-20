@@ -13,6 +13,23 @@ export function verifyDataVendorWebhook(
   const hmacSecret = env.WEBHOOK_HMAC_SECRET;
 
   if (hmacSecret) {
+    const dataMartSignature = headers["x-datamart-signature"];
+
+    if (dataMartSignature) {
+      const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody);
+      const expected = createHmac("sha256", hmacSecret)
+        .update(body)
+        .digest("hex");
+
+      return safeEqual(dataMartSignature, expected)
+        ? { ok: true }
+        : {
+            ok: false,
+            statusCode: 401,
+            message: "Invalid webhook signature."
+          };
+    }
+
     const signature = headers["x-signature"] ?? headers["x-betterdata-signature"];
     const timestamp = headers["x-timestamp"];
 
