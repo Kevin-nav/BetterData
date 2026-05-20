@@ -4,7 +4,7 @@ import {
   createBetterDataApiClient,
 } from "@betterdata/api-client";
 import type { DataPackage, NetworkCode } from "@betterdata/contracts";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
 /* ── API Client ── */
@@ -93,10 +93,81 @@ export default function BuyPage() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [navScrolled, setNavScrolled] = useState(false);
 
+  /* Bulk Mode State */
+  interface BulkPill {
+    id: string;
+    phone: string;
+    network: NetworkCode;
+    sizeMb: number;
+    priceGhs: number;
+    packageId: string;
+    isValid: boolean;
+    error?: string | undefined;
+  }
+  const [bulkPills, setBulkPills] = useState<BulkPill[]>([]);
+  const [pendingPillId, setPendingPillId] = useState<string | null>(null);
+  const [bulkInputVal, setBulkInputVal] = useState("");
+  const [bulkInputPhase, setBulkInputPhase] = useState<"phone" | "gb">("phone");
+  const [tempPhone, setTempPhone] = useState("");
+  const [tempNetwork, setTempNetwork] = useState<NetworkCode | null>(null);
+  const [suggestedSizesState, setSuggestedSizesState] = useState<{ lower: number | null; higher: number | null }>({ lower: null, higher: null });
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
+
   /* Derived */
   const networkPkgs = packages.filter((p) => p.network === network && p.isAvailable);
   const selectedPkg = networkPkgs.find((p) => p.id === selectedPkgId) ?? null;
   const detectedNet = phone.replace(/\D/g, "").length >= 3 ? detectNetwork(phone) : null;
+  const mtnCount = bulkPills.filter((p) => p.network === "mtn").length;
+  const telecelCount = bulkPills.filter((p) => p.network === "telecel").length;
+  const atCount = bulkPills.filter((p) => p.network === "airteltigo").length;
+  const invalidCount = bulkPills.filter((p) => !p.isValid).length;
+  const totalCostGhs = bulkPills.reduce((total, p) => total + (p.isValid ? p.priceGhs : 0), 0);
+
+  // Bulk helper to find package ID by network & size in GB (flexible matching)
+  const findPackageByGb = (net: NetworkCode, gb: number): DataPackage | null => {
+    return packages.find(p => {
+      if (p.network !== net || !p.isAvailable) return false;
+      const gb1024 = p.sizeMb / 1024;
+      const gb1000 = p.sizeMb / 1000;
+      const diff1024 = Math.abs(gb1024 - gb);
+      const diff1000 = Math.abs(gb1000 - gb);
+      return diff1024 < 0.05 || diff1000 < 0.05;
+    }) ?? null;
+  };
+
+  // Helper to suggest sizes dynamically from actual database packages
+  const suggestSizesForNetwork = (net: NetworkCode, input: number) => {
+    const netPkgs = packages.filter(p => p.network === net && p.isAvailable);
+    const sizes = Array.from(
+      new Set(
+        netPkgs.map(p => {
+          const gb1024 = p.sizeMb / 1024;
+          const rem1024 = gb1024 % 0.5;
+          if (rem1024 < 0.01 || rem1024 > 0.49) {
+            return Math.round(gb1024 * 2) / 2;
+          }
+          return Math.round(p.sizeMb / 1000);
+        })
+      )
+    ).sort((a, b) => a - b);
+
+    let lower: number | null = null;
+    let higher: number | null = null;
+    for (const size of sizes) {
+      if (size < input) lower = size;
+      if (size > input && higher === null) higher = size;
+    }
+    return { lower, higher };
+  };
+
+  const getActiveNetwork = (): NetworkCode | null => {
+    if (pendingPillId) {
+      const p = bulkPills.find(pill => pill.id === pendingPillId);
+      if (p) return p.network;
+    }
+    return tempNetwork;
+  };
 
   /* Theme init */
   useEffect(() => {
@@ -155,6 +226,407 @@ export default function BuyPage() {
     const net = params.get("network");
     if (net === "mtn" || net === "telecel" || net === "airteltigo") setNetwork(net);
   }, []);
+
+  const handleSinglePay = async () => {
+    if (!selectedPkg || !phone.trim() || !recipientConfirmed) return;
+    setSubmitting(true);
+    setOrderError("");
+
+    try {
+      if (payMethod === "wallet") {
+        const res = await getApi().createOrder({
+          packageId: selectedPkg.id,
+          network,
+          recipientPhone: phone.trim(),
+          confirmRecipientIsCorrect: true,
+          paymentMethod: "wallet",
+        });
+        window.location.href = `/buy/confirmation?ref=${res.reference}`;
+      } else {
+        const res = await getApi().createPaymentIntent({
+          purpose: "data_purchase",
+          packageId: selectedPkg.id,
+          network,
+          recipientPhone: phone.trim(),
+          confirmRecipientIsCorrect: true,
+        });
+        window.location.href = res.authorizationUrl;
+      }
+    } catch (err) {
+      setOrderError(readApiError(err, "Payment submission failed"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGbSubmit = (gb: number) => {
+    const targetNetwork = getActiveNetwork();
+    if (!targetNetwork) return;
+
+    if (packagesLoading || packageError || packages.length === 0) {
+      const error = packagesLoading
+        ? "Data packages are still loading. Try again in a moment."
+        : packageError || "Data packages are not loaded. Retry package loading first.";
+
+      if (pendingPillId) {
+        setBulkPills((prev) =>
+          prev.map((p) => (p.id === pendingPillId ? { ...p, error } : p))
+        );
+      }
+      setShowSuggestions(false);
+      return;
+    }
+
+    const pkg = findPackageByGb(targetNetwork, gb);
+    if (pkg) {
+      if (pendingPillId) {
+        setBulkPills((prev) =>
+          prev.map((p) =>
+            p.id === pendingPillId
+              ? {
+                  ...p,
+                  sizeMb: pkg.sizeMb,
+                  priceGhs: pkg.customerPriceGhs,
+                  packageId: pkg.id,
+                  isValid: true,
+                  error: undefined,
+                }
+              : p
+          )
+        );
+        setPendingPillId(null);
+      } else {
+        const newPill: BulkPill = {
+          id: Math.random().toString(36).substring(2, 9),
+          phone: tempPhone,
+          network: targetNetwork,
+          sizeMb: pkg.sizeMb,
+          priceGhs: pkg.customerPriceGhs,
+          packageId: pkg.id,
+          isValid: true,
+        };
+        setBulkPills((prev) => [...prev, newPill]);
+      }
+      setBulkInputVal("");
+      setBulkInputPhase("phone");
+      setTempPhone("");
+      setTempNetwork(null);
+      setShowSuggestions(false);
+      setSheetOpen(true);
+    } else {
+      const { lower, higher } = suggestSizesForNetwork(targetNetwork, gb);
+      setSuggestedSizesState({ lower, higher });
+      setShowSuggestions(true);
+
+      if (pendingPillId) {
+        setBulkPills((prev) =>
+          prev.map((p) =>
+            p.id === pendingPillId
+              ? {
+                  ...p,
+                  error: `Invalid size (${gb}GB). Try ${lower ? lower + "GB" : ""}${lower && higher ? "/" : ""}${higher ? higher + "GB" : ""}`,
+                }
+              : p
+          )
+        );
+      }
+    }
+  };
+
+  const handleBulkInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setBulkInputVal(val);
+
+    if (bulkInputPhase === "phone") {
+      const cleaned = val.replace(/\D/g, "");
+      const detected = detectNetwork(cleaned);
+      setTempNetwork(detected);
+
+      if (cleaned.length === 10) {
+        if (detected) {
+          const pId = Math.random().toString(36).substring(2, 9);
+          const newPill: BulkPill = {
+            id: pId,
+            phone: cleaned,
+            network: detected,
+            sizeMb: 0,
+            priceGhs: 0,
+            packageId: "",
+            isValid: false,
+            error: "Enter GB size...",
+          };
+          setBulkPills((prev) => [...prev, newPill]);
+          setPendingPillId(pId);
+          setTempPhone(cleaned);
+          setBulkInputPhase("gb");
+          setBulkInputVal("");
+          setShowSuggestions(false);
+        }
+      }
+    }
+  };
+
+  const handleBulkInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === " " || e.key === ",") {
+      e.preventDefault();
+      if (bulkInputPhase === "phone") {
+        const cleaned = bulkInputVal.replace(/\D/g, "");
+        const detected = detectNetwork(cleaned);
+        if (cleaned.length === 10 && detected) {
+          const pId = Math.random().toString(36).substring(2, 9);
+          const newPill: BulkPill = {
+            id: pId,
+            phone: cleaned,
+            network: detected,
+            sizeMb: 0,
+            priceGhs: 0,
+            packageId: "",
+            isValid: false,
+            error: "Enter GB size...",
+          };
+          setBulkPills((prev) => [...prev, newPill]);
+          setPendingPillId(pId);
+          setTempPhone(cleaned);
+          setBulkInputPhase("gb");
+          setBulkInputVal("");
+          setShowSuggestions(false);
+        } else if (bulkInputVal.trim() !== "") {
+          const newPill: BulkPill = {
+            id: Math.random().toString(36).substring(2, 9),
+            phone: bulkInputVal,
+            network: detected || "mtn",
+            sizeMb: 0,
+            priceGhs: 0,
+            packageId: "",
+            isValid: false,
+            error: !detected ? "Unknown network prefix" : "Must be 10 digits",
+          };
+          setBulkPills((prev) => [...prev, newPill]);
+          setBulkInputVal("");
+          setSheetOpen(true);
+        }
+      } else {
+        const valNum = parseFloat(bulkInputVal);
+        if (!isNaN(valNum)) {
+          handleGbSubmit(valNum);
+        }
+      }
+    } else if (e.key === "Backspace" && bulkInputVal === "") {
+      if (bulkInputPhase === "gb") {
+        setBulkInputPhase("phone");
+        if (pendingPillId) {
+          setBulkPills((prev) => prev.filter((p) => p.id !== pendingPillId));
+          setPendingPillId(null);
+        }
+        setBulkInputVal(tempPhone);
+        setTempPhone("");
+        setTempNetwork(null);
+        setShowSuggestions(false);
+      } else if (bulkPills.length > 0) {
+        const lastPill = bulkPills[bulkPills.length - 1];
+        setBulkPills((prev) => prev.slice(0, -1));
+        if (lastPill) {
+          // If the last pill was deleted, put its value back to edit it!
+          setBulkInputPhase("gb");
+          setPendingPillId(lastPill.id);
+          setTempPhone(lastPill.phone);
+          setTempNetwork(lastPill.network);
+          setBulkInputVal(lastPill.isValid ? (lastPill.sizeMb / 1024).toString() : "");
+          // Re-insert it as a pending pill so it can be updated
+          setBulkPills((prev) => [
+            ...prev,
+            {
+              ...lastPill,
+              isValid: false,
+              error: "Enter GB size...",
+            }
+          ]);
+        }
+      }
+    } else if (e.key === "Escape") {
+      if (bulkInputPhase === "gb") {
+        setBulkInputPhase("phone");
+        if (pendingPillId) {
+          setBulkPills((prev) => prev.filter((p) => p.id !== pendingPillId));
+          setPendingPillId(null);
+        }
+        setBulkInputVal("");
+        setTempPhone("");
+        setTempNetwork(null);
+        setShowSuggestions(false);
+      }
+    }
+  };
+
+  const handleBulkInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData("text");
+    if (!pastedText) return;
+
+    const lines = pastedText.split(/\r?\n/);
+    const newPills: BulkPill[] = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const parts = line.split(/[,\s\t;]+/);
+      const phonePart = parts[0]?.trim() || "";
+      const gbPart = parts[1]?.trim() || "";
+
+      const cleanedPhone = phonePart.replace(/\D/g, "");
+      const detected = detectNetwork(cleanedPhone);
+      const gbVal = parseFloat(gbPart);
+
+      if (cleanedPhone.length === 10 && detected && !isNaN(gbVal)) {
+        const pkg = findPackageByGb(detected, gbVal);
+        if (pkg) {
+          newPills.push({
+            id: Math.random().toString(36).substring(2, 9),
+            phone: cleanedPhone,
+            network: detected,
+            sizeMb: pkg.sizeMb,
+            priceGhs: pkg.customerPriceGhs,
+            packageId: pkg.id,
+            isValid: true,
+          });
+          continue;
+        }
+      }
+
+      newPills.push({
+        id: Math.random().toString(36).substring(2, 9),
+        phone: phonePart || "Empty",
+        network: detected || "mtn",
+        sizeMb: isNaN(gbVal) ? 0 : gbVal * 1024,
+        priceGhs: 0,
+        packageId: "",
+        isValid: false,
+        error: !detected
+          ? "Unknown network prefix"
+          : cleanedPhone.length !== 10
+            ? "Phone number must be 10 digits"
+            : `Size ${gbPart || "empty"}GB not available`,
+      });
+    }
+
+    if (newPills.length > 0) {
+      setBulkPills((prev) => [...prev, ...newPills]);
+      setSheetOpen(true);
+    }
+  };
+
+  const removePill = (id: string) => {
+    setBulkPills((prev) => prev.filter((p) => p.id !== id));
+    if (id === pendingPillId) {
+      setPendingPillId(null);
+      setBulkInputPhase("phone");
+      setBulkInputVal("");
+      setTempPhone("");
+      setTempNetwork(null);
+      setShowSuggestions(false);
+    }
+  };
+
+  const clearAllPills = () => {
+    setBulkPills([]);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const lines = text.split(/\r?\n/);
+      const newPills: BulkPill[] = [];
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const parts = line.split(/[,\s\t;]+/);
+        const phonePart = parts[0]?.trim() || "";
+        const gbPart = parts[1]?.trim() || "";
+
+        const cleanedPhone = phonePart.replace(/\D/g, "");
+        const detected = detectNetwork(cleanedPhone);
+        const gbVal = parseFloat(gbPart);
+
+        if (cleanedPhone.length === 10 && detected && !isNaN(gbVal)) {
+          const pkg = findPackageByGb(detected, gbVal);
+          if (pkg) {
+            newPills.push({
+              id: Math.random().toString(36).substring(2, 9),
+              phone: cleanedPhone,
+              network: detected,
+              sizeMb: pkg.sizeMb,
+              priceGhs: pkg.customerPriceGhs,
+              packageId: pkg.id,
+              isValid: true,
+            });
+            continue;
+          }
+        }
+
+        newPills.push({
+          id: Math.random().toString(36).substring(2, 9),
+          phone: phonePart || "Empty",
+          network: detected || "mtn",
+          sizeMb: isNaN(gbVal) ? 0 : gbVal * 1024,
+          priceGhs: 0,
+          packageId: "",
+          isValid: false,
+          error: !detected
+            ? "Unknown network prefix"
+            : cleanedPhone.length !== 10
+              ? "Phone number must be 10 digits"
+              : `Size ${gbPart || "empty"}GB not available`,
+        });
+      }
+
+      if (newPills.length > 0) {
+        setBulkPills((prev) => [...prev, ...newPills]);
+        setSheetOpen(true);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleBulkPay = async () => {
+    if (bulkPills.length === 0) return;
+    const hasErrors = bulkPills.some((p) => !p.isValid);
+    if (hasErrors) {
+      setOrderError("Please remove or correct the entries with errors before paying.");
+      return;
+    }
+
+    setSubmitting(true);
+    setOrderError("");
+
+    try {
+      if (payMethod === "wallet") {
+        const promises = bulkPills.map((pill) =>
+          getApi().createOrder({
+            packageId: pill.packageId,
+            network: pill.network,
+            recipientPhone: pill.phone,
+            confirmRecipientIsCorrect: true,
+            paymentMethod: "wallet",
+          })
+        );
+        const results = await Promise.all(promises);
+        const refs = results.map((r) => r.reference).join(",");
+        window.location.href = `/buy/confirmation?ref=${refs}`;
+      } else {
+        setOrderError("Bulk checkout via Mobile Money is only supported for authenticated agents. Please Log In or Sign Up, or use Wallet payment.");
+      }
+    } catch (err) {
+      setOrderError(readApiError(err, "Bulk payment submission failed"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const retryLoad = () => { setPackageError(""); setLoadKey((k) => k + 1); };
   const dismissPromo = () => { setPromoDismissed(true); localStorage.setItem("promo-dismissed", "1"); };
@@ -290,9 +762,185 @@ export default function BuyPage() {
                 )}
               </div>
             ) : (
-              /* ── Bulk Mode Placeholder (Smart Pill coming next) ── */
-              <div style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)" }}>
-                Smart Pill input — coming next
+              /* ── Smart Pill Bulk Entry ── */
+              <div className="bulk-pill-workspace">
+                {packageError && (
+                  <div className="catalog-empty" style={{ marginBottom: 16 }}>
+                    <p>{packageError}</p>
+                    <button onClick={retryLoad}>Retry</button>
+                  </div>
+                )}
+                <div
+                  className="pill-input-container"
+                  onClick={() => bulkInputRef.current?.focus()}
+                  style={{ position: "relative" }}
+                >
+                  {bulkPills.map((pill) => (
+                    <div
+                      key={pill.id}
+                      className={`pill ${pill.isValid ? "pill--valid" : "pill--error"}`}
+                    >
+                      <span className={`pill-dot pill-dot--${pill.network}`} />
+                      <span className="pill-phone">
+                        {pill.phone.substring(0, 3)} {pill.phone.substring(3, 6)} {pill.phone.substring(6)}
+                      </span>
+                      {pill.isValid ? (
+                        <>
+                          <span className="pill-size">{formatPackageSize(pill.sizeMb)}</span>
+                          <span className="pill-price">GHS {pill.priceGhs.toFixed(2)}</span>
+                        </>
+                      ) : (
+                        <span className="pill-error-msg">{pill.error || "Error"}</span>
+                      )}
+                      <button
+                        className="pill-remove"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removePill(pill.id);
+                        }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+
+                  <div style={{ display: "inline-flex", flexDirection: "column", position: "relative", flex: 1, minWidth: 180 }}>
+                    <input
+                      ref={bulkInputRef}
+                      type="text"
+                      className="pill-active-input"
+                      value={bulkInputVal}
+                      onChange={handleBulkInputChange}
+                      onKeyDown={handleBulkInputKeyDown}
+                      onPaste={handleBulkInputPaste}
+                      placeholder={
+                        bulkPills.length === 0
+                          ? "Enter phone number..."
+                          : bulkInputPhase === "gb"
+                            ? "Enter GB size..."
+                            : "Add recipient phone..."
+                      }
+                    />
+
+                    {/* GB Suggestion Dropdown */}
+                    {bulkInputPhase === "gb" && showSuggestions && (() => {
+                      const activeNet = getActiveNetwork();
+                      if (!activeNet) return null;
+                      return (
+                        <div className="gb-suggestion">
+                          <div className="gb-suggestion-label">Available package sizes:</div>
+                          {suggestedSizesState.lower && (
+                            <div
+                              className="gb-suggestion-opt"
+                              onClick={() => handleGbSubmit(suggestedSizesState.lower!)}
+                            >
+                              <span>{suggestedSizesState.lower}GB</span>
+                              <span className="opt-price">
+                                GHS {findPackageByGb(activeNet, suggestedSizesState.lower)?.customerPriceGhs.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                          {suggestedSizesState.higher && (
+                            <div
+                              className="gb-suggestion-opt"
+                              onClick={() => handleGbSubmit(suggestedSizesState.higher!)}
+                            >
+                              <span>{suggestedSizesState.higher}GB</span>
+                              <span className="opt-price">
+                                GHS {findPackageByGb(activeNet, suggestedSizesState.higher)?.customerPriceGhs.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                          {!suggestedSizesState.lower && !suggestedSizesState.higher && (
+                            <div className="gb-suggestion-label" style={{ fontStyle: "italic", fontWeight: "normal" }}>
+                              No matching packages. Maximum 50GB.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="pill-phase-label">
+                    {bulkInputPhase === "phone" ? (
+                      tempNetwork ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          Detected:
+                          <span className={`network-badge network-badge--${tempNetwork}`}>
+                            <span className="badge-dot" />
+                            {NETWORK_NAMES[tempNetwork]}
+                          </span>
+                        </span>
+                      ) : (
+                        "Enter 10-digit phone number"
+                      )
+                    ) : (() => {
+                      const activeNet = getActiveNetwork();
+                      return (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          Recipient: <strong>{tempPhone}</strong>
+                          {activeNet && (
+                            <span className={`network-badge network-badge--${activeNet}`}>
+                              <span className="badge-dot" />
+                              {NETWORK_NAMES[activeNet]}
+                            </span>
+                          )}
+                          &rarr; Enter data size (GB)
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* GB Quick-Select Chips */}
+                {bulkInputPhase === "gb" && (() => {
+                  const activeNet = getActiveNetwork();
+                  if (!activeNet) return null;
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="checkout-section-label" style={{ fontSize: "0.72rem" }}>
+                        Quick-Select Data Size
+                      </div>
+                      <div className="gb-chips">
+                        {[1, 2, 3, 5, 10, 15, 20, 50].map((gb) => {
+                          const pkg = findPackageByGb(activeNet, gb);
+                          if (!pkg) return null;
+                          return (
+                            <button
+                              key={gb}
+                              className="gb-chip"
+                              onClick={() => handleGbSubmit(gb)}
+                            >
+                              {gb}GB (GHS {pkg.customerPriceGhs.toFixed(2)})
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Actions and File Upload */}
+                <div className="pill-actions">
+                  <div>
+                    {bulkPills.length} {bulkPills.length === 1 ? "recipient" : "recipients"}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <label className="pill-upload-link" htmlFor="bulk-file-upload">
+                      Upload CSV/Text
+                    </label>
+                    <input
+                      type="file"
+                      id="bulk-file-upload"
+                      accept=".csv,.txt"
+                      style={{ display: "none" }}
+                      onChange={handleFileUpload}
+                    />
+                    {bulkPills.length > 0 && (
+                      <button onClick={clearAllPills}>Clear All</button>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </section>
@@ -302,82 +950,153 @@ export default function BuyPage() {
               Checkout
             </div>
 
-            {/* Package Summary */}
-            <div className="checkout-section">
-              <div className="checkout-section-label">Selected Package</div>
-              {selectedPkg ? (
-                <div className="checkout-pkg-summary">
-                  <span className={`network-badge network-badge--${network}`}>
-                    <span className="badge-dot" />
-                    {NETWORK_NAMES[network]}
-                  </span>
-                  <span className="pkg-size">{formatPackageSize(selectedPkg.sizeMb)}</span>
-                  <span className="pkg-price">GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
+            {mode === "single" ? (
+              <>
+                {/* Package Summary */}
+                <div className="checkout-section">
+                  <div className="checkout-section-label">Selected Package</div>
+                  {selectedPkg ? (
+                    <div className="checkout-pkg-summary">
+                      <span className={`network-badge network-badge--${network}`}>
+                        <span className="badge-dot" />
+                        {NETWORK_NAMES[network]}
+                      </span>
+                      <span className="pkg-size">{formatPackageSize(selectedPkg.sizeMb)}</span>
+                      <span className="pkg-price">GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
+                    </div>
+                  ) : (
+                    <div className="checkout-pkg-empty">Select a package to continue</div>
+                  )}
                 </div>
-              ) : (
-                <div className="checkout-pkg-empty">Select a package to continue</div>
-              )}
-            </div>
 
-            {/* Phone Input */}
-            <div className="checkout-section">
-              <div className="checkout-section-label">Recipient Phone</div>
-              <input
-                type="tel"
-                className="text-input"
-                placeholder="e.g. 054 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-              {detectedNet && (
-                <div style={{ marginTop: 6 }}>
-                  <span className={`network-badge network-badge--${detectedNet}`}>
-                    <span className="badge-dot" />
-                    {NETWORK_NAMES[detectedNet]}
-                  </span>
+                {/* Phone Input */}
+                <div className="checkout-section">
+                  <div className="checkout-section-label">Recipient Phone</div>
+                  <input
+                    type="tel"
+                    className="text-input"
+                    placeholder="e.g. 054 123 4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                  {detectedNet && (
+                    <div style={{ marginTop: 6 }}>
+                      <span className={`network-badge network-badge--${detectedNet}`}>
+                        <span className="badge-dot" />
+                        {NETWORK_NAMES[detectedNet]}
+                      </span>
+                    </div>
+                  )}
+                  {detectedNet && detectedNet !== network && (
+                    <div className="network-mismatch">
+                      <span>This looks like a {NETWORK_NAMES[detectedNet]} number</span>
+                      <button onClick={() => setNetwork(detectedNet)}>Switch</button>
+                    </div>
+                  )}
                 </div>
-              )}
-              {detectedNet && detectedNet !== network && (
-                <div className="network-mismatch">
-                  <span>This looks like a {NETWORK_NAMES[detectedNet]} number</span>
-                  <button onClick={() => setNetwork(detectedNet)}>Switch</button>
-                </div>
-              )}
-            </div>
 
-            {/* Payment Method */}
-            <div className="checkout-section">
-              <div className="checkout-section-label">Payment Method</div>
-              <div className="pay-method-row">
-                <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>
-                  Mobile Money
-                  <small>via Paystack</small>
+                {/* Payment Method */}
+                <div className="checkout-section">
+                  <div className="checkout-section-label">Payment Method</div>
+                  <div className="pay-method-row">
+                    <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>
+                      Mobile Money
+                      <small>via Paystack</small>
+                    </div>
+                    <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
+                      Wallet
+                      <small>Balance: --</small>
+                    </div>
+                  </div>
                 </div>
-                <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
-                  Wallet
-                  <small>Balance: --</small>
+
+                {/* Confirm */}
+                <label className="buy-confirm-row">
+                  <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                  <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
+                </label>
+
+                {/* Pay Button */}
+                <button
+                  className="btn btn-primary btn-lg btn-full"
+                  style={{ marginTop: 18 }}
+                  disabled={submitting || !selectedPkg || !recipientConfirmed || !phone.trim()}
+                  onClick={handleSinglePay}
+                >
+                  {submitting
+                    ? "Processing..."
+                    : selectedPkg
+                      ? `Pay GHS ${selectedPkg.customerPriceGhs.toFixed(2)} with ${payMethod === "momo" ? "MoMo" : "Wallet"}`
+                      : "Select a package"}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Bulk Checkout Summary */}
+                <div className="checkout-section">
+                  <div className="checkout-section-label">Order Summary</div>
+                  {bulkPills.length === 0 ? (
+                    <div className="checkout-pkg-empty">Add recipients to see order summary</div>
+                  ) : (
+                    <div className="checkout-pkg-summary" style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", width: "100%", fontWeight: 600 }}>
+                        <span>Total Recipients</span>
+                        <span>{bulkPills.length}</span>
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", width: "100%" }}>
+                        {mtnCount > 0 && <span style={{ marginRight: 10 }}>MTN: {mtnCount}</span>}
+                        {telecelCount > 0 && <span style={{ marginRight: 10 }}>Telecel: {telecelCount}</span>}
+                        {atCount > 0 && <span>AirtelTigo: {atCount}</span>}
+                      </div>
+                      {invalidCount > 0 && (
+                        <div style={{ color: "#ef4444", fontSize: "0.78rem", fontWeight: 600, marginTop: 4 }}>
+                          &bull; {invalidCount} {invalidCount === 1 ? "entry needs" : "entries need"} attention
+                        </div>
+                      )}
+                      <div style={{ borderTop: "1px solid var(--border)", width: "100%", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 600 }}>Total Cost</span>
+                        <span className="pkg-price">GHS {totalCostGhs.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
 
-            {/* Confirm */}
-            <label className="buy-confirm-row">
-              <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
-              <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
-            </label>
+                {/* Payment Method */}
+                <div className="checkout-section">
+                  <div className="checkout-section-label">Payment Method</div>
+                  <div className="pay-method-row">
+                    <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>
+                      Mobile Money
+                      <small>via Paystack</small>
+                    </div>
+                    <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
+                      Wallet
+                      <small>Balance: --</small>
+                    </div>
+                  </div>
+                </div>
 
-            {/* Pay Button */}
-            <button
-              className="btn btn-primary btn-lg btn-full"
-              style={{ marginTop: 18 }}
-              disabled={submitting || !selectedPkg || !recipientConfirmed || !phone.trim()}
-            >
-              {submitting
-                ? "Processing..."
-                : selectedPkg
-                  ? `Pay GHS ${selectedPkg.customerPriceGhs.toFixed(2)} with ${payMethod === "momo" ? "MoMo" : "Wallet"}`
-                  : "Select a package"}
-            </button>
+                {/* Confirm */}
+                <label className="buy-confirm-row">
+                  <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                  <span>I have checked the recipient numbers and accept responsibility for wrong-number purchases.</span>
+                </label>
+
+                {/* Pay Button */}
+                <button
+                  className="btn btn-primary btn-lg btn-full"
+                  style={{ marginTop: 18 }}
+                  disabled={submitting || bulkPills.length === 0 || invalidCount > 0 || !recipientConfirmed}
+                  onClick={handleBulkPay}
+                >
+                  {submitting
+                    ? "Processing..."
+                    : bulkPills.length > 0
+                      ? `Pay GHS ${totalCostGhs.toFixed(2)} for ${bulkPills.length} ${bulkPills.length === 1 ? "bundle" : "bundles"} with ${payMethod === "momo" ? "MoMo" : "Wallet"}`
+                      : "Add recipients to pay"}
+                </button>
+              </>
+            )}
 
             {orderError && <div className="order-message order-error">{orderError}</div>}
 
@@ -390,59 +1109,139 @@ export default function BuyPage() {
       </div>
 
       {/* ── Mobile Bottom Sheet ── */}
-      <div className="bottom-sheet-overlay" data-open={sheetOpen && selectedPkg !== null} onClick={() => setSheetOpen(false)} />
-      <div className="bottom-sheet" data-open={sheetOpen && selectedPkg !== null}>
+      <div
+        className="bottom-sheet-overlay"
+        data-open={sheetOpen && (mode === "single" ? selectedPkg !== null : bulkPills.length > 0)}
+        onClick={() => setSheetOpen(false)}
+      />
+      <div
+        className="bottom-sheet"
+        data-open={sheetOpen && (mode === "single" ? selectedPkg !== null : bulkPills.length > 0)}
+      >
         <div className="sheet-handle" />
-        {selectedPkg && (
-          <>
-            <div className="checkout-title">
-              <span className="icon"><LockSmall /></span>
-              Checkout
-            </div>
-            <div className="checkout-section">
-              <div className="checkout-pkg-summary">
-                <span className={`network-badge network-badge--${network}`}>
-                  <span className="badge-dot" />
-                  {NETWORK_NAMES[network]}
-                </span>
-                <span className="pkg-size">{formatPackageSize(selectedPkg.sizeMb)}</span>
-                <span className="pkg-price">GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
+        {mode === "single" ? (
+          selectedPkg && (
+            <>
+              <div className="checkout-title">
+                <span className="icon"><LockSmall /></span>
+                Checkout
               </div>
-            </div>
-            <div className="checkout-section">
-              <div className="checkout-section-label">Recipient Phone</div>
-              <input type="tel" className="text-input" placeholder="e.g. 054 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              {detectedNet && (
-                <div style={{ marginTop: 6 }}>
-                  <span className={`network-badge network-badge--${detectedNet}`}><span className="badge-dot" />{NETWORK_NAMES[detectedNet]}</span>
+              <div className="checkout-section">
+                <div className="checkout-pkg-summary">
+                  <span className={`network-badge network-badge--${network}`}>
+                    <span className="badge-dot" />
+                    {NETWORK_NAMES[network]}
+                  </span>
+                  <span className="pkg-size">{formatPackageSize(selectedPkg.sizeMb)}</span>
+                  <span className="pkg-price">GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
                 </div>
-              )}
-              {detectedNet && detectedNet !== network && (
-                <div className="network-mismatch">
-                  <span>This looks like a {NETWORK_NAMES[detectedNet]} number</span>
-                  <button onClick={() => setNetwork(detectedNet)}>Switch</button>
-                </div>
-              )}
-            </div>
-            <div className="checkout-section">
-              <div className="checkout-section-label">Payment Method</div>
-              <div className="pay-method-row">
-                <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
-                <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>Balance: --</small></div>
               </div>
-            </div>
-            <label className="buy-confirm-row">
-              <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
-              <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
-            </label>
-            <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={submitting || !recipientConfirmed || !phone.trim()}>
-              {submitting ? "Processing..." : `Pay GHS ${selectedPkg.customerPriceGhs.toFixed(2)} with ${payMethod === "momo" ? "MoMo" : "Wallet"}`}
-            </button>
-            {orderError && <div className="order-message order-error">{orderError}</div>}
-            <div className="buy-widget-footer"><LockSmall /><span>Secured by Paystack Mobile Money</span></div>
-          </>
+              <div className="checkout-section">
+                <div className="checkout-section-label">Recipient Phone</div>
+                <input type="tel" className="text-input" placeholder="e.g. 054 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                {detectedNet && (
+                  <div style={{ marginTop: 6 }}>
+                    <span className={`network-badge network-badge--${detectedNet}`}><span className="badge-dot" />{NETWORK_NAMES[detectedNet]}</span>
+                  </div>
+                )}
+                {detectedNet && detectedNet !== network && (
+                  <div className="network-mismatch">
+                    <span>This looks like a {NETWORK_NAMES[detectedNet]} number</span>
+                    <button onClick={() => setNetwork(detectedNet)}>Switch</button>
+                  </div>
+                )}
+              </div>
+              <div className="checkout-section">
+                <div className="checkout-section-label">Payment Method</div>
+                <div className="pay-method-row">
+                  <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>Balance: --</small></div>
+                </div>
+              </div>
+              <label className="buy-confirm-row">
+                <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
+              </label>
+              <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={submitting || !recipientConfirmed || !phone.trim()} onClick={handleSinglePay}>
+                {submitting ? "Processing..." : `Pay GHS ${selectedPkg.customerPriceGhs.toFixed(2)} with ${payMethod === "momo" ? "MoMo" : "Wallet"}`}
+              </button>
+              {orderError && <div className="order-message order-error">{orderError}</div>}
+              <div className="buy-widget-footer"><LockSmall /><span>Secured by Paystack Mobile Money</span></div>
+            </>
+          )
+        ) : (
+          bulkPills.length > 0 && (
+            <>
+              <div className="checkout-title">
+                <span className="icon"><LockSmall /></span>
+                Checkout Summary
+              </div>
+              <div className="checkout-section">
+                <div className="checkout-pkg-summary" style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", width: "100%", fontWeight: 600 }}>
+                    <span>Total Recipients</span>
+                    <span>{bulkPills.length}</span>
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", width: "100%" }}>
+                    {mtnCount > 0 && <span style={{ marginRight: 10 }}>MTN: {mtnCount}</span>}
+                    {telecelCount > 0 && <span style={{ marginRight: 10 }}>Telecel: {telecelCount}</span>}
+                    {atCount > 0 && <span>AirtelTigo: {atCount}</span>}
+                  </div>
+                  {invalidCount > 0 && (
+                    <div style={{ color: "#ef4444", fontSize: "0.78rem", fontWeight: 600, marginTop: 4 }}>
+                      &bull; {invalidCount} {invalidCount === 1 ? "entry needs" : "entries need"} attention
+                    </div>
+                  )}
+                  <div style={{ borderTop: "1px solid var(--border)", width: "100%", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 600 }}>Total Cost</span>
+                    <span className="pkg-price">GHS {totalCostGhs.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="checkout-section">
+                <div className="checkout-section-label">Payment Method</div>
+                <div className="pay-method-row">
+                  <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>Balance: --</small></div>
+                </div>
+              </div>
+              <label className="buy-confirm-row">
+                <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                <span>I have checked the recipient numbers and accept responsibility for wrong-number purchases.</span>
+              </label>
+              <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={submitting || bulkPills.length === 0 || invalidCount > 0 || !recipientConfirmed} onClick={handleBulkPay}>
+                {submitting ? "Processing..." : `Pay GHS ${totalCostGhs.toFixed(2)} for ${bulkPills.length} bundles with ${payMethod === "momo" ? "MoMo" : "Wallet"}`}
+              </button>
+              {orderError && <div className="order-message order-error">{orderError}</div>}
+              <div className="buy-widget-footer"><LockSmall /><span>Secured by Paystack Mobile Money</span></div>
+            </>
+          )
         )}
       </div>
+
+      {/* Floating Bulk Cart Button for Mobile */}
+      {mode === "bulk" && bulkPills.length > 0 && !sheetOpen && (
+        <button
+          className="btn btn-primary"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 40,
+            boxShadow: "var(--shadow-lg)",
+            borderRadius: "var(--radius-full)",
+            padding: "12px 24px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+          onClick={() => setSheetOpen(true)}
+        >
+          <span>View Order Summary ({bulkPills.length})</span>
+          <strong>GHS {totalCostGhs.toFixed(2)}</strong>
+        </button>
+      )}
 
       {/* ── Footer ── */}
       <footer className="footer">

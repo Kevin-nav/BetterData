@@ -12,6 +12,11 @@ import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
 import { verifyDataVendorWebhook } from "../../vendors/webhookVerification";
 import { validatePurchaseRequest } from "./orderValidation";
+import { requireRequestUser } from "../auth/requestUser";
+import { ConvexHttpClient } from "convex/browser";
+import { getRequiredEnv } from "@betterdata/config";
+import { orderFunctions } from "@betterdata/app-api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -221,6 +226,46 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
     }
   );
+
+  /**
+   * GET /orders
+   *
+   * Fetches order history for the authenticated user.
+   */
+  server.get("/orders", async (request, reply) => {
+    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+
+    let user;
+    try {
+      user = await requireRequestUser(request, convex);
+    } catch (error) {
+      return reply.code(401).send({ message: "Authentication is required." });
+    }
+
+    try {
+      const orders = await convex.query(orderFunctions.listForUser, {
+        userId: user.id as Id<"users">
+      });
+
+      return {
+        orders: orders.map((order) => ({
+          reference: order.reference,
+          packageId: order.packageId,
+          vendorId: order.vendorId,
+          network: order.network,
+          recipientPhone: order.recipientPhone,
+          amountGhs: order.amountGhs,
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
+          status: order.status,
+          createdAt: order.recipientConfirmedAt || order._creationTime
+        }))
+      };
+    } catch (error) {
+      request.log.error({ error, userId: user.id }, "Failed to list orders for user");
+      return reply.code(500).send({ message: "Unable to retrieve order history." });
+    }
+  });
 }
 
 function toPurchaseJob(order: {

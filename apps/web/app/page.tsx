@@ -9,6 +9,7 @@ import Link from "next/link";
 import Image from "next/image";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useAuth } from "./lib/AuthContext";
 import { useGSAP } from "@gsap/react";
 
 if (typeof window !== "undefined") {
@@ -219,6 +220,7 @@ const PackageBoxIcon = () => (
 );
 
 export default function HomePage() {
+  const { isAuthenticated } = useAuth();
   const main = useRef<HTMLElement>(null);
   const [network, setNetwork] = useState<NetworkId>("mtn");
   const [phone, setPhone] = useState("");
@@ -451,12 +453,20 @@ export default function HomePage() {
             Better Data
           </Link>
           <div className="nav-actions">
-            <Link href="/login" className="nav-link">
-              Log In
-            </Link>
-            <Link href="/signup" className="btn btn-primary">
-              Sign Up
-            </Link>
+            {isAuthenticated ? (
+              <Link href="/dashboard" className="btn btn-primary">
+                Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="nav-link">
+                  Log In
+                </Link>
+                <Link href="/signup" className="btn btn-primary">
+                  Sign Up
+                </Link>
+              </>
+            )}
             <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
               {theme === "light" ? <MoonIcon /> : <SunIcon />}
             </button>

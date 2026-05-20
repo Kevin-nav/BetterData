@@ -4,7 +4,8 @@ import type {
   DataPackage,
   PaymentIntentStatusResponse,
   PurchaseRequest,
-  VendorOrderStatus
+  VendorOrderStatus,
+  Order
 } from "@betterdata/contracts";
 
 type FetchLike = typeof fetch;
@@ -22,6 +23,26 @@ export type ListDataPackagesResponse = {
   };
   packages: DataPackage[];
 };
+
+export type ListOrdersResponse = {
+  orders: Order[];
+};
+
+export type WalletTransaction = {
+  id: string;
+  type: "credit" | "debit";
+  amountGhs: number;
+  reference: string;
+  description: string;
+  createdAt: number;
+};
+
+export type WalletSummaryResponse = {
+  balanceGhs: number;
+  transactions: WalletTransaction[];
+};
+
+
 
 export type CreateOrderResponse = {
   reference: string;
@@ -75,8 +96,27 @@ export type AdminOrdersResponse = {
   orders: AdminOrderSummary[];
 };
 
+export type SessionUser = {
+  id: string;
+  firebaseUid: string;
+  email?: string;
+  phone?: string;
+  displayName?: string;
+  role: string;
+};
+
+export type UserProfile = SessionUser & {
+  walletBalanceGhs: number;
+  firstPurchaseDiscountUsed: boolean;
+  isSuspended: boolean;
+};
+
 export type BetterDataApiClient = {
+  createSession: (token: string) => Promise<SessionUser>;
+  getMe: (token: string) => Promise<UserProfile>;
   listDataPackages: () => Promise<ListDataPackagesResponse>;
+  listOrders: (token: string) => Promise<ListOrdersResponse>;
+  getWalletSummary: (token: string) => Promise<WalletSummaryResponse>;
   createOrder: (body: PurchaseRequest) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
   createPaymentIntent: (
@@ -146,7 +186,24 @@ export function createBetterDataApiClient(
   }
 
   return {
+    createSession: (token) =>
+      request<SessionUser>("/auth/session", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    getMe: (token) =>
+      request<UserProfile>("/auth/me", {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
     listDataPackages: () => request<ListDataPackagesResponse>("/data-packages"),
+    listOrders: (token) =>
+      request<ListOrdersResponse>("/orders", {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    getWalletSummary: (token) =>
+      request<WalletSummaryResponse>("/wallet", {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
     createOrder: (body) =>
       request<CreateOrderResponse>("/orders", {
         method: "POST",

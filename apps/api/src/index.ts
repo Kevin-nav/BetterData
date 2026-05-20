@@ -8,6 +8,7 @@ import Fastify from "fastify";
 import { isOriginAllowed } from "./config/origins";
 import { resolveRateLimitConfig } from "./config/rateLimits";
 import { registerAdminRoutes } from "./modules/admin/admin.routes";
+import { registerAuthRoutes } from "./modules/auth/auth.routes";
 import { registerHealthRoutes } from "./modules/health/health.routes";
 import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.routes";
 import { registerOrderRoutes } from "./modules/orders/orders.routes";
@@ -63,6 +64,7 @@ server.addHook("preParsing", async (request, _reply, payload) => {
 });
 
 await registerHealthRoutes(server);
+await registerAuthRoutes(server);
 await registerPackageRoutes(server);
 await registerOrderRoutes(server);
 await registerPaymentRoutes(server);

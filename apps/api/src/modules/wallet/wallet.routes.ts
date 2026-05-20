@@ -1,8 +1,40 @@
 import type { FastifyInstance } from "fastify";
+import { requireRequestUser } from "../auth/requestUser";
+import { ConvexHttpClient } from "convex/browser";
+import { getRequiredEnv } from "@betterdata/config";
+import { walletFunctions } from "@betterdata/app-api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export async function registerWalletRoutes(server: FastifyInstance) {
-  server.get("/wallet", async () => ({
-    balanceGhs: 0,
-    transactions: []
-  }));
+  server.get("/wallet", async (request, reply) => {
+    const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+
+    let user;
+    try {
+      user = await requireRequestUser(request, convex);
+    } catch (error) {
+      return reply.code(401).send({ message: "Authentication is required." });
+    }
+
+    try {
+      const summary = await convex.query(walletFunctions.summary, {
+        userId: user.id as Id<"users">
+      });
+
+      return {
+        balanceGhs: summary.balanceGhs,
+        transactions: summary.transactions.map((tx) => ({
+          id: tx._id,
+          type: tx.type,
+          amountGhs: tx.amountGhs,
+          reference: tx.reference,
+          description: tx.description,
+          createdAt: tx._creationTime
+        }))
+      };
+    } catch (error) {
+      request.log.error({ error, userId: user.id }, "Failed to get wallet summary");
+      return reply.code(500).send({ message: "Unable to retrieve wallet data." });
+    }
+  });
 }
