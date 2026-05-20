@@ -27,7 +27,7 @@ spec:
           imagePullPolicy: Always
           command:
             - node
-            - apps/api/dist/worker.js
+            - apps/api/dist/apps/api/src/worker.js
           env:
             - name: NODE_ENV
               value: production
