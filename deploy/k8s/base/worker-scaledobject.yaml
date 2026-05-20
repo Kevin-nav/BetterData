@@ -1,0 +1,38 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: betterdata-worker-amqp-auth
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-worker
+    app.kubernetes.io/part-of: betterdata
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: betterdata-api-env
+      key: CLOUDAMQP_URL
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: betterdata-worker
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-worker
+    app.kubernetes.io/part-of: betterdata
+spec:
+  scaleTargetRef:
+    name: betterdata-worker
+  pollingInterval: 15
+  cooldownPeriod: 120
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: orders.purchase.requested
+        mode: QueueLength
+        value: "1"
+      authenticationRef:
+        name: betterdata-worker-amqp-auth

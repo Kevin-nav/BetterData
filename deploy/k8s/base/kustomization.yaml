@@ -4,4 +4,8 @@ resources:
   - namespace.yaml
   - web-deployment.yaml
   - web-service.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - worker-deployment.yaml
+  - worker-scaledobject.yaml
   - cloudflared-deployment.yaml

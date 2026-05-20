@@ -231,7 +231,7 @@ Most of this exists in the local `feature/platform-integration` worktree branch.
 
 ## Required Deployment Changes
 
-Add or port:
+Added or ported in the production deployment implementation:
 
 - `Dockerfile.api`
 - `deploy/k8s/base/api-deployment.yaml`
@@ -241,16 +241,38 @@ Add or port:
 - updated `deploy/k8s/base/kustomization.yaml`
 - `.github/workflows/deploy-platform.yml`
 
-Also add an API image build workflow if one is not already present. The deploy
-workflow expects:
+The deploy workflow expects:
 
 ```text
 ghcr.io/kevin-nav/betterdata-api:<tag>
 ghcr.io/kevin-nav/betterdata-web:<tag>
 ```
 
-The existing web build workflow only builds the web image. Production API/worker
-deployment needs the API image to be built and pushed first.
+The API build workflow publishes the API image. The web build workflow publishes
+the web image with the public build-time Firebase, Convex, and API variables.
+
+## Auto-Deploy Strategy
+
+Pushes to `master` should build and publish web/API images. The platform deploy
+workflow then runs on the self-hosted k3s runner and deploys the matching image
+tags.
+
+The first production strategy uses Kubernetes rolling updates rather than a
+separate canary controller:
+
+- Web and API run with two replicas.
+- Rolling updates use `maxSurge: 1` and `maxUnavailable: 0`.
+- Readiness probes gate traffic to new pods.
+- `minReadySeconds` keeps a new pod ready for a short period before Kubernetes
+  treats it as available.
+- If smoke checks fail, the workflow rolls back web and API deployments.
+
+This gives controlled replacement without adding Argo Rollouts or a service
+mesh. If exact weighted traffic shifts are later required, migrate web/API
+deployments to Argo Rollouts and add a compatible traffic provider.
+
+Manual deploy remains available from GitHub Actions. Use it to deploy a specific
+image tag or rerun production after a transient runner or cluster failure.
 
 ## KEDA And Scaling Policy
 
@@ -268,6 +290,36 @@ Install KEDA on the k3s cluster before applying KEDA resources:
 helm repo add kedacore https://kedacore.github.io/charts
 helm repo update
 helm install keda kedacore/keda --namespace keda --create-namespace
+```
+
+On the current single-node VPS, the default chart CPU requests were too high and
+anonymous GHCR pulls for KEDA images returned `403`. Use the GitHub package read
+token from `.env.local` or GitHub secrets to create a pull secret in the `keda`
+namespace, then install with lower resource requests:
+
+```bash
+kubectl -n keda create secret docker-registry ghcr-auth \
+  --docker-server=ghcr.io \
+  --docker-username="$GHCR_READ_USERNAME" \
+  --docker-password="$GHCR_READ_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+helm upgrade --install keda kedacore/keda \
+  --namespace keda \
+  --create-namespace \
+  --set imagePullSecrets[0].name=ghcr-auth \
+  --set resources.operator.requests.cpu=10m \
+  --set resources.operator.requests.memory=64Mi \
+  --set resources.operator.limits.cpu=200m \
+  --set resources.operator.limits.memory=256Mi \
+  --set resources.metricServer.requests.cpu=10m \
+  --set resources.metricServer.requests.memory=64Mi \
+  --set resources.metricServer.limits.cpu=200m \
+  --set resources.metricServer.limits.memory=256Mi \
+  --set resources.webhooks.requests.cpu=10m \
+  --set resources.webhooks.requests.memory=64Mi \
+  --set resources.webhooks.limits.cpu=200m \
+  --set resources.webhooks.limits.memory=256Mi
 ```
 
 Worker scaler target:
@@ -393,6 +445,15 @@ KEDA:
 ```bash
 kubectl -n betterdata describe scaledobject betterdata-worker
 kubectl -n betterdata logs deployment/betterdata-worker
+```
+
+Rollback:
+
+```bash
+kubectl -n betterdata rollout undo deployment/betterdata-web
+kubectl -n betterdata rollout undo deployment/betterdata-api
+kubectl -n betterdata rollout status deployment/betterdata-web --timeout=180s
+kubectl -n betterdata rollout status deployment/betterdata-api --timeout=180s
 ```
 
 ## Known Gaps For The Next Agent

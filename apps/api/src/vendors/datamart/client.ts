@@ -46,19 +46,16 @@ export function createDataMartVendor(): DataVendor {
 
     async listPackages(): Promise<VendorPackage[]> {
       const runtime = getRuntime();
-      const cached = await runtime.cache.getPackages();
+      const packages = await runtime.cache.getOrRefreshPackages(async () => {
+        const response = await runtime.transport.listPackages();
+        const body = response.body as {
+          data?: Parameters<typeof mapDataMartPackageGroups>[0];
+        };
 
-      if (cached) {
-        return cached;
-      }
+        return mapDataMartPackageGroups(body.data ?? {});
+      });
 
-      const response = await runtime.transport.listPackages();
-      const body = response.body as { data?: Parameters<typeof mapDataMartPackageGroups>[0] };
-      const packages = mapDataMartPackageGroups(body.data ?? {});
-
-      await runtime.cache.setPackages(packages);
-
-      return packages;
+      return packages ?? [];
     },
 
     async purchase(input: VendorPurchaseInput): Promise<VendorPurchaseResult> {

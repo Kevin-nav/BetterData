@@ -26,6 +26,60 @@ ADMIN_API_KEY=...
 FIREBASE_PROJECT_ID=...
 FIREBASE_CLIENT_EMAIL=...
 FIREBASE_PRIVATE_KEY=...
+BETTERDATA_SERVICE_SECRET=...
+CONVEX_URL=...
+CONVEX_API_SECRET=...
+```
+
+Required GitHub bootstrap and public build-time values:
+
+```env
+INFISICAL_CLIENT_ID=...
+INFISICAL_CLIENT_SECRET=...
+INFISICAL_PROJECT_ID=...
+INFISICAL_ENVIRONMENT=prod
+INFISICAL_SECRET_PATH=/
+NEXT_PUBLIC_API_BASE_URL=https://api.betterdatagh.com
+NEXT_PUBLIC_CONVEX_URL=...
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+CLOUDFLARED_TOKEN=...
+```
+
+## Deployment
+
+Automatic deploy:
+
+1. Push to `master`.
+2. Confirm `Build and Push Web` succeeds.
+3. Confirm `Build and Push API` succeeds.
+4. Confirm `Deploy Platform` runs on the self-hosted k3s runner.
+5. Confirm the workflow synced Infisical secrets, applied manifests, rolled out
+   web/API, and passed smoke checks.
+
+Manual deploy:
+
+```bash
+gh workflow run "Deploy Platform" \
+  -f api_image_tag=master \
+  -f web_image_tag=master \
+  -f environment=production
+```
+
+Cluster rollout checks:
+
+```bash
+kubectl -n betterdata rollout status deployment/betterdata-web --timeout=300s
+kubectl -n betterdata rollout status deployment/betterdata-api --timeout=300s
+kubectl -n betterdata get pods -l app.kubernetes.io/part-of=betterdata
+```
+
+Rollback if production smoke checks fail:
+
+```bash
+kubectl -n betterdata rollout undo deployment/betterdata-web
+kubectl -n betterdata rollout undo deployment/betterdata-api
 ```
 
 ## CORS
@@ -80,6 +134,18 @@ curl -i https://api.betterdatagh.com/admin/overview \
 Confirm the response includes `vendor.balanceGhs`, `vendor.balanceStatus`, and queue depth fields.
 
 ## Queue
+
+Confirm KEDA is installed:
+
+```bash
+kubectl get ns keda
+kubectl get crd scaledobjects.keda.sh
+kubectl -n keda rollout status deployment/keda-operator --timeout=180s
+kubectl -n keda rollout status deployment/keda-operator-metrics-apiserver --timeout=180s
+kubectl -n keda rollout status deployment/keda-admission-webhooks --timeout=180s
+kubectl -n betterdata get scaledobject betterdata-worker
+kubectl -n betterdata describe scaledobject betterdata-worker
+```
 
 Start API and worker separately:
 

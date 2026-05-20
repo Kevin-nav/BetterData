@@ -31,6 +31,13 @@ export async function processPurchaseMessage(
   const job = message.job;
 
   try {
+    const existing = await options.orderStore.getByReference(job.orderReference);
+
+    if (existing?.vendorOrderReference !== undefined) {
+      await message.ack();
+      return;
+    }
+
     const result = await options.vendor.purchase({
       packageId: job.packageId,
       network: job.network,

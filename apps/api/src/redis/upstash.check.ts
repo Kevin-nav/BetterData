@@ -44,6 +44,50 @@ assert.deepEqual(commands, [
   ["HGET", "test:metrics", "purchase.success"]
 ]);
 
+const lockCommands: unknown[] = [];
+const lockClient = createUpstashRedisClient({
+  config: config!,
+  fetch: async (_url, init) => {
+    const command = JSON.parse(String(init?.body)) as string[];
+    lockCommands.push(command);
+
+    if (command[0] === "SET") {
+      return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+    }
+
+    if (command[0] === "GET") {
+      return new Response(JSON.stringify({ result: "owner-1" }), { status: 200 });
+    }
+
+    return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+  }
+});
+
+assert.equal(
+  await lockClient.acquireLock("datamart:packages:refresh", "owner-1", 30),
+  true
+);
+await lockClient.releaseLock("datamart:packages:refresh", "owner-1");
+assert.deepEqual(lockCommands, [
+  [
+    "SET",
+    "test:datamart:packages:refresh",
+    "owner-1",
+    "NX",
+    "EX",
+    "30"
+  ],
+  ["GET", "test:datamart:packages:refresh"],
+  ["DEL", "test:datamart:packages:refresh"]
+]);
+
+const missedLockClient = createUpstashRedisClient({
+  config: config!,
+  fetch: async () =>
+    new Response(JSON.stringify({ result: null }), { status: 200 })
+});
+assert.equal(await missedLockClient.acquireLock("lock", "owner-2", 5), false);
+
 const timeoutClient = createUpstashRedisClient({
   config: { ...config!, requestTimeoutMs: 1 },
   fetch: async (_url, init) =>

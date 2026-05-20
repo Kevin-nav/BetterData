@@ -5,6 +5,8 @@ export type UpstashRedisClient = {
   getJson<T>(key: string): Promise<T | null>;
   setJson(key: string, value: unknown, ttlSeconds: number): Promise<void>;
   del(key: string): Promise<void>;
+  acquireLock(key: string, owner: string, ttlSeconds: number): Promise<boolean>;
+  releaseLock(key: string, owner: string): Promise<void>;
   hashIncrementByFloat(key: string, field: string, amount: number): Promise<void>;
   hashGetNumber(key: string, field: string): Promise<number>;
   hashGetAllNumbers(key: string): Promise<Record<string, number>>;
@@ -109,6 +111,27 @@ export function createUpstashRedisClient(options: {
 
     async del(name: string) {
       await command(["DEL", key(name)]);
+    },
+
+    async acquireLock(name: string, owner: string, ttlSeconds: number) {
+      const result = await command<string | null>([
+        "SET",
+        key(name),
+        owner,
+        "NX",
+        "EX",
+        String(ttlSeconds)
+      ]);
+
+      return result === "OK";
+    },
+
+    async releaseLock(name: string, owner: string) {
+      const current = await command<string | null>(["GET", key(name)]);
+
+      if (current === owner) {
+        await command(["DEL", key(name)]);
+      }
     },
 
     async hashIncrementByFloat(name: string, field: string, amount: number) {

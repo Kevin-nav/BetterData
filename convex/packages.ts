@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireServiceSecret } from "./serviceAuth";
 
 export const list = query({
   args: {
@@ -38,5 +39,19 @@ export const listAvailable = query({
             .collect();
 
     return packages;
+  }
+});
+
+export const listAvailableForApi = query({
+  args: {
+    serviceSecret: v.string()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+
+    return await ctx.db
+      .query("dataPackages")
+      .filter((q) => q.eq(q.field("isAvailable"), true))
+      .collect();
   }
 });

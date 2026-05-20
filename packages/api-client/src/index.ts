@@ -4,6 +4,7 @@ import type {
   DataPackage,
   PaymentIntentStatusResponse,
   PurchaseRequest,
+  WalletTransactionType,
   VendorOrderStatus,
   Order
 } from "@betterdata/contracts";
@@ -30,7 +31,7 @@ export type ListOrdersResponse = {
 
 export type WalletTransaction = {
   id: string;
-  type: "credit" | "debit";
+  type: WalletTransactionType;
   amountGhs: number;
   reference: string;
   description: string;

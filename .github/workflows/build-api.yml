@@ -1,4 +1,4 @@
-name: Build and Push Web
+name: Build and Push API
 
 on:
   push:
@@ -16,12 +16,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: kevin-nav/betterdata-web
-  NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000' }}
-  NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
-  NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+  IMAGE_NAME: kevin-nav/betterdata-api
 
 jobs:
   build:
@@ -51,8 +46,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Build
-        run: pnpm --filter @betterdata/web... build
+      - name: Test API
+        run: pnpm --filter @betterdata/api test
+
+      - name: Build API
+        run: pnpm --filter @betterdata/api... build
 
       - name: Set up Docker Buildx
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
@@ -81,16 +79,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.web
+          file: Dockerfile.api
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ env.NEXT_PUBLIC_API_BASE_URL }}
-            NEXT_PUBLIC_CONVEX_URL=${{ env.NEXT_PUBLIC_CONVEX_URL }}
-            NEXT_PUBLIC_FIREBASE_API_KEY=${{ env.NEXT_PUBLIC_FIREBASE_API_KEY }}
-            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ env.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -109,11 +101,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          ISSUE_TITLE: CI failure on master web build
+          ISSUE_TITLE: CI failure on master API build
         run: |
           gh label create ci-failure --repo "$REPO" --color D73A4A --description "CI/CD failures" || true
           existing_issue="$(gh issue list --repo "$REPO" --state open --label ci-failure --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n 1)"
-          body="The BetterData web build failed.
+          body="The BetterData API build failed.
 
           Workflow run: $RUN_URL
           Commit: $GITHUB_SHA

@@ -176,7 +176,7 @@ export default function WalletPage() {
           ) : (
             <div className="orders-list">
               {transactions.map((tx) => {
-                const isCredit = tx.type === "credit" || tx.type === "top_up" || tx.type === "admin_credit";
+                const isCredit = tx.type === "top_up" || tx.type === "refund" || tx.type === "admin_credit";
                 const displayType = tx.type === "top_up" ? "Top Up" : tx.type === "purchase" ? "Data Purchase" : tx.type;
 
                 const relativeDate = new Date(tx.createdAt).toLocaleDateString(undefined, {

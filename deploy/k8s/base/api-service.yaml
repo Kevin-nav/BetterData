@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: betterdata-api
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-api
+    app.kubernetes.io/part-of: betterdata
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: betterdata-api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http

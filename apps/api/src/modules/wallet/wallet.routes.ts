@@ -28,7 +28,7 @@ export async function registerWalletRoutes(server: FastifyInstance) {
           type: tx.type,
           amountGhs: tx.amountGhs,
           reference: tx.reference,
-          description: tx.description,
+          description: tx.notes ?? formatWalletTransactionDescription(tx.type),
           createdAt: tx._creationTime
         }))
       };
@@ -37,4 +37,21 @@ export async function registerWalletRoutes(server: FastifyInstance) {
       return reply.code(500).send({ message: "Unable to retrieve wallet data." });
     }
   });
+}
+
+function formatWalletTransactionDescription(type: string) {
+  switch (type) {
+    case "top_up":
+      return "Wallet top-up";
+    case "purchase":
+      return "Data purchase";
+    case "refund":
+      return "Refund";
+    case "admin_credit":
+      return "Admin credit";
+    case "admin_debit":
+      return "Admin debit";
+    default:
+      return "Wallet transaction";
+  }
 }

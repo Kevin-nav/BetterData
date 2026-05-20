@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "../../lib/AuthContext";
+import { useAuth } from "../lib/AuthContext";
 
 /* ── Icons ── */
 const HomeIcon = ({ className }: { className?: string }) => (
@@ -113,9 +113,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const userInitials = userProfile?.displayName
-    ? userProfile.displayName.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()
+    ? userProfile.displayName
+        .split(" ")
+        .map((n: string) => n[0] ?? "")
+        .join("")
+        .substring(0, 2)
+        .toUpperCase()
     : userProfile?.email
-      ? userProfile.email[0].toUpperCase()
+      ? (userProfile.email[0] ?? "U").toUpperCase()
       : "U";
 
   const navigationItems = [

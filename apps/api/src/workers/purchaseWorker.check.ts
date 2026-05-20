@@ -4,7 +4,7 @@ import { createMemoryOrderStore } from "../orders/orderStore";
 import { createLocalQueueProvider } from "../queue/localQueue";
 import { QUEUE_NAMES, type PurchaseJob } from "../queue/types";
 import type { DataVendor } from "../vendors/types";
-import { startPurchaseWorker } from "./purchaseWorker";
+import { processPurchaseMessage, startPurchaseWorker } from "./purchaseWorker";
 
 const queue = createLocalQueueProvider();
 const orderStore = createMemoryOrderStore();
@@ -70,6 +70,59 @@ assert.equal(updated?.vendorOrderReference, "GN-idem-worker");
 assert.equal(updated?.status, "processing");
 
 await stop();
+
+const alreadyFulfilledOrderStore = createMemoryOrderStore();
+const alreadyFulfilledOrder = await alreadyFulfilledOrderStore.createIntent({
+  body: {
+    packageId: "datamart:yello-5gb",
+    network: "mtn",
+    recipientPhone: "0551234567",
+    confirmRecipientIsCorrect: true,
+    paymentMethod: "paystack_momo"
+  },
+  vendor,
+  idempotencyKey: "idem-already-fulfilled"
+});
+await alreadyFulfilledOrderStore.recordVendorResult(alreadyFulfilledOrder.reference, {
+  vendorOrderReference: "GN-already-done",
+  status: "processing"
+});
+let duplicateVendorCalls = 0;
+let duplicateAcked = false;
+await processPurchaseMessage(
+  {
+    id: "duplicate-message",
+    queue: QUEUE_NAMES.purchaseRequested,
+    attempts: 0,
+    job: {
+      ...job,
+      orderReference: alreadyFulfilledOrder.reference,
+      idempotencyKey: alreadyFulfilledOrder.idempotencyKey
+    },
+    async ack() {
+      duplicateAcked = true;
+    },
+    async retry() {
+      throw new Error("Duplicate fulfilled order should not retry.");
+    },
+    async deadLetter() {
+      throw new Error("Duplicate fulfilled order should not dead-letter.");
+    }
+  },
+  {
+    queue,
+    orderStore: alreadyFulfilledOrderStore,
+    vendor: {
+      ...vendor,
+      async purchase(input) {
+        duplicateVendorCalls += 1;
+        return await vendor.purchase(input);
+      }
+    }
+  }
+);
+assert.equal(duplicateVendorCalls, 0);
+assert.equal(duplicateAcked, true);
 
 const failingQueue = createLocalQueueProvider();
 const failingOrderStore = createMemoryOrderStore();

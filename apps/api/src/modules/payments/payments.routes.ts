@@ -21,7 +21,12 @@ import {
   verifyPaystackSignature,
   verifyPaystackTransaction
 } from "../../integrations/paystack/client";
-import { getActiveDataVendor } from "../../vendors/activeVendor";
+import {
+  createQueueProvider,
+  QUEUE_NAMES,
+  type PurchaseJob,
+  type QueueProvider
+} from "../../queue";
 import { emitPaymentTelemetry } from "../../telemetry/paymentTelemetry";
 import {
   getOptionalRequestUser,
@@ -71,6 +76,8 @@ type RetryableOpsAlert = {
 };
 
 export async function registerPaymentRoutes(server: FastifyInstance) {
+  const queue = await createQueueProvider();
+
   server.post<{ Body: CreatePaymentIntentRequest }>(
     "/payments/intents",
     async (request, reply) => {
@@ -271,7 +278,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             providerPayload: verified
           });
 
-          await fulfillPaidDataPurchase(convex, reference);
+          await enqueuePaidDataPurchaseFulfillment(convex, queue, reference);
           emitPaymentTelemetry({
             name: "payment.intent.completed",
             paymentReference: reference,
@@ -341,7 +348,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
     const results = [];
 
     for (const alert of alerts) {
-      const result = await processRetryAlert(convex, alert);
+      const result = await processRetryAlert(convex, queue, alert);
       results.push(result);
     }
 
@@ -381,7 +388,11 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
   });
 }
 
-async function processRetryAlert(convex: ConvexHttpClient, alert: RetryableOpsAlert) {
+async function processRetryAlert(
+  convex: ConvexHttpClient,
+  queue: QueueProvider,
+  alert: RetryableOpsAlert
+) {
   if (alert.reference === undefined || alert.retryAction === undefined) {
     return { alertId: alert._id, status: "skipped", reason: "missing retry metadata" };
   }
@@ -394,16 +405,16 @@ async function processRetryAlert(convex: ConvexHttpClient, alert: RetryableOpsAl
   try {
     switch (alert.retryAction) {
       case "verify_payment":
-        await verifyAndCompletePayment(convex, alert.reference);
+        await verifyAndCompletePayment(convex, queue, alert.reference);
         break;
       case "fulfill_order":
-        await fulfillPaidDataPurchase(convex, alert.reference);
+        await enqueuePaidDataPurchaseFulfillment(convex, queue, alert.reference);
         break;
       case "credit_wallet":
-        await creditWalletHandler(convex, alert.reference);
+        await creditWalletHandler(convex, queue, alert.reference);
         break;
       case "complete_agent_application":
-        await completeAgentApplicationHandler(convex, alert.reference);
+        await completeAgentApplicationHandler(convex, queue, alert.reference);
         break;
       default:
         throw new Error(`Unsupported payment retry action: ${alert.retryAction}.`);
@@ -438,19 +449,25 @@ async function processRetryAlert(convex: ConvexHttpClient, alert: RetryableOpsAl
   }
 }
 
-async function creditWalletHandler(convex: ConvexHttpClient, reference: string) {
-  await verifyAndCompletePayment(convex, reference);
+async function creditWalletHandler(
+  convex: ConvexHttpClient,
+  queue: QueueProvider,
+  reference: string
+) {
+  await verifyAndCompletePayment(convex, queue, reference);
 }
 
 async function completeAgentApplicationHandler(
   convex: ConvexHttpClient,
+  queue: QueueProvider,
   reference: string
 ) {
-  await verifyAndCompletePayment(convex, reference);
+  await verifyAndCompletePayment(convex, queue, reference);
 }
 
 async function verifyAndCompletePayment(
   convex: ConvexHttpClient,
+  queue: QueueProvider,
   reference: string
 ) {
   const verified = await verifyPaystackTransaction(reference);
@@ -475,11 +492,12 @@ async function verifyAndCompletePayment(
     providerPayload: verified
   });
 
-  await fulfillPaidDataPurchase(convex, reference);
+  await enqueuePaidDataPurchaseFulfillment(convex, queue, reference);
 }
 
-async function fulfillPaidDataPurchase(
+async function enqueuePaidDataPurchaseFulfillment(
   convex: ConvexHttpClient,
+  queue: QueueProvider,
   providerReference: string
 ) {
   const intent = (await convex.query(paymentFunctions.getByProviderReference, {
@@ -487,87 +505,73 @@ async function fulfillPaidDataPurchase(
     providerReference
   })) as PaymentIntentRecord | null;
 
-  if (intent?.purpose !== "data_purchase") {
+  if (intent === null) {
+    throw new Error("Payment intent not found for queued fulfillment.");
+  }
+
+  const job = buildPaidDataPurchaseJobFromIntent(providerReference, intent);
+
+  if (job === null) {
     return;
   }
 
-  const existingOrder = (await convex.query(
-    paymentFunctions.getDataPurchaseOrderByPaymentReference,
-    {
-      ...serviceArgs(),
-      providerReference
-    }
-  )) as { vendorOrderReference?: string } | null;
+  await queue.enqueue(QUEUE_NAMES.purchaseRequested, job);
+}
 
-  if (existingOrder?.vendorOrderReference !== undefined) {
-    return;
+export function buildPaidDataPurchaseJob(input: {
+  providerReference: string;
+  packageId: string;
+  vendorPackageId?: string;
+  network: PurchaseJob["network"];
+  recipientPhone: string;
+  vendorId: string;
+}): PurchaseJob {
+  return {
+    kind: "purchase",
+    orderReference: input.providerReference,
+    packageId: input.vendorPackageId ?? input.packageId,
+    network: input.network,
+    recipientPhone: input.recipientPhone,
+    paymentMethod: "paystack_momo",
+    vendorId: input.vendorId,
+    idempotencyKey: input.providerReference,
+    attempt: 0,
+    createdAt: new Date().toISOString()
+  };
+}
+
+export function buildPaidDataPurchaseJobFromIntent(
+  providerReference: string,
+  intent: PaymentIntentRecord
+) {
+  if (intent.purpose !== "data_purchase") {
+    return null;
   }
 
   const metadata = asRecord(intent.purposeMetadata);
-  const packageId = metadata.vendorPackageId ?? metadata.packageId;
+  const packageId = metadata.packageId;
+  const vendorPackageId = metadata.vendorPackageId;
+  const vendorId = metadata.vendorId;
   const network = metadata.network;
   const recipientPhone = metadata.recipientPhone;
 
   if (
     typeof packageId !== "string" ||
+    typeof vendorId !== "string" ||
     !isNetworkCode(network) ||
     typeof recipientPhone !== "string"
   ) {
-    throw new Error("Paid data purchase metadata is invalid for fulfillment.");
+    throw new Error("Paid data purchase metadata is invalid for queued fulfillment.");
   }
 
-  const vendor = getActiveDataVendor();
-  try {
-    const result = await vendor.purchase({
-      packageId,
-      network,
-      recipientPhone,
-      idempotencyKey: providerReference
-    });
-
-    await convex.mutation(paymentFunctions.markDataPurchaseFulfilled, {
-      ...serviceArgs(),
-      providerReference,
-      vendorId: vendor.id,
-      vendorOrderReference: result.vendorOrderReference,
-      status: result.status,
-      ...(result.raw !== undefined ? { vendorRaw: result.raw } : {})
-    });
-    emitPaymentTelemetry({
-      name: "payment.fulfillment.succeeded",
-      paymentReference: providerReference,
-      status: result.status,
-      vendorId: vendor.id,
-      vendorOrderReference: result.vendorOrderReference,
-      recipientPhone
-    });
-  } catch (error) {
-    emitPaymentTelemetry({
-      name: "payment.fulfillment.failed",
-      paymentReference: providerReference,
-      status: "failed",
-      vendorId: vendor.id,
-      recipientPhone,
-      errorCode: "vendor_fulfillment_failed",
-      errorMessage: error instanceof Error ? error.message : "Unknown error"
-    });
-    const nextRetryAt = getNextRetryAt("data_fulfillment", 0);
-    await createOpsAlertSafely(convex, {
-      severity: "warning",
-      category: "fulfillment",
-      reference: providerReference,
-      message: "Vendor fulfillment failed after successful payment.",
-      metadata: {
-        vendorId: vendor.id,
-        errorMessage: error instanceof Error ? error.message : "Unknown error"
-      },
-      retryable: true,
-      retryAction: "fulfill_order",
-      retryStatus: "queued",
-      ...(nextRetryAt !== null ? { nextRetryAt } : {})
-    });
-    throw error;
-  }
+  return buildPaidDataPurchaseJob({
+    providerReference,
+    packageId,
+    ...(typeof vendorPackageId === "string" ? { vendorPackageId } : {}),
+    vendorId,
+    network,
+    recipientPhone
+  });
 }
 
 function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {

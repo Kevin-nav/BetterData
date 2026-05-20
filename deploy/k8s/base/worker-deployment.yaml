@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: betterdata-worker
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-worker
+    app.kubernetes.io/part-of: betterdata
+spec:
+  replicas: 0
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: betterdata-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: betterdata-worker
+        app.kubernetes.io/part-of: betterdata
+    spec:
+      terminationGracePeriodSeconds: 60
+      imagePullSecrets:
+        - name: ghcr-auth
+      containers:
+        - name: worker
+          image: ghcr.io/kevin-nav/betterdata-api:master
+          imagePullPolicy: Always
+          command:
+            - node
+            - apps/api/dist/worker.js
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: QUEUE_PROVIDER
+              value: amqp
+          envFrom:
+            - secretRef:
+                name: betterdata-api-env
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 750m
+              memory: 768Mi

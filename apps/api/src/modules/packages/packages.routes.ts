@@ -1,8 +1,23 @@
 import type { DataPackage } from "@betterdata/contracts";
+import { getRequiredEnv } from "@betterdata/config";
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
 import type { FastifyInstance } from "fastify";
 
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
+
+type ConvexPackageRecord = {
+  _id: string;
+  vendorId: string;
+  vendorPackageId: string;
+  network: DataPackage["network"];
+  name: string;
+  sizeMb: number;
+  providerCostGhs: number;
+  customerPriceGhs: number;
+  isAvailable: boolean;
+};
 
 export async function registerPackageRoutes(server: FastifyInstance) {
   server.get("/data-packages", async (request, reply) => {
@@ -32,6 +47,19 @@ export async function registerPackageRoutes(server: FastifyInstance) {
       };
     } catch (error) {
       request.log.error({ error, vendorId: vendor.id }, "Vendor package listing failed");
+      const fallback = await listConvexPackageFallback();
+
+      if (fallback.length > 0) {
+        return {
+          vendor: {
+            id: vendor.id,
+            displayName: vendor.displayName
+          },
+          source: "fallback",
+          packages: fallback
+        };
+      }
+
       const mapped = mapVendorErrorToHttp(error);
 
       if (mapped.retryAfterSeconds !== undefined) {
@@ -44,4 +72,36 @@ export async function registerPackageRoutes(server: FastifyInstance) {
       });
     }
   });
+}
+
+export function mapConvexFallbackPackages(
+  packages: ConvexPackageRecord[]
+): DataPackage[] {
+  return packages.map((item) => ({
+    id: item._id,
+    vendorId: item.vendorId,
+    vendorPackageId: item.vendorPackageId,
+    network: item.network,
+    name: item.name,
+    sizeMb: item.sizeMb,
+    costGhs: item.providerCostGhs,
+    customerPriceGhs: item.customerPriceGhs,
+    isAvailable: item.isAvailable
+  }));
+}
+
+async function listConvexPackageFallback() {
+  if (!process.env.CONVEX_URL || !process.env.BETTERDATA_SERVICE_SECRET) {
+    return [];
+  }
+
+  const listAvailableForApi = makeFunctionReference<"query">(
+    "packages:listAvailableForApi"
+  );
+  const convex = new ConvexHttpClient(getRequiredEnv("CONVEX_URL"));
+  const packages = (await convex.query(listAvailableForApi, {
+    serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
+  })) as ConvexPackageRecord[];
+
+  return mapConvexFallbackPackages(packages);
 }
