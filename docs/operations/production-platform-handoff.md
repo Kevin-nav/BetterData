@@ -11,16 +11,14 @@ path.
 - Infisical CLI is installed locally.
 - The main branch accepts DataMart's documented `X-DataMart-Signature` webhook
   header.
+- Main branch contains the production web, API, worker, KEDA, and deploy
+  workflow wiring.
+- API production runtime is bundled to `apps/api/dist/index.js` and
+  `apps/api/dist/worker.js`; containers should run these emitted files with
+  `node`, not `tsx` source files.
 - The design and implementation plans live in:
   - `docs/plans/2026-05-19-platform-integration-design.md`
   - `docs/plans/2026-05-19-platform-integration-implementation.md`
-- A local worktree branch exists at `.worktrees/platform-integration` with a
-  fuller implementation draft for queue-centered fulfillment, Redis cache
-  locking, Firebase auth foundation, API/worker manifests, KEDA, and Infisical
-  deploy workflow.
-
-Another agent can either port the relevant commits from
-`feature/platform-integration` or reimplement from the plans above.
 
 ## Production URLs
 
@@ -176,9 +174,12 @@ The deploy workflow should:
 
 1. Authenticate to Infisical using GitHub bootstrap secrets.
 2. Export runtime secrets as a dotenv file.
-3. Create or update the Kubernetes secret `betterdata-api-env`.
-4. Apply Kubernetes manifests.
-5. Roll out API, worker, web, and Cloudflare tunnel.
+3. Filter invalid Kubernetes env key names and fail if required production keys
+   are missing.
+4. Create or update the Kubernetes secret `betterdata-api-env`.
+5. Render Kubernetes manifests with exact target image refs.
+6. Apply API, worker, web, KEDA, and Cloudflare tunnel manifests.
+7. Roll out API, web, and Cloudflare tunnel.
 
 Recommended workflow commands:
 
@@ -265,9 +266,15 @@ Build workflows are path-aware:
   and shared repo build config changes.
 - Docs-only and unrelated deployment-doc changes do not build images.
 - If only one service changes, deploy uses that service's SHA image and keeps
-  the other service on the current `master` image.
+  the other service on its currently deployed image.
 - If shared code changes, both service images are built and the deploy workflow
   waits for both SHA tags before rollout.
+- The deploy workflow captures the previously deployed API and web image refs
+  before rollout. Rollback sets deployments back to those exact refs rather than
+  relying on mutable tags or Kubernetes revision history.
+- Runtime manifests are rendered with the target images before `kubectl apply`.
+  This prevents the base manifest placeholders from briefly resetting workloads
+  back to `:master`.
 
 The first production strategy uses Kubernetes rolling updates rather than a
 separate canary controller:
@@ -287,7 +294,31 @@ required, add VPS/cluster capacity, set web/API replicas to at least two, and
 then migrate to Argo Rollouts or another compatible traffic provider.
 
 Manual deploy remains available from GitHub Actions. Use it to deploy a specific
-image tag or rerun production after a transient runner or cluster failure.
+image tag or rerun production after a transient runner or cluster failure. Leave
+an image tag blank to preserve that service's currently deployed image.
+
+## Permanent Fixes For The Current Failure Cases
+
+Use these as the operating rules for future deployment work:
+
+- Firebase public config: `NEXT_PUBLIC_FIREBASE_API_KEY`,
+  `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`,
+  `NEXT_PUBLIC_CONVEX_URL`, and `NEXT_PUBLIC_API_BASE_URL` are build-time web
+  inputs. A bad web image cannot be fixed by changing only Kubernetes runtime
+  secrets; rebuild and redeploy the web image.
+- API runtime: do not run `tsx` in production containers. The API image should
+  build with `tsup` and run `node apps/api/dist/index.js`; the worker should run
+  `node apps/api/dist/worker.js`.
+- Image tags: deploy immutable `sha-<commit>` tags. The mutable `master` tag is
+  only a registry convenience and should not be used as the desired production
+  state.
+- Infisical export: invalid dotenv keys are ignored by name only, and missing
+  required production keys fail before workload rollout begins.
+- Rollback: only run after workload rollout starts, and roll back to captured
+  previous image refs.
+- Capacity: the current single-node VPS cannot provide true zero-downtime
+  rolling updates or weighted traffic shifting. Keep single-replica replacement
+  until there is enough capacity for at least two web pods and two API pods.
 
 ## KEDA And Scaling Policy
 
@@ -465,17 +496,15 @@ kubectl -n betterdata logs deployment/betterdata-worker
 Rollback:
 
 ```bash
-kubectl -n betterdata rollout undo deployment/betterdata-web
-kubectl -n betterdata rollout undo deployment/betterdata-api
+kubectl -n betterdata set image deployment/betterdata-web web=<previous-web-image-ref>
+kubectl -n betterdata set image deployment/betterdata-api api=<previous-api-image-ref>
+kubectl -n betterdata set image deployment/betterdata-worker worker=<previous-api-image-ref>
 kubectl -n betterdata rollout status deployment/betterdata-web --timeout=180s
 kubectl -n betterdata rollout status deployment/betterdata-api --timeout=180s
 ```
 
 ## Known Gaps For The Next Agent
 
-- Main branch has the DataMart webhook signature fix, but the broader
-  integration implementation is still in `feature/platform-integration`.
-- API image build/push workflow must be added or confirmed before deploy.
 - Convex codegen/deploy needs a configured `CONVEX_DEPLOYMENT`.
 - DataMart webhook route currently normalizes the webhook payload. Confirm the
   final implementation persists status updates to Convex orders.

@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       api_image_tag:
-        description: GHCR API image tag to deploy. Defaults to master.
+        description: GHCR API image tag to deploy. Leave empty to preserve the currently deployed API image.
         required: false
-        default: master
+        default: ""
       web_image_tag:
-        description: GHCR web image tag to deploy. Defaults to master.
+        description: GHCR web image tag to deploy. Leave empty to preserve the currently deployed web image.
         required: false
-        default: master
+        default: ""
       environment:
         description: GitHub environment to read bootstrap secrets from.
         required: false
@@ -86,10 +86,20 @@ jobs:
         id: deploy-inputs
         run: |
           if [ "$GITHUB_EVENT_NAME" != "workflow_run" ]; then
-            echo "api_tag=${{ inputs.api_image_tag || 'master' }}" >> "$GITHUB_OUTPUT"
-            echo "web_tag=${{ inputs.web_image_tag || 'master' }}" >> "$GITHUB_OUTPUT"
-            echo "wait_api=false" >> "$GITHUB_OUTPUT"
-            echo "wait_web=false" >> "$GITHUB_OUTPUT"
+            api_tag="${{ inputs.api_image_tag }}"
+            web_tag="${{ inputs.web_image_tag }}"
+            echo "api_tag=$api_tag" >> "$GITHUB_OUTPUT"
+            echo "web_tag=$web_tag" >> "$GITHUB_OUTPUT"
+            if [ -n "$api_tag" ]; then
+              echo "wait_api=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "wait_api=false" >> "$GITHUB_OUTPUT"
+            fi
+            if [ -n "$web_tag" ]; then
+              echo "wait_web=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "wait_web=false" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 
@@ -116,7 +126,7 @@ jobs:
             echo "api_tag=sha-$short_sha" >> "$GITHUB_OUTPUT"
             echo "wait_api=true" >> "$GITHUB_OUTPUT"
           else
-            echo "api_tag=master" >> "$GITHUB_OUTPUT"
+            echo "api_tag=" >> "$GITHUB_OUTPUT"
             echo "wait_api=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -124,7 +134,7 @@ jobs:
             echo "web_tag=sha-$short_sha" >> "$GITHUB_OUTPUT"
             echo "wait_web=true" >> "$GITHUB_OUTPUT"
           else
-            echo "web_tag=master" >> "$GITHUB_OUTPUT"
+            echo "web_tag=" >> "$GITHUB_OUTPUT"
             echo "wait_web=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -199,17 +209,82 @@ jobs:
           if [ -n "$invalid_keys" ]; then
             echo "Ignored invalid Infisical env key names: $invalid_keys"
           fi
+          required_keys="
+          NODE_ENV
+          PUBLIC_APP_URL
+          PUBLIC_ADMIN_URL
+          API_BASE_URL
+          QUEUE_PROVIDER
+          CLOUDAMQP_URL
+          UPSTASH_REDIS_REST_URL
+          UPSTASH_REDIS_REST_TOKEN
+          WEBHOOK_SECRET
+          WEBHOOK_HMAC_SECRET
+          BETTERDATA_ACTIVE_DATA_VENDOR
+          BETTERDATA_SERVICE_SECRET
+          CONVEX_URL
+          CONVEX_API_SECRET
+          FIREBASE_PROJECT_ID
+          FIREBASE_CLIENT_EMAIL
+          FIREBASE_PRIVATE_KEY
+          PAYSTACK_SECRET_KEY
+          PAYSTACK_PUBLIC_KEY
+          RESEND_API_KEY
+          SUPPORT_EMAIL
+          TELEMETRY_HASH_SECRET
+          DATAMART_API_KEY
+          "
+          missing_keys=""
+          for key in $required_keys; do
+            if ! grep -Eq "^${key}=.+" api.clean.env; then
+              missing_keys="${missing_keys}${missing_keys:+,}$key"
+            fi
+          done
+          if [ -n "$missing_keys" ]; then
+            echo "Missing required production API secret keys in Infisical: $missing_keys" >&2
+            exit 1
+          fi
 
       - name: Capture current deployment images
         id: current-images
         run: |
           current_api="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}' 2>/dev/null || true)"
           current_web="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-web -o jsonpath='{.spec.template.spec.containers[?(@.name=="web")].image}' 2>/dev/null || true)"
-          echo "api_image=${current_api:-$API_IMAGE:master}" >> "$GITHUB_OUTPUT"
-          echo "web_image=${current_web:-$WEB_IMAGE:master}" >> "$GITHUB_OUTPUT"
+          echo "api_image=$current_api" >> "$GITHUB_OUTPUT"
+          echo "web_image=$current_web" >> "$GITHUB_OUTPUT"
 
-      - name: Apply base manifests
-        run: sudo -n kubectl apply -k deploy/k8s/base
+      - name: Resolve target deployment images
+        id: target-images
+        run: |
+          api_tag="${{ steps.deploy-inputs.outputs.api_tag }}"
+          web_tag="${{ steps.deploy-inputs.outputs.web_tag }}"
+          current_api="${{ steps.current-images.outputs.api_image }}"
+          current_web="${{ steps.current-images.outputs.web_image }}"
+
+          if [ -n "$api_tag" ]; then
+            api_ref="$API_IMAGE:$api_tag"
+          else
+            api_ref="$current_api"
+          fi
+
+          if [ -n "$web_tag" ]; then
+            web_ref="$WEB_IMAGE:$web_tag"
+          else
+            web_ref="$current_web"
+          fi
+
+          if [ -z "$api_ref" ] || [ -z "$web_ref" ]; then
+            echo "No current deployment image exists and no replacement tag was supplied." >&2
+            echo "API image: ${api_ref:-<missing>}" >&2
+            echo "Web image: ${web_ref:-<missing>}" >&2
+            exit 1
+          fi
+
+          echo "api_ref=$api_ref" >> "$GITHUB_OUTPUT"
+          echo "web_ref=$web_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Apply namespace
+        run: sudo -n kubectl apply -f deploy/k8s/base/namespace.yaml
 
       - name: Sync API runtime secrets
         run: |
@@ -251,21 +326,16 @@ jobs:
             --docker-password="$token" \
             --dry-run=client -o yaml | sudo -n kubectl apply -f -
 
-      - name: Deploy selected images
+      - name: Apply target manifests and verify rollout
         id: deploy-images
         run: |
           echo "DEPLOY_STARTED=true" >> "$GITHUB_ENV"
-          api_ref="$API_IMAGE:${{ steps.deploy-inputs.outputs.api_tag }}"
-          web_ref="$WEB_IMAGE:${{ steps.deploy-inputs.outputs.web_tag }}"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "${{ steps.deploy-inputs.outputs.wait_api }}" != "true" ]; then
-            api_ref="${{ steps.current-images.outputs.api_image }}"
-          fi
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "${{ steps.deploy-inputs.outputs.wait_web }}" != "true" ]; then
-            web_ref="${{ steps.current-images.outputs.web_image }}"
-          fi
-          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$web_ref"
-          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-api api="$api_ref"
-          sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-worker worker="$api_ref"
+          api_ref="${{ steps.target-images.outputs.api_ref }}"
+          web_ref="${{ steps.target-images.outputs.web_ref }}"
+          sudo -n kubectl kustomize deploy/k8s/base > rendered-platform.yaml
+          sed -i "s#ghcr.io/kevin-nav/betterdata-api:master#$api_ref#g" rendered-platform.yaml
+          sed -i "s#ghcr.io/kevin-nav/betterdata-web:master#$web_ref#g" rendered-platform.yaml
+          sudo -n kubectl apply -f rendered-platform.yaml
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=300s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=300s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-cloudflared --timeout=180s
@@ -283,14 +353,21 @@ jobs:
         run: |
           if [ "${DEPLOY_STARTED:-false}" != "true" ]; then
             echo "Rollout did not start; skipping rollback."
-            rm -f api.env api.clean.env
+            rm -f api.env api.clean.env rendered-platform.yaml
             exit 0
           fi
-          sudo -n kubectl -n "$NAMESPACE" rollout undo deployment/betterdata-web || true
-          sudo -n kubectl -n "$NAMESPACE" rollout undo deployment/betterdata-api || true
+          previous_web="${{ steps.current-images.outputs.web_image }}"
+          previous_api="${{ steps.current-images.outputs.api_image }}"
+          if [ -n "$previous_web" ]; then
+            sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$previous_web" || true
+          fi
+          if [ -n "$previous_api" ]; then
+            sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-api api="$previous_api" || true
+            sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-worker worker="$previous_api" || true
+          fi
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=90s || true
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=90s || true
-          rm -f api.env api.clean.env
+          rm -f api.env api.clean.env rendered-platform.yaml
 
   notify-failure:
     name: Notify Deploy Failure
