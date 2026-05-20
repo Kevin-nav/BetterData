@@ -68,10 +68,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm --filter @betterdata/web... lint
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm --filter @betterdata/web... typecheck
 
       - name: Build
         run: pnpm --filter @betterdata/web... build
