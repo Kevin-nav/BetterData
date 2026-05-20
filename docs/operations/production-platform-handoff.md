@@ -272,16 +272,19 @@ Build workflows are path-aware:
 The first production strategy uses Kubernetes rolling updates rather than a
 separate canary controller:
 
-- Web and API run with two replicas.
-- Rolling updates use `maxSurge: 1` and `maxUnavailable: 0`.
+- Web and API run with one replica on the current single-node VPS.
+- Rolling updates use `maxSurge: 0` and `maxUnavailable: 1` to avoid rollouts
+  hanging on unschedulable surge pods.
 - Readiness probes gate traffic to new pods.
 - `minReadySeconds` keeps a new pod ready for a short period before Kubernetes
   treats it as available.
 - If smoke checks fail, the workflow rolls back web and API deployments.
 
 This gives controlled replacement without adding Argo Rollouts or a service
-mesh. If exact weighted traffic shifts are later required, migrate web/API
-deployments to Argo Rollouts and add a compatible traffic provider.
+mesh. It can have a brief service interruption while the single replacement pod
+starts. If exact weighted traffic shifts or zero-downtime replacement are later
+required, add VPS/cluster capacity, set web/API replicas to at least two, and
+then migrate to Argo Rollouts or another compatible traffic provider.
 
 Manual deploy remains available from GitHub Actions. Use it to deploy a specific
 image tag or rerun production after a transient runner or cluster failure.

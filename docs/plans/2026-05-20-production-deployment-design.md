@@ -34,16 +34,16 @@ This keeps the first production path small and operable:
 
 The first version uses `Deployment` rolling update settings:
 
-- Web replicas: `2`
-- API replicas: `2`
+- Web replicas: `1` on the current single-node VPS
+- API replicas: `1` on the current single-node VPS
 - Worker replicas: `0`, scaled by KEDA
-- `maxSurge: 1`
-- `maxUnavailable: 0`
+- `maxSurge: 0`
+- `maxUnavailable: 1`
 - readiness probes required before traffic
 - `minReadySeconds` to prevent immediate promotion of unstable pods
 - rollout status checks with explicit timeouts
 
-This does not provide exact weighted traffic percentages. It does keep old pods serving until new pods are proven ready and removes old pods only after successful replacement. If exact 10/25/50/100 percent shifts are needed later, add Argo Rollouts with an ingress or mesh traffic provider.
+This does not provide exact weighted traffic percentages. The current VPS does not have enough schedulable CPU for duplicate web/API pods plus surge pods, so the first production rollout favors predictable completion over hanging Pending pods. If exact 10/25/50/100 percent shifts are needed later, add capacity first, then move web/API to `replicas: 2+` with no-downtime rolling updates or Argo Rollouts with an ingress or mesh traffic provider.
 
 ## Secret Ownership
 
@@ -120,4 +120,3 @@ Cluster verification:
 - `kubectl -n betterdata get scaledobject`
 - `curl -fsS https://api.betterdatagh.com/health`
 - `curl -fsS https://api.betterdatagh.com/data-packages`
-

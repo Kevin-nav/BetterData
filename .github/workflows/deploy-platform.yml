@@ -194,6 +194,11 @@ jobs:
             --path="$INFISICAL_SECRET_PATH" \
             --format=dotenv \
             --output-file=api.env
+          awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/{ print }' api.env > api.clean.env
+          invalid_keys="$(awk -F= 'NF && $0 !~ /^#/ && $0 !~ /^[A-Za-z_][A-Za-z0-9_]*=/{ print $1 }' api.env | paste -sd "," -)"
+          if [ -n "$invalid_keys" ]; then
+            echo "Ignored invalid Infisical env key names: $invalid_keys"
+          fi
 
       - name: Apply base manifests
         run: sudo -n kubectl apply -k deploy/k8s/base
@@ -201,9 +206,9 @@ jobs:
       - name: Sync API runtime secrets
         run: |
           sudo -n kubectl -n "$NAMESPACE" create secret generic betterdata-api-env \
-            --from-env-file=api.env \
+            --from-env-file=api.clean.env \
             --dry-run=client -o yaml | sudo -n kubectl apply -f -
-          rm -f api.env
+          rm -f api.env api.clean.env
 
       - name: Sync web runtime secrets
         run: |
@@ -239,7 +244,9 @@ jobs:
             --dry-run=client -o yaml | sudo -n kubectl apply -f -
 
       - name: Deploy selected images
+        id: deploy-images
         run: |
+          echo "DEPLOY_STARTED=true" >> "$GITHUB_ENV"
           sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$WEB_IMAGE:${{ steps.deploy-inputs.outputs.web_tag }}"
           sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-api api="$API_IMAGE:${{ steps.deploy-inputs.outputs.api_tag }}"
           sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-worker worker="$API_IMAGE:${{ steps.deploy-inputs.outputs.api_tag }}"
@@ -258,11 +265,16 @@ jobs:
       - name: Roll back on failure
         if: failure()
         run: |
+          if [ "${DEPLOY_STARTED:-false}" != "true" ]; then
+            echo "Rollout did not start; skipping rollback."
+            rm -f api.env api.clean.env
+            exit 0
+          fi
           sudo -n kubectl -n "$NAMESPACE" rollout undo deployment/betterdata-web || true
           sudo -n kubectl -n "$NAMESPACE" rollout undo deployment/betterdata-api || true
-          sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=180s || true
-          sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=180s || true
-          rm -f api.env
+          sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=90s || true
+          sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=90s || true
+          rm -f api.env api.clean.env
 
   notify-failure:
     name: Notify Deploy Failure

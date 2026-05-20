@@ -7,14 +7,14 @@ metadata:
     app.kubernetes.io/name: betterdata-web
     app.kubernetes.io/part-of: betterdata
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 5
-  minReadySeconds: 15
+  minReadySeconds: 5
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: betterdata-web
@@ -62,7 +62,7 @@ spec:
                   - sleep 10
           resources:
             requests:
-              cpu: 100m
+              cpu: 50m
               memory: 256Mi
             limits:
               cpu: 500m
