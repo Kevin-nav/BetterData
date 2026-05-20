@@ -33,7 +33,11 @@ const paymentIntentRequest = v.union(
   v.object({
     purpose: v.literal("data_purchase"),
     userId: v.optional(v.id("users")),
-    packageId: v.id("dataPackages"),
+    packageId: v.string(),
+    vendorId: v.optional(v.string()),
+    vendorPackageId: v.optional(v.string()),
+    amountGhs: v.optional(v.number()),
+    baseCustomerPriceGhs: v.optional(v.number()),
     network: networkCode,
     recipientPhone: v.string(),
     customerEmail: v.string(),
@@ -509,7 +513,7 @@ async function completeDataPurchase(
     ...(intent.guestContactPhone !== undefined
       ? { guestContactPhone: intent.guestContactPhone }
       : {}),
-    packageId: packageId as Id<"dataPackages">,
+    packageId,
     vendorId,
     ...(typeof metadata.vendorPackageId === "string"
       ? { vendorPackageId: metadata.vendorPackageId }
@@ -554,7 +558,11 @@ async function resolvePaymentIntent(
     | {
         purpose: "data_purchase";
         userId?: Id<"users">;
-        packageId: Id<"dataPackages">;
+        packageId: string;
+        vendorId?: string;
+        vendorPackageId?: string;
+        amountGhs?: number;
+        baseCustomerPriceGhs?: number;
         network: "mtn" | "telecel" | "airteltigo";
         recipientPhone: string;
         customerEmail: string;
@@ -627,7 +635,49 @@ async function resolvePaymentIntent(
     throw new Error("Recipient number confirmation is required.");
   }
 
-  const dataPackage = await ctx.db.get(request.packageId);
+  const user =
+    "userId" in request && request.userId !== undefined
+      ? await ctx.db.get(request.userId)
+      : null;
+
+  if (
+    request.vendorId !== undefined ||
+    request.vendorPackageId !== undefined ||
+    request.amountGhs !== undefined
+  ) {
+    if (
+      request.vendorId === undefined ||
+      request.vendorPackageId === undefined ||
+      request.amountGhs === undefined
+    ) {
+      throw new Error("Selected data package metadata is incomplete.");
+    }
+
+    if (request.amountGhs <= 0) {
+      throw new Error("Resolved purchase amount must be greater than zero.");
+    }
+
+    return {
+      purpose: request.purpose,
+      amountGhs: roundGhs(request.amountGhs),
+      ...(user !== null ? { userId: user._id } : {}),
+      ...(request.guestContactPhone !== undefined
+        ? { guestContactPhone: request.guestContactPhone }
+        : {}),
+      metadata: {
+        packageId: request.packageId,
+        vendorId: request.vendorId,
+        vendorPackageId: request.vendorPackageId,
+        network: request.network,
+        recipientPhone: request.recipientPhone,
+        customerEmail: request.customerEmail,
+        providerReference,
+        baseCustomerPriceGhs: request.baseCustomerPriceGhs ?? request.amountGhs
+      }
+    };
+  }
+
+  const dataPackage = await ctx.db.get(request.packageId as Id<"dataPackages">);
 
   if (dataPackage === null || !dataPackage.isAvailable) {
     throw new Error("Selected data package is not available.");
@@ -637,10 +687,6 @@ async function resolvePaymentIntent(
     throw new Error("Selected package does not match the requested network.");
   }
 
-  const user =
-    "userId" in request && request.userId !== undefined
-      ? await ctx.db.get(request.userId)
-      : null;
   const amountGhs = await resolveDataPurchaseAmount(ctx, dataPackage, user);
 
   if (amountGhs <= 0) {

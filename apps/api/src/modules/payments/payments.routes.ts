@@ -28,12 +28,14 @@ import {
   type QueueProvider
 } from "../../queue";
 import { emitPaymentTelemetry } from "../../telemetry/paymentTelemetry";
+import { getActiveDataVendor } from "../../vendors/activeVendor";
 import {
   getOptionalRequestUser,
   requireRequestUser,
   resolvePaystackEmail,
   type ResolvedRequestUser
 } from "../auth/requestUser";
+import { normalizeGhanaPhoneNumber } from "../orders/orderValidation";
 import { getNextRetryAt, isFinalRetryFailure } from "./retryPolicy";
 
 declare module "fastify" {
@@ -91,7 +93,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             ? await getOptionalRequestUser(request, convex)
             : await requireRequestUser(request, convex);
         const customerEmail = resolvePaystackEmail(user, reference);
-        const paymentRequest = buildConvexPaymentIntentRequest(
+        const paymentRequest = await buildConvexPaymentIntentRequest(
           request.body,
           user,
           customerEmail
@@ -148,7 +150,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         request.log.warn({ error }, "Payment intent creation failed");
 
         return reply.code(400).send({
-          message: error instanceof Error ? error.message : "Payment intent creation failed."
+          message: readErrorMessage(error, "Payment intent creation failed.")
         });
       }
     }
@@ -588,7 +590,7 @@ function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
   }
 }
 
-function buildConvexPaymentIntentRequest(
+async function buildConvexPaymentIntentRequest(
   body: CreatePaymentIntentRequest,
   user: ResolvedRequestUser | null,
   customerEmail: string
@@ -618,15 +620,60 @@ function buildConvexPaymentIntentRequest(
     };
   }
 
+  const normalizedPhone = normalizeGhanaPhoneNumber(body.recipientPhone);
+
+  if (!normalizedPhone) {
+    throw new Error("A valid Ghana recipient phone number is required.");
+  }
+
+  const selectedPackage = await resolveDataPurchasePackage(body.packageId, body.network);
+
   return {
     purpose: body.purpose,
     ...(user !== null ? { userId: user.id as Id<"users"> } : {}),
-    packageId: body.packageId as Id<"dataPackages">,
-    network: body.network,
-    recipientPhone: body.recipientPhone,
+    packageId: selectedPackage.packageId,
+    vendorId: selectedPackage.vendorId,
+    vendorPackageId: selectedPackage.vendorPackageId,
+    amountGhs: selectedPackage.amountGhs,
+    baseCustomerPriceGhs: selectedPackage.amountGhs,
+    network: selectedPackage.network,
+    recipientPhone: normalizedPhone,
     customerEmail,
     confirmRecipientIsCorrect: body.confirmRecipientIsCorrect,
     ...(body.savedNumberId !== undefined ? { savedNumberId: body.savedNumberId } : {})
+  };
+}
+
+async function resolveDataPurchasePackage(
+  packageId: string,
+  network: "mtn" | "telecel" | "airteltigo"
+) {
+  const vendor = getActiveDataVendor();
+  const packages = await vendor.listPackages();
+  const selected = packages.find(
+    (item) =>
+      item.vendorPackageId === packageId ||
+      `${vendor.id}:${item.vendorPackageId}` === packageId
+  );
+
+  if (!selected || !selected.isAvailable) {
+    throw new Error("Selected data package is not available.");
+  }
+
+  if (selected.network !== network) {
+    throw new Error("Selected package does not match the requested network.");
+  }
+
+  if (!Number.isFinite(selected.costGhs) || selected.costGhs <= 0) {
+    throw new Error("Selected package price is invalid.");
+  }
+
+  return {
+    packageId: `${vendor.id}:${selected.vendorPackageId}`,
+    vendorId: vendor.id,
+    vendorPackageId: selected.vendorPackageId,
+    network: selected.network,
+    amountGhs: Math.round(selected.costGhs * 100) / 100
   };
 }
 
@@ -698,4 +745,22 @@ function requireInternalServiceRequest(
   if (Array.isArray(provided) || provided !== getRequiredEnv("BETTERDATA_SERVICE_SECRET")) {
     throw new Error("Service authorization failed.");
   }
+}
+
+function readErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const data = "data" in error ? (error as { data?: unknown }).data : undefined;
+    if (typeof data === "object" && data !== null && "message" in data) {
+      const message = (data as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+    }
+  }
+
+  return fallback;
 }
