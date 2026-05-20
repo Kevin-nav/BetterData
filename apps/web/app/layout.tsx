@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "Better Data - Instant Mobile Data Bundles in Ghana",
   description:
     "Buy MTN, Telecel and AirtelTigo data bundles at the best prices. No account needed, enter your number, pay with MoMo, and get credited instantly.",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -37,4 +41,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

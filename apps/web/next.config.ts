@@ -9,6 +9,15 @@ if (process.env.NODE_ENV !== "production") {
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@betterdata/contracts", "@betterdata/ui"],
+  async redirects() {
+    return [
+      {
+        source: "/favicon.ico",
+        destination: "/favicon.svg",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
