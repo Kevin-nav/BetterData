@@ -13,13 +13,21 @@ import {
 } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: getRequiredPublicEnv("NEXT_PUBLIC_FIREBASE_API_KEY"),
-  authDomain: getRequiredPublicEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"),
-  projectId: getRequiredPublicEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID"),
+  apiKey: getRequiredPublicEnv(
+    "NEXT_PUBLIC_FIREBASE_API_KEY",
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY
+  ),
+  authDomain: getRequiredPublicEnv(
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+  ),
+  projectId: getRequiredPublicEnv(
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  ),
 };
 
-function getRequiredPublicEnv(name: string) {
-  const value = process.env[name];
+function getRequiredPublicEnv(name: string, value: string | undefined) {
   if (!value?.trim()) {
     throw new Error(`${name} is required. For local web dev, define it in the workspace root .env.local.`);
   }
