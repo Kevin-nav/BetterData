@@ -142,6 +142,7 @@ jobs:
         run: |
           sudo -n kubectl version --client
           command -v curl
+          command -v jq
 
       - name: Install Infisical CLI
         run: |
@@ -202,10 +203,40 @@ jobs:
             --projectId="$INFISICAL_PROJECT_ID" \
             --env="$INFISICAL_ENVIRONMENT" \
             --path="$INFISICAL_SECRET_PATH" \
-            --format=dotenv \
-            --output-file=api.env
-          awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/{ print }' api.env > api.clean.env
-          invalid_keys="$(awk -F= 'NF && $0 !~ /^#/ && $0 !~ /^[A-Za-z_][A-Za-z0-9_]*=/{ print $1 }' api.env | paste -sd "," -)"
+            --format=json \
+            --output-file=api.json
+          jq -r '
+            def secret_entries:
+              if type == "array" then
+                map({
+                  key: (.key // .secretKey // .name),
+                  value: (.value // .secretValue // "")
+                })
+              elif type == "object" then
+                to_entries
+              else
+                []
+              end;
+            secret_entries[]
+            | select(.key | test("^[A-Za-z_][A-Za-z0-9_]*$"))
+            | "\(.key)=\((.value // "") | tostring | gsub("\r"; "") | gsub("\n"; "\\n"))"
+          ' api.json > api.clean.env
+          invalid_keys="$(jq -r '
+            def secret_entries:
+              if type == "array" then
+                map({
+                  key: (.key // .secretKey // .name),
+                  value: (.value // .secretValue // "")
+                })
+              elif type == "object" then
+                to_entries
+              else
+                []
+              end;
+            secret_entries[]
+            | .key
+            | select(test("^[A-Za-z_][A-Za-z0-9_]*$") | not)
+          ' api.json | paste -sd "," -)"
           if [ -n "$invalid_keys" ]; then
             echo "Ignored invalid Infisical env key names: $invalid_keys"
           fi
@@ -218,7 +249,6 @@ jobs:
           CLOUDAMQP_URL
           UPSTASH_REDIS_REST_URL
           UPSTASH_REDIS_REST_TOKEN
-          WEBHOOK_SECRET
           WEBHOOK_HMAC_SECRET
           BETTERDATA_ACTIVE_DATA_VENDOR
           BETTERDATA_SERVICE_SECRET
@@ -291,7 +321,7 @@ jobs:
           sudo -n kubectl -n "$NAMESPACE" create secret generic betterdata-api-env \
             --from-env-file=api.clean.env \
             --dry-run=client -o yaml | sudo -n kubectl apply -f -
-          rm -f api.env api.clean.env
+          rm -f api.json api.clean.env
 
       - name: Sync web runtime secrets
         run: |
@@ -353,7 +383,7 @@ jobs:
         run: |
           if [ "${DEPLOY_STARTED:-false}" != "true" ]; then
             echo "Rollout did not start; skipping rollback."
-            rm -f api.env api.clean.env rendered-platform.yaml
+            rm -f api.json api.clean.env rendered-platform.yaml
             exit 0
           fi
           previous_web="${{ steps.current-images.outputs.web_image }}"
@@ -367,7 +397,7 @@ jobs:
           fi
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=90s || true
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=90s || true
-          rm -f api.env api.clean.env rendered-platform.yaml
+          rm -f api.json api.clean.env rendered-platform.yaml
 
   notify-failure:
     name: Notify Deploy Failure

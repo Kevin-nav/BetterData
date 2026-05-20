@@ -173,9 +173,10 @@ them against its own environment.
 The deploy workflow should:
 
 1. Authenticate to Infisical using GitHub bootstrap secrets.
-2. Export runtime secrets as a dotenv file.
+2. Export runtime secrets as JSON.
 3. Filter invalid Kubernetes env key names and fail if required production keys
-   are missing.
+   are missing. Generate the Kubernetes env file from JSON so multiline values
+   such as `FIREBASE_PRIVATE_KEY` are escaped as `\n`.
 4. Create or update the Kubernetes secret `betterdata-api-env`.
 5. Render Kubernetes manifests with exact target image refs.
 6. Apply API, worker, web, KEDA, and Cloudflare tunnel manifests.
@@ -197,15 +198,15 @@ infisical export \
   --projectId="$INFISICAL_PROJECT_ID" \
   --env="$INFISICAL_ENVIRONMENT" \
   --path="$INFISICAL_SECRET_PATH" \
-  --format=dotenv \
-  --output-file=api.env
+  --format=json \
+  --output-file=api.json
 
 kubectl -n betterdata create secret generic betterdata-api-env \
-  --from-env-file=api.env \
+  --from-env-file=api.clean.env \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Delete `api.env` after the Kubernetes secret is applied.
+Delete `api.json` and `api.clean.env` after the Kubernetes secret is applied.
 
 ## Required Code Changes
 
@@ -312,8 +313,9 @@ Use these as the operating rules for future deployment work:
 - Image tags: deploy immutable `sha-<commit>` tags. The mutable `master` tag is
   only a registry convenience and should not be used as the desired production
   state.
-- Infisical export: invalid dotenv keys are ignored by name only, and missing
-  required production keys fail before workload rollout begins.
+- Infisical export: invalid keys are ignored by name only, multiline values are
+  escaped before creating the Kubernetes env file, and missing required
+  production keys fail before workload rollout begins.
 - Rollback: only run after workload rollout starts, and roll back to captured
   previous image refs.
 - Capacity: the current single-node VPS cannot provide true zero-downtime
