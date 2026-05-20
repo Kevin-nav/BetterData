@@ -67,6 +67,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify public build configuration
+        run: |
+          test -n "$NEXT_PUBLIC_API_BASE_URL"
+          test -n "$NEXT_PUBLIC_CONVEX_URL"
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
+          test -n "$NEXT_PUBLIC_FIREBASE_PROJECT_ID"
+
       - name: Lint
         run: pnpm --filter @betterdata/web... lint
 
