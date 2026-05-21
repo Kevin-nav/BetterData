@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { getAdminScopeForRole, isBootstrapSuperadmin } from "./adminConfig";
@@ -57,37 +58,291 @@ export async function requireSuperadmin(
 
 /* ── Dashboard Queries ── */
 
+type FinancialSummary = {
+  revenue: number;
+  profit: number;
+  orderCount: number;
+  marginPct: number;
+};
+
+type FinancialTotals = {
+  revenue: number;
+  profit: number;
+  orderCount: number;
+};
+
+type FinancialOrder = {
+  order: Doc<"orders">;
+  revenue: number;
+  profit: number;
+  missingSnapshot: boolean;
+  missingPackageCost: boolean;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 async function calculateRevenue(ctx: QueryCtx | MutationCtx) {
   const now = Date.now();
-  const oneDayAgo = now - 24 * 60 * 60 * 1000;
-  const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
-  const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
+  const oneDayAgo = now - DAY_MS;
+  const oneWeekAgo = now - 7 * DAY_MS;
+  const twoWeeksAgo = now - 14 * DAY_MS;
+  const oneMonthAgo = now - 30 * DAY_MS;
+  const twoMonthsAgo = now - 60 * DAY_MS;
+  const ninetyDaysAgo = now - 90 * DAY_MS;
 
   const completedOrders = await ctx.db
     .query("orders")
     .withIndex("by_status", (q) => q.eq("status", "completed"))
-    .filter((q) => q.gt(q.field("_creationTime"), oneMonthAgo))
+    .filter((q) => q.gt(q.field("_creationTime"), ninetyDaysAgo))
     .collect();
 
-  let dailyGhs = 0;
-  let weeklyGhs = 0;
-  let monthlyGhs = 0;
+  const packageCostCache = new Map<string, number | null>();
+  const financialOrders: FinancialOrder[] = [];
 
   for (const order of completedOrders) {
-    const amount = order.amountGhs;
-    if (order._creationTime >= oneDayAgo) {
-      dailyGhs += amount;
+    const snapshot = await resolveOrderFinancials(ctx, order, packageCostCache);
+    financialOrders.push(snapshot);
+  }
+
+  const daily = summarizeWindow(financialOrders, oneDayAgo, now);
+  const weekly = summarizeWindow(financialOrders, oneWeekAgo, now);
+  const previousWeek = summarizeWindow(financialOrders, twoWeeksAgo, oneWeekAgo);
+  const monthly = summarizeWindow(financialOrders, oneMonthAgo, now);
+  const previousMonth = summarizeWindow(financialOrders, twoMonthsAgo, oneMonthAgo);
+  const dailyTrend = buildDailyTrend(financialOrders, ninetyDaysAgo, now);
+
+  const missingSnapshotCount = financialOrders.filter((item) => item.missingSnapshot).length;
+  const missingPackageCostCount = financialOrders.filter((item) => item.missingPackageCost).length;
+
+  return {
+    daily,
+    weekly,
+    monthly,
+    deltas: {
+      revenueWoW: percentDelta(weekly.revenue, previousWeek.revenue),
+      profitWoW: percentDelta(weekly.profit, previousWeek.profit),
+      revenueMoM: percentDelta(monthly.revenue, previousMonth.revenue),
+      profitMoM: percentDelta(monthly.profit, previousMonth.profit),
+    },
+    dailyTrend,
+    audit: {
+      missingSnapshotCount,
+      missingPackageCostCount,
     }
-    if (order._creationTime >= oneWeekAgo) {
-      weeklyGhs += amount;
-    }
-    if (order._creationTime >= oneMonthAgo) {
-      monthlyGhs += amount;
+  };
+}
+
+async function resolveOrderFinancials(
+  ctx: QueryCtx | MutationCtx,
+  order: Doc<"orders">,
+  packageCostCache: Map<string, number | null>
+): Promise<FinancialOrder> {
+  const revenue = roundGhs(order.amountGhs);
+  const hasCostSnapshot = order.costGhsAtPurchase !== undefined;
+  const hasMarkupSnapshot = order.markupGhsAtPurchase !== undefined;
+
+  if (hasCostSnapshot || hasMarkupSnapshot) {
+    const cost =
+      order.costGhsAtPurchase ??
+      Math.max(revenue - (order.markupGhsAtPurchase ?? 0), 0);
+    const profit = order.markupGhsAtPurchase ?? revenue - cost;
+
+    return {
+      order,
+      revenue,
+      profit: roundGhs(profit),
+      missingSnapshot: !hasCostSnapshot || !hasMarkupSnapshot,
+      missingPackageCost: false,
+    };
+  }
+
+  const packageCost = await getPackageCost(ctx, order.packageId, packageCostCache);
+
+  if (packageCost === null) {
+    return {
+      order,
+      revenue,
+      profit: 0,
+      missingSnapshot: true,
+      missingPackageCost: true,
+    };
+  }
+
+  return {
+    order,
+    revenue,
+    profit: roundGhs(revenue - packageCost),
+    missingSnapshot: true,
+    missingPackageCost: false,
+  };
+}
+
+async function getPackageCost(
+  ctx: QueryCtx | MutationCtx,
+  packageId: string,
+  packageCostCache: Map<string, number | null>
+) {
+  if (packageCostCache.has(packageId)) {
+    return packageCostCache.get(packageId) ?? null;
+  }
+
+  try {
+    const dataPackage = await ctx.db.get(packageId as Id<"dataPackages">);
+    const cost = dataPackage?.providerCostGhs ?? null;
+    packageCostCache.set(packageId, cost);
+    return cost;
+  } catch {
+    packageCostCache.set(packageId, null);
+    return null;
+  }
+}
+
+function summarizeWindow(
+  orders: FinancialOrder[],
+  start: number,
+  end: number
+): FinancialSummary {
+  const totals = orders.reduce<FinancialTotals>(
+    (acc, item) => {
+      if (item.order._creationTime >= start && item.order._creationTime < end) {
+        acc.revenue += item.revenue;
+        acc.profit += item.profit;
+        acc.orderCount += 1;
+      }
+
+      return acc;
+    },
+    { revenue: 0, profit: 0, orderCount: 0 }
+  );
+
+  return toSummary(totals);
+}
+
+function buildDailyTrend(orders: FinancialOrder[], start: number, end: number) {
+  const buckets = new Map<string, FinancialTotals & { timestamp: number }>();
+  const startDate = startOfUtcDay(start);
+  const endDate = startOfUtcDay(end);
+
+  for (let timestamp = startDate; timestamp <= endDate; timestamp += DAY_MS) {
+    buckets.set(dateKey(timestamp), {
+      timestamp,
+      revenue: 0,
+      profit: 0,
+      orderCount: 0,
+    });
+  }
+
+  for (const item of orders) {
+    const timestamp = startOfUtcDay(item.order._creationTime);
+    const key = dateKey(timestamp);
+    const bucket = buckets.get(key);
+
+    if (bucket) {
+      bucket.revenue += item.revenue;
+      bucket.profit += item.profit;
+      bucket.orderCount += 1;
     }
   }
 
-  return { dailyGhs, weeklyGhs, monthlyGhs };
+  return Array.from(buckets.entries()).map(([date, bucket]) => ({
+    date,
+    timestamp: bucket.timestamp,
+    revenue: roundGhs(bucket.revenue),
+    profit: roundGhs(bucket.profit),
+    orderCount: bucket.orderCount,
+    marginPct: marginPct(bucket.revenue, bucket.profit),
+  }));
 }
+
+function toSummary(totals: FinancialTotals): FinancialSummary {
+  return {
+    revenue: roundGhs(totals.revenue),
+    profit: roundGhs(totals.profit),
+    orderCount: totals.orderCount,
+    marginPct: marginPct(totals.revenue, totals.profit),
+  };
+}
+
+function percentDelta(current: number, previous: number) {
+  if (previous === 0) {
+    return current === 0 ? 0 : 100;
+  }
+
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function marginPct(revenue: number, profit: number) {
+  if (revenue <= 0) {
+    return 0;
+  }
+
+  return Math.round((profit / revenue) * 1000) / 10;
+}
+
+function startOfUtcDay(timestamp: number) {
+  const date = new Date(timestamp);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function dateKey(timestamp: number) {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function roundGhs(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+export const backfillOrdersFinancials = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const admin = await requireAdmin(ctx);
+    const orders = await ctx.db.query("orders").collect();
+    const packageCostCache = new Map<string, number | null>();
+    let backfilledCount = 0;
+    let missingPackageCostCount = 0;
+
+    for (const order of orders) {
+      if (
+        order.costGhsAtPurchase !== undefined &&
+        order.markupGhsAtPurchase !== undefined
+      ) {
+        continue;
+      }
+
+      const packageCost = await getPackageCost(ctx, order.packageId, packageCostCache);
+
+      if (packageCost === null) {
+        missingPackageCostCount += 1;
+        await ctx.db.patch(order._id, {
+          costGhsAtPurchase: order.amountGhs,
+          markupGhsAtPurchase: 0,
+        });
+      } else {
+        await ctx.db.patch(order._id, {
+          costGhsAtPurchase: packageCost,
+          markupGhsAtPurchase: roundGhs(order.amountGhs - packageCost),
+        });
+      }
+
+      backfilledCount += 1;
+    }
+
+    await ctx.db.insert("auditLogs", {
+      actorId: admin.userId as any,
+      action: "backfill_orders_financials",
+      target: "orders",
+      metadata: {
+        backfilledCount,
+        missingPackageCostCount,
+      },
+    });
+
+    return {
+      backfilledCount,
+      missingPackageCostCount,
+    };
+  },
+});
 
 export const revenueOverview = query({
   args: {},

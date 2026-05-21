@@ -12,6 +12,8 @@ import { MetricCard } from "../components/MetricCard";
 import { OpsAlertPanel } from "../components/OpsAlertPanel";
 import { PaymentConfigEditor } from "../components/PaymentConfigEditor";
 import { StatusBadge } from "../components/StatusBadge";
+import { FinancialTrendChart } from "../components/FinancialTrendChart";
+import { OrderVolumeChart } from "../components/OrderVolumeChart";
 
 type RecentOrder = {
   _id: string;
@@ -29,9 +31,34 @@ type DashboardStats = {
 };
 
 type RevenueOverview = {
-  dailyGhs: number;
-  weeklyGhs: number;
-  monthlyGhs: number;
+  daily: FinancialSummary;
+  weekly: FinancialSummary;
+  monthly: FinancialSummary;
+  deltas: {
+    revenueWoW: number;
+    profitWoW: number;
+    revenueMoM: number;
+    profitMoM: number;
+  };
+  dailyTrend: Array<{
+    date: string;
+    timestamp: number;
+    revenue: number;
+    profit: number;
+    orderCount: number;
+    marginPct: number;
+  }>;
+  audit?: {
+    missingSnapshotCount: number;
+    missingPackageCostCount: number;
+  };
+};
+
+type FinancialSummary = {
+  revenue: number;
+  profit: number;
+  orderCount: number;
+  marginPct: number;
 };
 
 export default function AdminDashboardPage() {
@@ -85,6 +112,12 @@ export default function AdminDashboardPage() {
 
   const recentOrders = stats?.recentOrders || [];
   const metrics = apiData?.metrics || {};
+  const vendorTone = apiData?.vendor?.balanceStatus ?? "unknown";
+  const financialAuditText = revenue?.audit?.missingPackageCostCount
+    ? `${revenue.audit.missingPackageCostCount} orders need package cost review`
+    : revenue?.audit?.missingSnapshotCount
+      ? `${revenue.audit.missingSnapshotCount} older orders using fallback costs`
+      : "Costs snapshotted at purchase";
 
   return (
     <div
@@ -117,22 +150,31 @@ export default function AdminDashboardPage() {
       {/* KPI Cards Grid */}
       <div className="metric-grid">
         <MetricCard
-          label="Daily Revenue"
-          value={revenue ? formatGhs(revenue.dailyGhs) : "..."}
-          detail="Last 24 hours"
-          tone="neutral"
+          label="Daily Sales"
+          value={revenue ? formatGhs(revenue.daily.revenue) : "..."}
+          secondaryValue={revenue ? `Profit ${formatGhs(revenue.daily.profit)}` : undefined}
+          caption={revenue ? `${revenue.daily.orderCount} completed orders` : "Last 24 hours"}
+          tone="default"
         />
         <MetricCard
           label="Weekly Revenue"
-          value={revenue ? formatGhs(revenue.weeklyGhs) : "..."}
-          detail="Last 7 days"
-          tone="neutral"
+          value={revenue ? formatGhs(revenue.weekly.revenue) : "..."}
+          secondaryValue={revenue ? `Profit ${formatGhs(revenue.weekly.profit)}` : undefined}
+          delta={revenue?.deltas.revenueWoW}
+          caption="vs previous 7 days"
+          tone="default"
         />
         <MetricCard
-          label="Monthly Revenue"
-          value={revenue ? formatGhs(revenue.monthlyGhs) : "..."}
-          detail="Last 30 days"
-          tone="neutral"
+          label="Monthly Profit"
+          value={revenue ? formatGhs(revenue.monthly.profit) : "..."}
+          secondaryValue={
+            revenue
+              ? `${revenue.monthly.marginPct}% margin from ${formatGhs(revenue.monthly.revenue)}`
+              : undefined
+          }
+          delta={revenue?.deltas.profitMoM}
+          caption={financialAuditText}
+          tone={revenue?.audit?.missingPackageCostCount ? "warning" : "success"}
         />
         <MetricCard
           label="Vendor Balance"
@@ -143,11 +185,16 @@ export default function AdminDashboardPage() {
           }
           detail={
             apiData?.vendor
-              ? `${apiData.vendor.displayName} • Status: ${apiData.vendor.balanceStatus.toUpperCase()}`
+              ? `${apiData.vendor.displayName} - ${apiData.vendor.balanceStatus.toUpperCase()}`
               : "Checking vendor..."
           }
-          tone={apiData?.vendor?.balanceStatus}
+          tone={vendorTone}
         />
+      </div>
+
+      <div className="overview-chart-grid">
+        <FinancialTrendChart data={revenue?.dailyTrend ?? []} />
+        <OrderVolumeChart data={revenue?.dailyTrend ?? []} />
       </div>
 
       {/* Operational Stats Row */}

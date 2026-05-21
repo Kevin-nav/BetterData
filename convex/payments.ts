@@ -514,6 +514,13 @@ async function completeDataPurchase(
     throw new Error("Data purchase payment metadata is invalid.");
   }
 
+  const dataPackage = await ctx.db.get(packageId as Id<"dataPackages">);
+  const costGhsAtPurchase = dataPackage?.providerCostGhs;
+  const markupGhsAtPurchase =
+    costGhsAtPurchase !== undefined
+      ? roundGhs(intent.amountGhs - costGhsAtPurchase)
+      : undefined;
+
   await ctx.db.insert("orders", {
     reference: intent.providerReference,
     ...(intent.userId !== undefined ? { userId: intent.userId } : {}),
@@ -528,6 +535,8 @@ async function completeDataPurchase(
     network,
     recipientPhone,
     amountGhs: intent.amountGhs,
+    ...(costGhsAtPurchase !== undefined ? { costGhsAtPurchase } : {}),
+    ...(markupGhsAtPurchase !== undefined ? { markupGhsAtPurchase } : {}),
     paymentMethod: "paystack_momo",
     paymentStatus: "verified",
     paystackReference: intent.providerReference,

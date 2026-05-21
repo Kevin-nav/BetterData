@@ -56,6 +56,8 @@ export default defineSchema({
     network: v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")),
     recipientPhone: v.string(),
     amountGhs: v.number(),
+    costGhsAtPurchase: v.optional(v.number()),
+    markupGhsAtPurchase: v.optional(v.number()),
     paymentMethod: v.union(v.literal("paystack_momo"), v.literal("wallet")),
     paymentStatus: v.union(
       v.literal("pending"),

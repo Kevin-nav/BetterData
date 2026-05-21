@@ -36,6 +36,13 @@ export const createIntent = mutation({
       throw new Error("Recipient number confirmation is required.");
     }
 
+    const dataPackage = await ctx.db.get(args.packageId as Id<"dataPackages">);
+    const costGhsAtPurchase = dataPackage?.providerCostGhs;
+    const markupGhsAtPurchase =
+      costGhsAtPurchase !== undefined
+        ? roundGhs(args.amountGhs - costGhsAtPurchase)
+        : undefined;
+
     return await ctx.db.insert("orders", {
       reference: args.reference,
       packageId: args.packageId,
@@ -43,6 +50,8 @@ export const createIntent = mutation({
       network: args.network,
       recipientPhone: args.recipientPhone,
       amountGhs: args.amountGhs,
+      ...(costGhsAtPurchase !== undefined ? { costGhsAtPurchase } : {}),
+      ...(markupGhsAtPurchase !== undefined ? { markupGhsAtPurchase } : {}),
       paymentMethod: args.paymentMethod,
       paymentStatus: args.paymentStatus ?? "pending",
       status: "pending",
@@ -286,6 +295,10 @@ function requireApiSecret(apiSecret: string) {
   if (!expected || apiSecret !== expected) {
     throw new Error("Unauthorized.");
   }
+}
+
+function roundGhs(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function canReadUserOrders(caller: Doc<"users">, userId: Id<"users">) {
