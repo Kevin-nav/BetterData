@@ -104,6 +104,7 @@ export type SessionUser = {
   phone?: string;
   displayName?: string;
   role: string;
+  adminScope?: "admin" | "superadmin" | null;
 };
 
 export type UserProfile = SessionUser & {

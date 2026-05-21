@@ -9,6 +9,7 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as adminConfig from "../adminConfig.js";
 import type * as http from "../http.js";
 import type * as opsAlerts from "../opsAlerts.js";
 import type * as orders from "../orders.js";
@@ -27,6 +28,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  adminConfig: typeof adminConfig;
   http: typeof http;
   opsAlerts: typeof opsAlerts;
   orders: typeof orders;

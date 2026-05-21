@@ -1,4 +1,4 @@
-import { opsAlertFunctions, platformConfigFunctions } from "@betterdata/app-api";
+import { adminFunctions, opsAlertFunctions, platformConfigFunctions } from "@betterdata/app-api";
 import { getRequiredEnv } from "@betterdata/config";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -6,6 +6,7 @@ import type { Id } from "../../../../../convex/_generated/dataModel";
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { createConvexHttpClient } from "../../convexClient";
+import { sendBroadcastEmail } from "../../integrations/resend/client";
 import { snapshotMetrics } from "../../observability/metrics";
 import { createOrderStore } from "../../orders/orderStore";
 import { createQueueProvider, QUEUE_NAMES } from "../../queue";
@@ -146,6 +147,45 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       });
 
       return { updated: true };
+    }
+  );
+
+  server.post<{ Params: { id: string } }>(
+    "/admin/announcements/:id/broadcast",
+    adminRouteOptions,
+    async (request, reply) => {
+      const { id } = request.params;
+      const convex = createConvexHttpClient();
+
+      const announcement = await convex.query(adminFunctions.getAnnouncementByService, {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+        announcementId: id as Id<"announcements">
+      });
+
+      if (!announcement) {
+        return reply.code(404).send({ message: "Announcement not found." });
+      }
+
+      const emails = await convex.query(adminFunctions.getAudienceEmailsByService, {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+        audience: announcement.audience
+      });
+
+      if (emails.length === 0) {
+        return { successCount: 0, failureCount: 0, audienceSize: 0 };
+      }
+
+      const { successCount, failureCount } = await sendBroadcastEmail(
+        emails,
+        announcement.title,
+        announcement.body
+      );
+
+      return {
+        successCount,
+        failureCount,
+        audienceSize: emails.length
+      };
     }
   );
 }

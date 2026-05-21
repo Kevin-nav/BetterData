@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 import { requireServiceSecret } from "./serviceAuth";
+import { isBootstrapSuperadmin } from "./adminConfig";
 
 export const findOrCreateFromFirebase = mutation({
   args: {
@@ -13,6 +14,9 @@ export const findOrCreateFromFirebase = mutation({
   },
   handler: async (ctx, args) => {
     requireServiceSecret(args.serviceSecret);
+    const bootstrapRole = isBootstrapSuperadmin(args.email)
+      ? { role: "superadmin" as const }
+      : {};
 
     const existing = await ctx.db
       .query("users")
@@ -29,6 +33,9 @@ export const findOrCreateFromFirebase = mutation({
           : {}),
         ...(args.displayName !== undefined && existing.displayName !== args.displayName
           ? { displayName: args.displayName }
+          : {}),
+        ...(bootstrapRole.role === "superadmin" && existing.role !== "superadmin"
+          ? bootstrapRole
           : {})
       };
 
@@ -42,7 +49,7 @@ export const findOrCreateFromFirebase = mutation({
         email: args.email ?? existing.email,
         phone: args.phone ?? existing.phone,
         displayName: args.displayName ?? existing.displayName,
-        role: existing.role
+        role: bootstrapRole.role ?? existing.role
       };
     }
 
@@ -51,7 +58,7 @@ export const findOrCreateFromFirebase = mutation({
       ...(args.email !== undefined ? { email: args.email } : {}),
       ...(args.phone !== undefined ? { phone: args.phone } : {}),
       ...(args.displayName !== undefined ? { displayName: args.displayName } : {}),
-      role: "user",
+      role: bootstrapRole.role ?? "user",
       isSuspended: false,
       walletBalanceGhs: 0,
       firstPurchaseDiscountUsed: false
@@ -63,7 +70,7 @@ export const findOrCreateFromFirebase = mutation({
       email: args.email,
       phone: args.phone,
       displayName: args.displayName,
-      role: "user"
+      role: bootstrapRole.role ?? "user"
     };
   }
 });

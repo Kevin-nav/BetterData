@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { requireServiceSecret } from "./serviceAuth";
+import { requireAdmin } from "./admin";
 
 export const PAYMENT_CONFIG_KEYS = [
   "minimumWalletTopUpGhs",
@@ -169,19 +170,4 @@ async function validatePaymentConfigValue(
   }
 }
 
-async function requireAdmin(ctx: MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
 
-  if (identity === null) {
-    throw new Error("Unauthorized.");
-  }
-
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_firebase_uid", (q) => q.eq("firebaseUid", identity.subject))
-    .first();
-
-  if (user?.role !== "admin") {
-    throw new Error("Admin access is required.");
-  }
-}

@@ -7,7 +7,12 @@ export default defineSchema({
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
     displayName: v.optional(v.string()),
-    role: v.union(v.literal("user"), v.literal("agent"), v.literal("admin")),
+    role: v.union(
+      v.literal("user"),
+      v.literal("agent"),
+      v.literal("admin"),
+      v.literal("superadmin")
+    ),
     isSuspended: v.boolean(),
     walletBalanceGhs: v.number(),
     deviceFingerprint: v.optional(v.string()),

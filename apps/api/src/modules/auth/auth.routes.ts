@@ -6,6 +6,7 @@ import { createConvexHttpClient } from "../../convexClient";
 import {
   verifyFirebaseToken
 } from "../../integrations/firebase/auth";
+import { resolveAdminScope } from "../../auth/adminAuth";
 
 export async function registerAuthRoutes(server: FastifyInstance) {
   /**
@@ -56,7 +57,8 @@ export async function registerAuthRoutes(server: FastifyInstance) {
         email: user.email ?? firebaseUser.email,
         phone: user.phone ?? firebaseUser.phone,
         displayName: user.displayName ?? firebaseUser.displayName,
-        role: user.role ?? "user"
+        role: user.role ?? "user",
+        adminScope: resolveAdminScope(firebaseUser, user.role, process.env)
       };
     } catch (error) {
       request.log.error({ error }, "Failed to sync user to Convex");
@@ -105,6 +107,7 @@ export async function registerAuthRoutes(server: FastifyInstance) {
         phone: user.phone,
         displayName: user.displayName,
         role: user.role,
+        adminScope: resolveAdminScope(firebaseUser, user.role, process.env),
         walletBalanceGhs: user.walletBalanceGhs,
         firstPurchaseDiscountUsed: user.firstPurchaseDiscountUsed,
         isSuspended: user.isSuspended

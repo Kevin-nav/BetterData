@@ -289,9 +289,9 @@ function requireApiSecret(apiSecret: string) {
 }
 
 function canReadUserOrders(caller: Doc<"users">, userId: Id<"users">) {
-  return caller.role === "admin" || caller._id === userId;
+  return caller.role === "admin" || caller.role === "superadmin" || caller._id === userId;
 }
 
 function canReadOrder(caller: Doc<"users">, order: Doc<"orders">) {
-  return caller.role === "admin" || order.userId === caller._id;
+  return caller.role === "admin" || caller.role === "superadmin" || order.userId === caller._id;
 }

@@ -3,23 +3,45 @@ import type {
   FastifyRequest,
   preHandlerHookHandler
 } from "fastify";
+import { getAdminScopeForRole, getRequiredEnv, type AdminScope } from "@betterdata/config";
+import { userFunctions } from "@betterdata/app-api";
 
 import {
   verifyFirebaseToken,
   type AuthenticatedUser
 } from "../integrations/firebase/auth";
+import { createConvexHttpClient } from "../convexClient";
+
+export type AdminPrincipal = AuthenticatedUser & {
+  adminScope: AdminScope;
+  convexUserId?: string;
+  role?: string;
+};
 
 export type VerifyToken = (token: string) => Promise<AuthenticatedUser>;
+export type ResolveAdminProfile = (
+  user: AuthenticatedUser
+) => Promise<{ id?: string; role?: string } | null>;
+
+declare module "fastify" {
+  interface FastifyRequest {
+    adminUser?: AdminPrincipal;
+  }
+}
 
 export function createRequireAdmin(options?: {
   verifyToken?: VerifyToken;
+  resolveAdminProfile?: ResolveAdminProfile;
   env?: NodeJS.ProcessEnv;
 }): preHandlerHookHandler {
   const verifyToken = options?.verifyToken ?? verifyFirebaseToken;
+  const resolveAdminProfile =
+    options?.resolveAdminProfile ?? createConvexAdminProfileResolver();
   const env = options?.env ?? process.env;
 
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (isValidAdminApiKey(request.headers["x-admin-api-key"], env)) {
+      request.adminUser = { id: "api-key", firebaseUid: "api-key", adminScope: "superadmin" };
       return;
     }
 
@@ -39,10 +61,46 @@ export function createRequireAdmin(options?: {
       return reply.code(401).send({ message: "Admin authentication is invalid." });
     }
 
-    if (!isAdminUser(user, env)) {
+    const profile = await resolveAdminProfile(user);
+    const scope = resolveAdminScope(user, profile?.role, env);
+
+    if (!scope) {
       return reply.code(403).send({ message: "Admin access is required." });
     }
+
+    request.adminUser = {
+      ...user,
+      adminScope: scope,
+      ...(profile?.id ? { convexUserId: profile.id } : {}),
+      ...(profile?.role ? { role: profile.role } : {})
+    };
   };
+}
+
+export function resolveAdminScope(
+  user: AuthenticatedUser,
+  role: string | undefined,
+  env: NodeJS.ProcessEnv = process.env
+): AdminScope | null {
+  const roleScope = getAdminScopeForRole(role);
+
+  if (roleScope) {
+    return roleScope;
+  }
+
+  if (user.claims?.superadmin === true || user.claims?.role === "superadmin") {
+    return "superadmin";
+  }
+
+  if (user.email && isEmailInCsv(user.email, env.ADMIN_SUPERADMIN_EMAILS)) {
+    return "superadmin";
+  }
+
+  if (isAdminUser(user, env)) {
+    return "admin";
+  }
+
+  return null;
 }
 
 export function isValidAdminApiKey(
@@ -102,4 +160,34 @@ function readCsv(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function isEmailInCsv(email: string, value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  return readCsv(value)
+    .map((entry) => entry.toLowerCase())
+    .includes(normalizedEmail);
+}
+
+function createConvexAdminProfileResolver(): ResolveAdminProfile {
+  return async (user) => {
+    const convex = createConvexHttpClient();
+    const profile = await convex.query(userFunctions.getByFirebaseUid, {
+      serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+      firebaseUid: user.firebaseUid
+    });
+
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      id: profile._id,
+      role: profile.role
+    };
+  };
 }

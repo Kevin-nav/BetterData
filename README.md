@@ -20,10 +20,19 @@ Better Data is a Ghana-focused data bundle reselling platform for MTN, Telecel, 
 
 ```bash
 pnpm install
+cp .env.example .env.local
 pnpm dev
 ```
 
-Copy `.env.example` to `.env` and fill in Firebase, Paystack, Resend, data vendor, and database credentials before integrating live services.
+Fill in Firebase, Paystack, Resend, data vendor, and database credentials in `.env.local` before integrating live services.
+
+For admin development with Convex running beside Next.js:
+
+```bash
+pnpm dev:admin
+```
+
+This runs `pnpm convex:dev` and `pnpm --filter @betterdata/admin dev` together. The admin app loads local env from the workspace root and exposes `CONVEX_URL` to the browser as `NEXT_PUBLIC_CONVEX_URL`, so keep only `CONVEX_URL` in the root `.env.local` for Convex.
 
 ## Data Vendor Modes
 
@@ -48,7 +57,7 @@ Web, mobile, and admin should share one app-facing backend contract:
 - Keep private integrations in `apps/api`: Paystack, Resend, Firebase Admin, data vendors, webhooks, and operational jobs.
 - Have API side effects write state back to the same Convex deployment so clients receive real-time updates.
 
-Both `NEXT_PUBLIC_CONVEX_URL` and `EXPO_PUBLIC_CONVEX_URL` should point to the same Convex deployment for a given environment.
+Client apps should point to the same Convex deployment for a given environment. In local Next.js development, derive public client values from the root `CONVEX_URL` instead of adding extra root keys ending in `CONVEX_URL`, because the Convex CLI expects to manage a single root deployment URL.
 
 ## Paystack Payments
 
@@ -93,7 +102,11 @@ pnpm install
 pnpm convex:dev
 ```
 
-When prompted, choose the existing Convex project. The CLI writes `CONVEX_DEPLOYMENT` and the deployment URL into `.env.local`, and generates `convex/_generated`. Use the generated URL for `NEXT_PUBLIC_CONVEX_URL` and `EXPO_PUBLIC_CONVEX_URL` in your app environments.
+When prompted, choose the existing Convex project. The CLI writes `CONVEX_DEPLOYMENT` and the deployment URL into `.env.local`, and generates `convex/_generated`. Keep `CONVEX_URL` as the single root Convex URL; app-specific configs can map it to public client env names when needed.
+
+`convex/auth.config.ts` also needs `FIREBASE_PROJECT_ID` available in the Convex deployment environment. Set it in the Convex dashboard for the active deployment before running `pnpm convex:dev`; otherwise Convex will stop before bundling functions.
+
+Admin authorization is role-based. Set `ADMIN_SUPERADMIN_EMAILS` in local/API/Convex environments to bootstrap the first superadmin accounts; after those users sign in, their Convex user records are upgraded to `superadmin`. Promoted `admin` and `superadmin` roles are then honored by both Convex functions and API-backed admin routes.
 
 For production:
 
