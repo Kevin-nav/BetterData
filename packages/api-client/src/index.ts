@@ -118,10 +118,11 @@ export type BetterDataApiClient = {
   listDataPackages: () => Promise<ListDataPackagesResponse>;
   listOrders: (token: string) => Promise<ListOrdersResponse>;
   getWalletSummary: (token: string) => Promise<WalletSummaryResponse>;
-  createOrder: (body: PurchaseRequest) => Promise<CreateOrderResponse>;
+  createOrder: (body: PurchaseRequest, token?: string) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
   createPaymentIntent: (
-    body: CreatePaymentIntentRequest
+    body: CreatePaymentIntentRequest,
+    token?: string
   ) => Promise<CreatePaymentIntentResponse>;
   getPaymentIntentStatus: (
     reference: string
@@ -205,18 +206,20 @@ export function createBetterDataApiClient(
       request<WalletSummaryResponse>("/wallet", {
         headers: { Authorization: `Bearer ${token}` }
       }),
-    createOrder: (body) =>
+    createOrder: (body, token) =>
       request<CreateOrderResponse>("/orders", {
         method: "POST",
+        ...(token !== undefined ? { headers: { Authorization: `Bearer ${token}` } } : {}),
         body: JSON.stringify(body)
       }),
     getOrderStatus: (reference) =>
       request<OrderStatusResponse>(
         `/orders/${encodeURIComponent(reference)}/status`
       ),
-    createPaymentIntent: (body) =>
+    createPaymentIntent: (body, token) =>
       request<CreatePaymentIntentResponse>("/payments/intents", {
         method: "POST",
+        ...(token !== undefined ? { headers: { Authorization: `Bearer ${token}` } } : {}),
         body: JSON.stringify(body)
       }),
     getPaymentIntentStatus: (reference) =>

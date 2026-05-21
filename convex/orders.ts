@@ -146,6 +146,22 @@ export const listForUser = query({
   }
 });
 
+export const listForUserForApi = query({
+  args: {
+    apiSecret: v.string(),
+    userId: v.id("users")
+  },
+  handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .collect();
+  }
+});
+
 export const getById = query({
   args: {
     orderId: v.id("orders")

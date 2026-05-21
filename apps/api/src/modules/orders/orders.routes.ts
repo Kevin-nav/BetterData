@@ -16,6 +16,7 @@ import { requireRequestUser } from "../auth/requestUser";
 import { orderFunctions } from "@betterdata/app-api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { createConvexHttpClient } from "../../convexClient";
+import { getRequiredEnv } from "@betterdata/config";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -48,11 +49,14 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     const vendor = getActiveDataVendor();
+    const convex = createConvexHttpClient();
+    const user = await getOptionalUserForOrder(request, convex);
     const idempotencyKey = randomUUID();
     const order = await orderStore.createIntent({
       body,
       vendor,
       idempotencyKey,
+      ...(user !== null ? { userId: user.id } : {}),
       paymentStatus: paymentSafety.paymentStatus
     });
 
@@ -242,22 +246,28 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     try {
-      const orders = await convex.query(orderFunctions.listForUser, {
+      const orders = await convex.query(orderFunctions.listForUserForApi, {
+        apiSecret: getRequiredEnv("CONVEX_API_SECRET"),
         userId: user.id as Id<"users">
       });
 
       return {
         orders: orders.map((order) => ({
+          id: order._id,
           reference: order.reference,
           packageId: order.packageId,
           vendorId: order.vendorId,
+          ...(order.vendorOrderReference !== undefined
+            ? { vendorOrderReference: order.vendorOrderReference }
+            : {}),
           network: order.network,
           recipientPhone: order.recipientPhone,
           amountGhs: order.amountGhs,
           paymentMethod: order.paymentMethod,
           paymentStatus: order.paymentStatus,
           status: order.status,
-          createdAt: order.recipientConfirmedAt || order._creationTime
+          createdAt: new Date(order.recipientConfirmedAt || order._creationTime).toISOString(),
+          updatedAt: new Date(order.recipientConfirmedAt || order._creationTime).toISOString()
         }))
       };
     } catch (error) {
@@ -265,6 +275,17 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       return reply.code(500).send({ message: "Unable to retrieve order history." });
     }
   });
+}
+
+async function getOptionalUserForOrder(
+  request: FastifyRequest,
+  convex: ReturnType<typeof createConvexHttpClient>
+) {
+  try {
+    return await requireRequestUser(request, convex);
+  } catch {
+    return null;
+  }
 }
 
 function toPurchaseJob(order: {

@@ -28,6 +28,7 @@ const order = await store.createIntent({
       return { balanceGhs: 0 };
     }
   },
+  userId: "user-1",
   idempotencyKey: "idem-1"
 });
 
@@ -37,6 +38,7 @@ assert.match(
   /^BD-[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/
 );
 assert.equal(order.vendorPackageId, "yello-5gb");
+assert.equal(order.userId, "user-1");
 assert.equal(order.status, "pending");
 
 await store.recordVendorResult(order.reference, {

@@ -6,6 +6,7 @@ import {
 import type { DataPackage, NetworkCode } from "@betterdata/contracts";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useAuth } from "../lib/AuthContext";
 import {
   readGuestPurchases,
   upsertGuestPurchase,
@@ -61,6 +62,22 @@ function readApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
+async function readAuthToken(getAuthHeaders: () => Promise<HeadersInit>) {
+  const headers = await getAuthHeaders();
+  const authorization =
+    headers instanceof Headers
+      ? headers.get("authorization") ?? headers.get("Authorization")
+      : Array.isArray(headers)
+        ? headers.find(([key]) => key.toLowerCase() === "authorization")?.[1]
+        : headers?.Authorization ?? headers?.authorization;
+
+  if (typeof authorization !== "string") {
+    return null;
+  }
+
+  return authorization.replace(/^Bearer\s+/i, "").trim() || null;
+}
+
 type Mode = "single" | "bulk";
 type PayMethod = "momo" | "wallet";
 
@@ -76,6 +93,8 @@ interface BulkPill {
 }
 
 export default function BuyContent({ standalone = false }: { standalone?: boolean }) {
+  const { getAuthHeaders, isAuthenticated } = useAuth();
+
   /* State */
   const [network, setNetwork] = useState<NetworkCode>("mtn");
   const [mode, setMode] = useState<Mode>("single");
@@ -231,6 +250,8 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     setOrderError("");
 
     try {
+      const token = await readAuthToken(getAuthHeaders);
+
       if (payMethod === "wallet") {
         const res = await getApi().createOrder({
           packageId: selectedPkg.id,
@@ -238,7 +259,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
           recipientPhone: phone.trim(),
           confirmRecipientIsCorrect: true,
           paymentMethod: "wallet",
-        });
+        }, token ?? undefined);
         window.location.href = `${standalone ? "" : "/dashboard"}/buy/confirmation?ref=${res.reference}`;
       } else {
         const res = await getApi().createPaymentIntent({
@@ -247,22 +268,26 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
           network,
           recipientPhone: phone.trim(),
           confirmRecipientIsCorrect: true,
-        });
-        const now = new Date().toISOString();
-        const guestRecord: GuestPurchaseRecord = {
-          reference: res.reference,
-          packageId: selectedPkg.id,
-          network,
-          recipientPhone: phone.trim(),
-          sizeMb: selectedPkg.sizeMb,
-          amountGhs: res.amountGhs,
-          paymentStatus: res.status,
-          deliveryStatus: "pending",
-          createdAt: now,
-          updatedAt: now
-        };
-        upsertGuestPurchase(guestRecord);
-        setRecentGuestPurchases(readGuestPurchases());
+        }, token ?? undefined);
+
+        if (!isAuthenticated || token === null) {
+          const now = new Date().toISOString();
+          const guestRecord: GuestPurchaseRecord = {
+            reference: res.reference,
+            packageId: selectedPkg.id,
+            network,
+            recipientPhone: phone.trim(),
+            sizeMb: selectedPkg.sizeMb,
+            amountGhs: res.amountGhs,
+            paymentStatus: res.status,
+            deliveryStatus: "pending",
+            createdAt: now,
+            updatedAt: now
+          };
+          upsertGuestPurchase(guestRecord);
+          setRecentGuestPurchases(readGuestPurchases());
+        }
+
         window.location.href = res.authorizationUrl;
       }
     } catch (err) {
@@ -616,6 +641,8 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     setOrderError("");
 
     try {
+      const token = await readAuthToken(getAuthHeaders);
+
       if (payMethod === "wallet") {
         const promises = bulkPills.map((pill) =>
           getApi().createOrder({
@@ -624,7 +651,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
             recipientPhone: pill.phone,
             confirmRecipientIsCorrect: true,
             paymentMethod: "wallet",
-          })
+          }, token ?? undefined)
         );
         const results = await Promise.all(promises);
         const refs = results.map((r) => r.reference).join(",");

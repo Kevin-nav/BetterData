@@ -9,6 +9,7 @@ import type { DataVendor } from "../vendors/types";
 
 export type StoredOrder = {
   reference: string;
+  userId?: string;
   packageId: string;
   vendorId: string;
   vendorPackageId?: string;
@@ -27,6 +28,7 @@ export type CreateOrderIntentInput = {
   body: PurchaseRequest;
   vendor: DataVendor;
   idempotencyKey: string;
+  userId?: string;
   paymentStatus?: StoredOrder["paymentStatus"];
 };
 
@@ -140,6 +142,7 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
       await client.mutation(createIntent, {
         apiSecret,
         reference: order.reference,
+        ...(input.userId ? { userId: input.userId as any } : {}),
         packageId: order.packageId,
         vendorId: order.vendorId,
         ...(order.vendorPackageId ? { vendorPackageId: order.vendorPackageId } : {}),
@@ -198,6 +201,7 @@ function buildStoredOrder(input: CreateOrderIntentInput): StoredOrder {
 
   return {
     reference: createOrderReference(),
+    ...(input.userId ? { userId: input.userId } : {}),
     packageId: input.body.packageId,
     vendorId: input.vendor.id,
     ...(vendorPackageId ? { vendorPackageId } : {}),
@@ -220,6 +224,7 @@ function mapConvexOrder(order: Partial<StoredOrder>): StoredOrder {
 
   return {
     reference: requiredString(order.reference, "reference"),
+    ...(order.userId ? { userId: order.userId } : {}),
     packageId: requiredString(order.packageId, "packageId"),
     vendorId: requiredString(order.vendorId, "vendorId"),
     ...(order.vendorPackageId ? { vendorPackageId: order.vendorPackageId } : {}),
