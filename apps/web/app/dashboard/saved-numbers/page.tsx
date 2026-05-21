@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { createBetterDataApiClient } from "@betterdata/api-client";
+import type { NetworkCode, SavedNumber } from "@betterdata/contracts";
+import { useAuth } from "../../lib/AuthContext";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const apiClient = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 
 const PhoneIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "32px", height: "32px", stroke: "var(--text-secondary)" }}>
@@ -10,98 +16,111 @@ const PhoneIcon = () => (
   </svg>
 );
 
-type SavedNumber = {
-  id: string;
-  label: string;
-  phone: string;
-  network: "mtn" | "telecel" | "airteltigo";
-};
-
-/* ── Network Detection Helper ── */
-function detectNetwork(number: string): "mtn" | "telecel" | "airteltigo" {
-  const clean = number.replace(/\s+/g, "").replace(/^\+233/, "0");
+function detectNetwork(number: string): NetworkCode {
+  const clean = number.replace(/\D/g, "").replace(/^233/, "0");
   if (/^(024|054|055|059|025|053)/.test(clean)) return "mtn";
   if (/^(020|050)/.test(clean)) return "telecel";
   if (/^(026|056|027|057)/.test(clean)) return "airteltigo";
-  return "mtn"; // Default to MTN
+  return "mtn";
+}
+
+function displayNetworkName(network: NetworkCode) {
+  return network === "mtn" ? "MTN" : network === "telecel" ? "Telecel" : "AirtelTigo";
 }
 
 export default function SavedNumbersPage() {
+  const { getAuthHeaders } = useAuth();
   const [numbers, setNumbers] = useState<SavedNumber[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-
-  // Form inputs
   const [label, setLabel] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
 
-  // Load from LocalStorage
   useEffect(() => {
-    const saved = localStorage.getItem("betterdata_saved_numbers");
-    if (saved) {
+    let active = true;
+
+    async function loadSavedNumbers() {
       try {
-        setNumbers(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
+        const token = await readAuthToken(getAuthHeaders);
+        if (!token) {
+          throw new Error("Authentication is required.");
+        }
+
+        const result = await apiClient.listSavedNumbers(token);
+        if (active) setNumbers(result.numbers);
+      } catch (err) {
+        console.error(err);
+        if (active) setError("Unable to load saved numbers.");
+      } finally {
+        if (active) setLoading(false);
       }
-    } else {
-      // Seed initial mock numbers for presentation/wow factor
-      const mockNumbers: SavedNumber[] = [
-        { id: "1", label: "My MTN Number", phone: "054 123 4567", network: "mtn" },
-        { id: "2", label: "Mum's Telecel", phone: "020 987 6543", network: "telecel" },
-      ];
-      setNumbers(mockNumbers);
-      localStorage.setItem("betterdata_saved_numbers", JSON.stringify(mockNumbers));
     }
-    setLoading(false);
-  }, []);
 
-  function saveNumbers(updatedList: SavedNumber[]) {
-    setNumbers(updatedList);
-    localStorage.setItem("betterdata_saved_numbers", JSON.stringify(updatedList));
-  }
+    void loadSavedNumbers();
+    return () => {
+      active = false;
+    };
+  }, [getAuthHeaders]);
 
-  function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
     if (!label.trim()) {
-      setError("Please provide a name/label.");
+      setError("Please provide a name or label.");
       return;
     }
 
-    const cleanPhone = phone.replace(/\s+/g, "");
+    const cleanPhone = phone.replace(/\D/g, "");
     if (!cleanPhone) {
       setError("Please provide a phone number.");
       return;
     }
 
-    if (!/^\+?233[25]\d{8}$|^0[25]\d{8}$/.test(cleanPhone)) {
-      setError("Enter a valid Ghanaian phone number (e.g. 0541234567).");
+    if (!/^\+?233[235]\d{8}$|^0[235]\d{8}$/.test(phone.replace(/\s+/g, ""))) {
+      setError("Enter a valid Ghanaian phone number, for example 0541234567.");
       return;
     }
 
-    const newNumber: SavedNumber = {
-      id: Date.now().toString(),
-      label: label.trim(),
-      phone: phone.trim(),
-      network: detectNetwork(cleanPhone),
-    };
+    try {
+      const token = await readAuthToken(getAuthHeaders);
+      if (!token) {
+        setError("You must be logged in to save numbers.");
+        return;
+      }
 
-    const updated = [newNumber, ...numbers];
-    saveNumbers(updated);
+      const saved = await apiClient.saveSavedNumber({
+        label: label.trim(),
+        phone: cleanPhone,
+        network: detectNetwork(cleanPhone)
+      }, token);
 
-    // Reset form
-    setLabel("");
-    setPhone("");
-    setShowAddForm(false);
+      setNumbers((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setLabel("");
+      setPhone("");
+      setShowAddForm(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save number.");
+    }
   }
 
-  function handleDelete(id: string) {
-    if (confirm("Are you sure you want to delete this saved number?")) {
-      const updated = numbers.filter((n) => n.id !== id);
-      saveNumbers(updated);
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete this saved number?")) {
+      return;
+    }
+
+    try {
+      const token = await readAuthToken(getAuthHeaders);
+      if (!token) {
+        setError("You must be logged in to delete saved numbers.");
+        return;
+      }
+
+      await apiClient.deleteSavedNumber(id, token);
+      setNumbers((current) => current.filter((n) => n.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete number.");
     }
   }
 
@@ -159,6 +178,12 @@ export default function SavedNumbersPage() {
       )}
 
       <div className="recent-orders-section">
+        {!showAddForm && error && (
+          <div className="auth-error" style={{ marginBottom: "16px" }}>
+            <span>{error}</span>
+          </div>
+        )}
+
         {loading ? (
           <div className="orders-list">
             {[1, 2].map((n) => (
@@ -178,7 +203,7 @@ export default function SavedNumbersPage() {
               <PhoneIcon />
             </span>
             <div className="empty-state-text">
-              You haven&apos;t saved any numbers yet. Save contacts to purchase data even faster!
+              You haven&apos;t saved any numbers yet. Save contacts to purchase data faster.
             </div>
             <button onClick={() => setShowAddForm(true)} className="btn btn-primary" style={{ marginTop: "12px" }}>
               Add Your First Number
@@ -187,22 +212,18 @@ export default function SavedNumbersPage() {
         ) : (
           <div className="orders-list">
             {numbers.map((num) => {
-              const displayNetwork =
-                num.network === "mtn"
-                  ? "MTN"
-                  : num.network === "telecel"
-                    ? "Telecel"
-                    : "AirtelTigo";
+              const network = num.network ?? detectNetwork(num.phone);
+              const displayNetwork = displayNetworkName(network);
 
               return (
                 <div key={num.id} className="order-row-item">
-                  <div className={`network-dot-avatar ${num.network}`}>
+                  <div className={`network-dot-avatar ${network}`}>
                     {displayNetwork[0]}
                   </div>
                   <div className="order-recipient-info">
                     <div className="order-phone">{num.label}</div>
                     <div className="order-meta-info">
-                      {num.phone} • {displayNetwork}
+                      {formatPhone(num.phone)} - {displayNetwork}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: "8px", justifySelf: "end" }}>
@@ -214,7 +235,7 @@ export default function SavedNumbersPage() {
                       Buy Data
                     </Link>
                     <button
-                      onClick={() => handleDelete(num.id)}
+                      onClick={() => void handleDelete(num.id)}
                       className="btn btn-secondary"
                       style={{ padding: "6px 12px", fontSize: "0.8rem", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}
                     >
@@ -229,4 +250,24 @@ export default function SavedNumbersPage() {
       </div>
     </div>
   );
+}
+
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 10) return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  return value;
+}
+
+async function readAuthToken(getAuthHeaders: () => Promise<HeadersInit>) {
+  const headers = await getAuthHeaders();
+  const authorization =
+    headers instanceof Headers
+      ? headers.get("authorization") ?? headers.get("Authorization")
+      : Array.isArray(headers)
+        ? headers.find(([key]) => key.toLowerCase() === "authorization")?.[1]
+        : headers?.Authorization ?? headers?.authorization;
+
+  return typeof authorization === "string"
+    ? authorization.replace(/^Bearer\s+/i, "").trim() || null
+    : null;
 }

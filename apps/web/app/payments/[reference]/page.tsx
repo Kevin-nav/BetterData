@@ -2,6 +2,10 @@
 
 import { useEffect, Suspense } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { createBetterDataApiClient } from "@betterdata/api-client";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const apiClient = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 
 function PaymentsRedirectContent() {
   const router = useRouter();
@@ -9,11 +13,35 @@ function PaymentsRedirectContent() {
   const reference = params?.reference;
 
   useEffect(() => {
-    if (reference) {
-      router.replace(`/buy/confirmation?reference=${encodeURIComponent(reference as string)}`);
+    let active = true;
+
+    async function routeByPaymentPurpose(paymentReference: string) {
+      try {
+        const status = await apiClient.getPaymentIntentStatus(paymentReference);
+        if (!active) return;
+
+        if (status.purpose === "wallet_top_up") {
+          router.replace(`/dashboard/wallet?topup=${encodeURIComponent(paymentReference)}`);
+          return;
+        }
+
+        router.replace(`/buy/confirmation?reference=${encodeURIComponent(paymentReference)}`);
+      } catch {
+        if (active) {
+          router.replace(`/buy/confirmation?reference=${encodeURIComponent(paymentReference)}`);
+        }
+      }
+    }
+
+    if (typeof reference === "string" && reference) {
+      void routeByPaymentPurpose(reference);
     } else {
       router.replace("/buy");
     }
+
+    return () => {
+      active = false;
+    };
   }, [reference, router]);
 
   return (

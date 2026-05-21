@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../lib/AuthContext";
 import { createBetterDataApiClient, type WalletTransaction } from "@betterdata/api-client";
 
@@ -24,30 +24,78 @@ export default function WalletPage() {
   const [topUpAmount, setTopUpAmount] = useState("");
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpError, setTopUpError] = useState("");
+  const [topUpStatus, setTopUpStatus] = useState("");
+
+  const loadWalletSummary = useCallback(async () => {
+    try {
+      const token = await readAuthToken(getAuthHeaders);
+      if (token) {
+        const client = createBetterDataApiClient({
+          baseUrl: API_BASE_URL,
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const res = await client.getWalletSummary(token);
+        setBalance(res.balanceGhs);
+        setTransactions(res.transactions);
+      }
+    } catch (err) {
+      console.error("Failed to load wallet", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [getAuthHeaders]);
 
   useEffect(() => {
-    async function loadWalletSummary() {
-      try {
-        const headers = await getAuthHeaders();
-        const token = (headers as Record<string, string>)["Authorization"]?.replace("Bearer ", "");
-        if (token) {
-          const client = createBetterDataApiClient({
-            baseUrl: API_BASE_URL,
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const res = await client.getWalletSummary(token);
-          setBalance(res.balanceGhs);
-          setTransactions(res.transactions);
+    void loadWalletSummary();
+  }, [loadWalletSummary]);
+
+  useEffect(() => {
+    const reference = new URLSearchParams(window.location.search).get("topup");
+    if (!reference) return;
+    const topUpReference = reference;
+
+    let active = true;
+
+    async function reconcileTopUp() {
+      setTopUpStatus("Confirming wallet top-up...");
+      const client = createBetterDataApiClient({ baseUrl: API_BASE_URL });
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+          const status = await client.getPaymentIntentStatus(topUpReference);
+          if (!active) return;
+
+          if (status.status === "succeeded") {
+            setTopUpStatus("Wallet top-up confirmed.");
+            await refreshProfile();
+            await loadWalletSummary();
+            window.history.replaceState(null, "", window.location.pathname);
+            return;
+          }
+
+          if (status.status === "failed" || status.status === "abandoned") {
+            setTopUpError(status.failureReason || "Wallet top-up was not completed.");
+            setTopUpStatus("");
+            window.history.replaceState(null, "", window.location.pathname);
+            return;
+          }
+        } catch (err) {
+          console.error("Failed to reconcile wallet top-up", err);
         }
-      } catch (err) {
-        console.error("Failed to load wallet", err);
-      } finally {
-        setLoading(false);
+
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+
+      if (active) {
+        setTopUpStatus("Top-up is still processing. Refresh shortly to see the updated balance.");
       }
     }
 
-    loadWalletSummary();
-  }, [getAuthHeaders]);
+    void reconcileTopUp();
+    return () => {
+      active = false;
+    };
+  }, [loadWalletSummary, refreshProfile]);
 
   async function handleTopUp(e: React.FormEvent) {
     e.preventDefault();
@@ -61,8 +109,7 @@ export default function WalletPage() {
 
     try {
       setTopUpLoading(true);
-      const headers = await getAuthHeaders();
-      const token = (headers as Record<string, string>)["Authorization"]?.replace("Bearer ", "");
+      const token = await readAuthToken(getAuthHeaders);
 
       if (!token) {
         setTopUpError("You must be logged in to perform this action.");
@@ -123,6 +170,11 @@ export default function WalletPage() {
             {topUpError && (
               <div className="auth-error" style={{ marginBottom: "16px" }}>
                 <span>{topUpError}</span>
+              </div>
+            )}
+            {topUpStatus && (
+              <div className="order-message" style={{ marginBottom: "16px" }}>
+                {topUpStatus}
               </div>
             )}
 
@@ -226,4 +278,18 @@ export default function WalletPage() {
       `}</style>
     </div>
   );
+}
+
+async function readAuthToken(getAuthHeaders: () => Promise<HeadersInit>) {
+  const headers = await getAuthHeaders();
+  const authorization =
+    headers instanceof Headers
+      ? headers.get("authorization") ?? headers.get("Authorization")
+      : Array.isArray(headers)
+        ? headers.find(([key]) => key.toLowerCase() === "authorization")?.[1]
+        : headers?.Authorization ?? headers?.authorization;
+
+  return typeof authorization === "string"
+    ? authorization.replace(/^Bearer\s+/i, "").trim() || null
+    : null;
 }

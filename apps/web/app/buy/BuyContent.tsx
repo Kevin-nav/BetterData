@@ -3,7 +3,7 @@
 import {
   createBetterDataApiClient,
 } from "@betterdata/api-client";
-import type { DataPackage, NetworkCode } from "@betterdata/contracts";
+import type { DataPackage, NetworkCode, SavedNumber } from "@betterdata/contracts";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/AuthContext";
@@ -62,6 +62,27 @@ function readApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 10) return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  return value;
+}
+
+function defaultSavedNumberLabel(value: string) {
+  return `Saved ${formatPhone(value)}`;
+}
+
+function shouldSuggestSaveNumber(
+  phone: string,
+  savedNumbers: SavedNumber[],
+  isAgent: boolean,
+  token: string | null
+) {
+  if (!isAgent || token === null) return false;
+  const normalized = phone.replace(/\D/g, "");
+  return !savedNumbers.some((item) => item.phone.replace(/\D/g, "") === normalized);
+}
+
 async function readAuthToken(getAuthHeaders: () => Promise<HeadersInit>) {
   const headers = await getAuthHeaders();
   const authorization =
@@ -93,7 +114,7 @@ interface BulkPill {
 }
 
 export default function BuyContent({ standalone = false }: { standalone?: boolean }) {
-  const { getAuthHeaders, isAuthenticated } = useAuth();
+  const { getAuthHeaders, isAuthenticated, userProfile, refreshProfile } = useAuth();
 
   /* State */
   const [network, setNetwork] = useState<NetworkCode>("mtn");
@@ -113,6 +134,14 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [navScrolled, setNavScrolled] = useState(false);
   const [recentGuestPurchases, setRecentGuestPurchases] = useState<GuestPurchaseRecord[]>([]);
+  const [savedNumbers, setSavedNumbers] = useState<SavedNumber[]>([]);
+  const [saveSuggestion, setSaveSuggestion] = useState<{
+    phone: string;
+    network: NetworkCode;
+    redirectUrl: string;
+  } | null>(null);
+  const [saveSuggestionLabel, setSaveSuggestionLabel] = useState("");
+  const [savingSuggestedNumber, setSavingSuggestedNumber] = useState(false);
 
   /* Bulk Mode State */
   const [bulkPills, setBulkPills] = useState<BulkPill[]>([]);
@@ -136,6 +165,11 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   const atCount = bulkPills.filter((p) => p.network === "airteltigo").length;
   const invalidCount = bulkPills.filter((p) => !p.isValid).length;
   const totalCostGhs = bulkPills.reduce((total, p) => total + (p.isValid ? p.priceGhs : 0), 0);
+  const isAgent = userProfile?.role === "agent";
+  const walletBalanceLabel =
+    typeof userProfile?.walletBalanceGhs === "number"
+      ? `Balance: GHS ${userProfile.walletBalanceGhs.toFixed(2)}`
+      : "Balance: --";
 
   // Bulk helper to find package ID by network & size in GB.
   const findPackageByGb = (net: NetworkCode, gb: number): DataPackage | null => {
@@ -205,6 +239,32 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     setRecentGuestPurchases(readGuestPurchases());
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated || !isAgent) {
+      setSavedNumbers([]);
+      return;
+    }
+
+    let active = true;
+
+    async function loadSavedNumbers() {
+      const token = await readAuthToken(getAuthHeaders);
+      if (!token) return;
+
+      try {
+        const result = await getApi().listSavedNumbers(token);
+        if (active) setSavedNumbers(result.numbers);
+      } catch {
+        if (active) setSavedNumbers([]);
+      }
+    }
+
+    void loadSavedNumbers();
+    return () => {
+      active = false;
+    };
+  }, [getAuthHeaders, isAuthenticated, isAgent]);
+
   /* Fetch packages */
   useEffect(() => {
     const controller = new AbortController();
@@ -260,7 +320,18 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
           confirmRecipientIsCorrect: true,
           paymentMethod: "wallet",
         }, token ?? undefined);
-        window.location.href = `${standalone ? "" : "/dashboard"}/buy/confirmation?ref=${res.reference}`;
+        await refreshProfile();
+        const redirectUrl = `/buy/confirmation?ref=${res.reference}`;
+        if (shouldSuggestSaveNumber(phone, savedNumbers, isAgent, token)) {
+          setSaveSuggestion({
+            phone: phone.trim(),
+            network,
+            redirectUrl
+          });
+          setSaveSuggestionLabel(defaultSavedNumberLabel(phone.trim()));
+          return;
+        }
+        window.location.href = redirectUrl;
       } else {
         const res = await getApi().createPaymentIntent({
           purpose: "data_purchase",
@@ -288,12 +359,62 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
           setRecentGuestPurchases(readGuestPurchases());
         }
 
+        if (shouldSuggestSaveNumber(phone, savedNumbers, isAgent, token)) {
+          setSaveSuggestion({
+            phone: phone.trim(),
+            network,
+            redirectUrl: res.authorizationUrl
+          });
+          setSaveSuggestionLabel(defaultSavedNumberLabel(phone.trim()));
+          return;
+        }
+
         window.location.href = res.authorizationUrl;
       }
     } catch (err) {
       setOrderError(readApiError(err, "Payment submission failed"));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const selectSavedNumber = (savedNumber: SavedNumber) => {
+    setPhone(savedNumber.phone);
+    const savedNetwork = savedNumber.network ?? detectNetwork(savedNumber.phone);
+    if (savedNetwork) setNetwork(savedNetwork);
+    setRecipientConfirmed(false);
+  };
+
+  const saveSuggestedNumber = async () => {
+    if (saveSuggestion === null) return;
+    setSavingSuggestedNumber(true);
+    setOrderError("");
+
+    try {
+      const token = await readAuthToken(getAuthHeaders);
+      if (!token) {
+        window.location.href = saveSuggestion.redirectUrl;
+        return;
+      }
+
+      const saved = await getApi().saveSavedNumber({
+        label: saveSuggestionLabel.trim() || defaultSavedNumberLabel(saveSuggestion.phone),
+        phone: saveSuggestion.phone,
+        network: saveSuggestion.network
+      }, token);
+
+      setSavedNumbers((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      window.location.href = saveSuggestion.redirectUrl;
+    } catch (err) {
+      setOrderError(readApiError(err, "Unable to save number."));
+    } finally {
+      setSavingSuggestedNumber(false);
+    }
+  };
+
+  const skipSaveSuggestedNumber = () => {
+    if (saveSuggestion !== null) {
+      window.location.href = saveSuggestion.redirectUrl;
     }
   };
 
@@ -655,7 +776,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         );
         const results = await Promise.all(promises);
         const refs = results.map((r) => r.reference).join(",");
-        window.location.href = `${standalone ? "" : "/dashboard"}/buy/confirmation?ref=${refs}`;
+        window.location.href = `/buy/confirmation?ref=${refs}`;
       } else {
         setOrderError("Bulk checkout via Mobile Money is only supported for authenticated agents. Please Log In or Sign Up, or use Wallet payment.");
       }
@@ -1071,6 +1192,24 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                       <button onClick={() => setNetwork(detectedNet)}>Switch</button>
                     </div>
                   )}
+                  {isAgent && savedNumbers.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="checkout-section-label" style={{ fontSize: "0.72rem" }}>
+                        Saved Numbers
+                      </div>
+                      <div className="gb-chips">
+                        {savedNumbers.slice(0, 6).map((savedNumber) => (
+                          <button
+                            key={savedNumber.id}
+                            className="gb-chip"
+                            onClick={() => selectSavedNumber(savedNumber)}
+                          >
+                            {savedNumber.label} ({formatPhone(savedNumber.phone)})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Payment Method */}
@@ -1083,7 +1222,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                     </div>
                     <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
                       Wallet
-                      <small>Balance: --</small>
+                      <small>{walletBalanceLabel}</small>
                     </div>
                   </div>
                 </div>
@@ -1149,7 +1288,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                     </div>
                     <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
                       Wallet
-                      <small>Balance: --</small>
+                      <small>{walletBalanceLabel}</small>
                     </div>
                   </div>
                 </div>
@@ -1228,12 +1367,30 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                     <button onClick={() => setNetwork(detectedNet)}>Switch</button>
                   </div>
                 )}
+                {isAgent && savedNumbers.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="checkout-section-label" style={{ fontSize: "0.72rem" }}>
+                      Saved Numbers
+                    </div>
+                    <div className="gb-chips">
+                      {savedNumbers.slice(0, 6).map((savedNumber) => (
+                        <button
+                          key={savedNumber.id}
+                          className="gb-chip"
+                          onClick={() => selectSavedNumber(savedNumber)}
+                        >
+                          {savedNumber.label} ({formatPhone(savedNumber.phone)})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="checkout-section">
                 <div className="checkout-section-label">Payment Method</div>
                 <div className="pay-method-row">
                   <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
-                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>Balance: --</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>{walletBalanceLabel}</small></div>
                 </div>
               </div>
               <label className="buy-confirm-row">
@@ -1280,7 +1437,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <div className="checkout-section-label">Payment Method</div>
                 <div className="pay-method-row">
                   <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
-                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>Balance: --</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>{walletBalanceLabel}</small></div>
                 </div>
               </div>
               <label className="buy-confirm-row">
@@ -1296,6 +1453,56 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
           )
         )}
       </div>
+
+      {saveSuggestion && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20
+          }}
+        >
+          <div
+            className="recent-orders-section"
+            style={{
+              width: "min(420px, 100%)",
+              boxShadow: "var(--shadow-lg)"
+            }}
+          >
+            <h3 className="section-title" style={{ fontSize: "1.05rem", marginBottom: 10 }}>
+              Save this number?
+            </h3>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: 16 }}>
+              Save {formatPhone(saveSuggestion.phone)} for quicker agent purchases.
+            </p>
+            <div className="form-field">
+              <label>Name / Label</label>
+              <input
+                type="text"
+                value={saveSuggestionLabel}
+                onChange={(event) => setSaveSuggestionLabel(event.target.value)}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+              <button className="btn btn-secondary" onClick={skipSaveSuggestedNumber}>
+                Skip
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => void saveSuggestedNumber()}
+                disabled={savingSuggestedNumber}
+              >
+                {savingSuggestedNumber ? "Saving..." : "Save Number"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Bulk Cart Button for Mobile */}
       {mode === "bulk" && bulkPills.length > 0 && !sheetOpen && (

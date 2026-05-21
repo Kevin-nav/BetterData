@@ -7,7 +7,8 @@ export type SavedNumber = {
   userId: string;
   label: string;
   phone: string;
-  createdAt: string;
+  network?: "mtn" | "telecel" | "airteltigo";
+  createdAt: number;
 };
 
 export type UserProfile = {

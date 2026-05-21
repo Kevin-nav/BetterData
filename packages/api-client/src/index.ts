@@ -4,6 +4,7 @@ import type {
   DataPackage,
   PaymentIntentStatusResponse,
   PurchaseRequest,
+  SavedNumber,
   WalletTransactionType,
   VendorOrderStatus,
   Order
@@ -41,6 +42,16 @@ export type WalletTransaction = {
 export type WalletSummaryResponse = {
   balanceGhs: number;
   transactions: WalletTransaction[];
+};
+
+export type ListSavedNumbersResponse = {
+  numbers: SavedNumber[];
+};
+
+export type SaveSavedNumberRequest = {
+  label: string;
+  phone: string;
+  network?: SavedNumber["network"];
 };
 
 
@@ -118,6 +129,12 @@ export type BetterDataApiClient = {
   getMe: (token: string) => Promise<UserProfile>;
   listDataPackages: () => Promise<ListDataPackagesResponse>;
   listOrders: (token: string) => Promise<ListOrdersResponse>;
+  listSavedNumbers: (token: string) => Promise<ListSavedNumbersResponse>;
+  saveSavedNumber: (
+    body: SaveSavedNumberRequest,
+    token: string
+  ) => Promise<SavedNumber>;
+  deleteSavedNumber: (id: string, token: string) => Promise<{ deleted: boolean }>;
   getWalletSummary: (token: string) => Promise<WalletSummaryResponse>;
   createOrder: (body: PurchaseRequest, token?: string) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
@@ -201,6 +218,21 @@ export function createBetterDataApiClient(
     listDataPackages: () => request<ListDataPackagesResponse>("/data-packages"),
     listOrders: (token) =>
       request<ListOrdersResponse>("/orders", {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    listSavedNumbers: (token) =>
+      request<ListSavedNumbersResponse>("/saved-numbers", {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    saveSavedNumber: (body, token) =>
+      request<SavedNumber>("/saved-numbers", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      }),
+    deleteSavedNumber: (id, token) =>
+      request<{ deleted: boolean }>(`/saved-numbers/${encodeURIComponent(id)}`, {
+        method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       }),
     getWalletSummary: (token) =>
