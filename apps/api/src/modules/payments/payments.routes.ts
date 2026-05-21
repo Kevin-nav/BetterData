@@ -177,7 +177,10 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
 
           if (verified.status === "success") {
             await verifyAndCompletePayment(convex, queue, request.params.reference);
-          } else if (verified.status === "failed" || verified.status === "abandoned") {
+          } else if (
+            verified.status === "failed" ||
+            (verified.status === "abandoned" && isPastAbandonedReconciliationGrace(status))
+          ) {
             await convex.mutation(paymentFunctions.markFailed, {
               ...serviceArgs(),
               providerReference: request.params.reference,
@@ -758,6 +761,11 @@ function buildPaystackFailureReason(verified: {
 
 function isTerminalPaymentStatus(status: PaymentIntentStatusResponse["status"]) {
   return status === "succeeded" || status === "failed" || status === "abandoned";
+}
+
+function isPastAbandonedReconciliationGrace(status: PaymentIntentStatusResponse) {
+  const abandonedGraceMs = 30 * 60 * 1000;
+  return typeof status.createdAt === "number" && Date.now() - status.createdAt > abandonedGraceMs;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

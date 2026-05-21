@@ -46,6 +46,7 @@ export type PaymentIntentStatusResponse = {
   amountGhs: number;
   currency: "GHS";
   status: PaymentIntentStatus;
+  createdAt?: number;
   failureReason?: string;
   dataPurchase?: {
     packageId: string;

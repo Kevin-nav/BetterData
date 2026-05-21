@@ -38,6 +38,7 @@ const paymentIntentRequest = v.union(
     vendorPackageId: v.optional(v.string()),
     amountGhs: v.optional(v.number()),
     baseCustomerPriceGhs: v.optional(v.number()),
+    sizeMb: v.optional(v.number()),
     network: networkCode,
     recipientPhone: v.string(),
     customerEmail: v.string(),
@@ -209,6 +210,7 @@ export const getPublicStatus = query({
       amountGhs: intent.amountGhs,
       currency: intent.currency,
       status: intent.status,
+      createdAt: intent.createdAt,
       ...(intent.failureReason !== undefined
         ? { failureReason: intent.failureReason }
         : {}),
