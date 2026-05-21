@@ -161,7 +161,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
     "/payments/intents/:reference",
     async (request, reply) => {
       const convex = createConvexClient();
-      const status = (await convex.query(paymentFunctions.getPublicStatus, {
+      let status = (await convex.query(paymentFunctions.getPublicStatus, {
         providerReference: request.params.reference
       })) as PaymentIntentStatusResponse | null;
 
@@ -169,6 +169,32 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         return reply.code(404).send({
           message: "Payment intent not found."
         });
+      }
+
+      if (!isTerminalPaymentStatus(status.status)) {
+        try {
+          const verified = await verifyPaystackTransaction(request.params.reference);
+
+          if (verified.status === "success") {
+            await verifyAndCompletePayment(convex, queue, request.params.reference);
+          } else if (verified.status === "failed" || verified.status === "abandoned") {
+            await convex.mutation(paymentFunctions.markFailed, {
+              ...serviceArgs(),
+              providerReference: request.params.reference,
+              status: verified.status === "abandoned" ? "abandoned" : "failed",
+              failureReason: buildPaystackFailureReason(verified)
+            });
+          }
+
+          status = (await convex.query(paymentFunctions.getPublicStatus, {
+            providerReference: request.params.reference
+          })) as PaymentIntentStatusResponse | null;
+        } catch (error) {
+          request.log.warn(
+            { error, reference: request.params.reference },
+            "Payment status reconciliation failed"
+          );
+        }
       }
 
       return status;
@@ -298,7 +324,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             ...serviceArgs(),
             providerReference: reference,
             status: verified.status === "abandoned" ? "abandoned" : "failed",
-            failureReason: `Paystack verification status: ${verified.status}`
+            failureReason: buildPaystackFailureReason(verified)
           });
           emitPaymentTelemetry({
             name: "payment.intent.failed",
@@ -637,6 +663,7 @@ async function buildConvexPaymentIntentRequest(
     vendorPackageId: selectedPackage.vendorPackageId,
     amountGhs: selectedPackage.amountGhs,
     baseCustomerPriceGhs: selectedPackage.amountGhs,
+    sizeMb: selectedPackage.sizeMb,
     network: selectedPackage.network,
     recipientPhone: normalizedPhone,
     customerEmail,
@@ -669,13 +696,38 @@ async function resolveDataPurchasePackage(
     throw new Error("Selected package price is invalid.");
   }
 
+  await ensureVendorBalanceCanCoverPurchase(vendor, selected.costGhs);
+
   return {
     packageId: `${vendor.id}:${selected.vendorPackageId}`,
     vendorId: vendor.id,
     vendorPackageId: selected.vendorPackageId,
     network: selected.network,
-    amountGhs: Math.round(selected.costGhs * 100) / 100
+    amountGhs: Math.round(selected.costGhs * 100) / 100,
+    sizeMb: selected.sizeMb
   };
+}
+
+async function ensureVendorBalanceCanCoverPurchase(
+  vendor: ReturnType<typeof getActiveDataVendor>,
+  purchaseCostGhs: number
+) {
+  let balanceGhs: number;
+
+  try {
+    const balance = await vendor.getBalance();
+    balanceGhs = balance.balanceGhs;
+  } catch {
+    throw new Error(
+      "Data purchases are temporarily unavailable while we verify vendor balance. Please try again shortly."
+    );
+  }
+
+  if (!Number.isFinite(balanceGhs) || balanceGhs < purchaseCostGhs) {
+    throw new Error(
+      "Data purchases are temporarily unavailable because vendor balance is low. Please try again shortly."
+    );
+  }
 }
 
 function createConvexClient() {
@@ -690,6 +742,22 @@ function buildPaymentCallbackUrl(reference: string) {
   }
 
   return `${appUrl.replace(/\/+$/, "")}/payments/${encodeURIComponent(reference)}`;
+}
+
+function buildPaystackFailureReason(verified: {
+  status: string;
+  gatewayResponse?: string;
+  message?: string;
+}) {
+  const details = [verified.gatewayResponse, verified.message]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(": ");
+
+  return details || `Paystack verification status: ${verified.status}`;
+}
+
+function isTerminalPaymentStatus(status: PaymentIntentStatusResponse["status"]) {
+  return status === "succeeded" || status === "failed" || status === "abandoned";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

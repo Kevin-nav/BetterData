@@ -208,7 +208,11 @@ export const getPublicStatus = query({
       purpose: intent.purpose,
       amountGhs: intent.amountGhs,
       currency: intent.currency,
-      status: intent.status
+      status: intent.status,
+      ...(intent.failureReason !== undefined
+        ? { failureReason: intent.failureReason }
+        : {}),
+      ...publicPurposeDetails(intent.purpose, intent.purposeMetadata)
     };
   }
 });
@@ -549,6 +553,37 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function publicPurposeDetails(purpose: string, metadata: unknown) {
+  if (purpose !== "data_purchase") {
+    return {};
+  }
+
+  const record = asRecord(metadata);
+  const packageId = record.packageId;
+  const network = record.network;
+  const recipientPhone = record.recipientPhone;
+
+  if (
+    typeof packageId !== "string" ||
+    !isNetworkCode(network) ||
+    typeof recipientPhone !== "string"
+  ) {
+    return {};
+  }
+
+  return {
+    dataPurchase: {
+      packageId,
+      ...(typeof record.vendorPackageId === "string"
+        ? { vendorPackageId: record.vendorPackageId }
+        : {}),
+      network,
+      recipientPhone,
+      ...(typeof record.sizeMb === "number" ? { sizeMb: record.sizeMb } : {})
+    }
+  };
+}
+
 function isNetworkCode(value: unknown): value is "mtn" | "telecel" | "airteltigo" {
   return value === "mtn" || value === "telecel" || value === "airteltigo";
 }
@@ -564,6 +599,7 @@ async function resolvePaymentIntent(
         vendorPackageId?: string;
         amountGhs?: number;
         baseCustomerPriceGhs?: number;
+        sizeMb?: number;
         network: "mtn" | "telecel" | "airteltigo";
         recipientPhone: string;
         customerEmail: string;
@@ -671,6 +707,7 @@ async function resolvePaymentIntent(
         vendorPackageId: request.vendorPackageId,
         network: request.network,
         recipientPhone: request.recipientPhone,
+        ...(request.sizeMb !== undefined ? { sizeMb: request.sizeMb } : {}),
         customerEmail: request.customerEmail,
         providerReference,
         baseCustomerPriceGhs: request.baseCustomerPriceGhs ?? request.amountGhs
@@ -707,6 +744,7 @@ async function resolvePaymentIntent(
       vendorPackageId: dataPackage.vendorPackageId,
       network: request.network,
       recipientPhone: request.recipientPhone,
+      sizeMb: dataPackage.sizeMb,
       customerEmail: request.customerEmail,
       providerReference,
       baseCustomerPriceGhs: dataPackage.customerPriceGhs

@@ -25,6 +25,8 @@ export type VerifiedPaystackTransaction = {
   currency: string;
   paidAt?: string;
   channel?: string;
+  gatewayResponse?: string;
+  message?: string;
   customer?: {
     email?: string;
     phone?: string;
@@ -58,6 +60,8 @@ type PaystackVerifyResponse = {
     currency?: string;
     paid_at?: string | null;
     channel?: string | null;
+    gateway_response?: string | null;
+    message?: string | null;
     customer?: {
       email?: string | null;
       phone?: string | null;
@@ -195,6 +199,12 @@ export async function verifyPaystackTransaction(
     currency: data.currency,
     ...(data.paid_at !== null && data.paid_at !== undefined ? { paidAt: data.paid_at } : {}),
     ...(data.channel !== null && data.channel !== undefined ? { channel: data.channel } : {}),
+    ...(data.gateway_response !== null && data.gateway_response !== undefined
+      ? { gatewayResponse: data.gateway_response }
+      : {}),
+    ...(data.message !== null && data.message !== undefined
+      ? { message: data.message }
+      : {}),
     ...(Object.keys(customer).length > 0 ? { customer } : {})
   };
 }

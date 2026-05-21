@@ -6,6 +6,11 @@ import {
 import type { DataPackage, NetworkCode } from "@betterdata/contracts";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import {
+  readGuestPurchases,
+  upsertGuestPurchase,
+  type GuestPurchaseRecord
+} from "./guestPurchases";
 
 /* ── API Client ── */
 let _apiClient: ReturnType<typeof createBetterDataApiClient> | null = null;
@@ -88,6 +93,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   const [sheetOpen, setSheetOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [navScrolled, setNavScrolled] = useState(false);
+  const [recentGuestPurchases, setRecentGuestPurchases] = useState<GuestPurchaseRecord[]>([]);
 
   /* Bulk Mode State */
   const [bulkPills, setBulkPills] = useState<BulkPill[]>([]);
@@ -176,6 +182,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     if (localStorage.getItem("promo-dismissed") === "1") setPromoDismissed(true);
   }, []);
 
+  useEffect(() => {
+    setRecentGuestPurchases(readGuestPurchases());
+  }, []);
+
   /* Fetch packages */
   useEffect(() => {
     const controller = new AbortController();
@@ -238,6 +248,21 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
           recipientPhone: phone.trim(),
           confirmRecipientIsCorrect: true,
         });
+        const now = new Date().toISOString();
+        const guestRecord: GuestPurchaseRecord = {
+          reference: res.reference,
+          packageId: selectedPkg.id,
+          network,
+          recipientPhone: phone.trim(),
+          sizeMb: selectedPkg.sizeMb,
+          amountGhs: res.amountGhs,
+          paymentStatus: res.status,
+          deliveryStatus: "pending",
+          createdAt: now,
+          updatedAt: now
+        };
+        upsertGuestPurchase(guestRecord);
+        setRecentGuestPurchases(readGuestPurchases());
         window.location.href = res.authorizationUrl;
       }
     } catch (err) {
@@ -716,6 +741,31 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         </div>
 
         {/* ── Main Layout ── */}
+        {standalone && recentGuestPurchases.length > 0 && (
+          <section className="guest-tracker">
+            <div className="guest-tracker-label">Recent purchases on this device</div>
+            <div className="guest-tracker-list">
+              {recentGuestPurchases.slice(0, 3).map((purchase) => (
+                <Link
+                  key={purchase.reference}
+                  className="guest-tracker-item"
+                  href={`/buy/confirmation?reference=${encodeURIComponent(purchase.reference)}`}
+                >
+                  <span className={`network-badge network-badge--${purchase.network}`}>
+                    <span className="badge-dot" />
+                    {NETWORK_NAMES[purchase.network]}
+                  </span>
+                  <span>{purchase.sizeMb ? formatPackageSize(purchase.sizeMb) : "Data bundle"}</span>
+                  <strong>GHS {purchase.amountGhs.toFixed(2)}</strong>
+                  <span className={`guest-tracker-status status-${purchase.deliveryStatus ?? purchase.paymentStatus}`}>
+                    {purchase.deliveryStatus ?? purchase.paymentStatus}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="buy-layout">
           <section className="buy-catalog">
             {mode === "single" ? (

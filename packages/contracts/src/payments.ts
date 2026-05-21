@@ -46,6 +46,14 @@ export type PaymentIntentStatusResponse = {
   amountGhs: number;
   currency: "GHS";
   status: PaymentIntentStatus;
+  failureReason?: string;
+  dataPurchase?: {
+    packageId: string;
+    vendorPackageId?: string;
+    network: "mtn" | "telecel" | "airteltigo";
+    recipientPhone: string;
+    sizeMb?: number;
+  };
 };
 
 export type WalletTransactionType =
