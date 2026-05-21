@@ -4,6 +4,8 @@ resources:
   - namespace.yaml
   - web-deployment.yaml
   - web-service.yaml
+  - admin-deployment.yaml
+  - admin-service.yaml
   - api-deployment.yaml
   - api-service.yaml
   - worker-deployment.yaml

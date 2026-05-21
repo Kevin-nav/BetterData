@@ -28,12 +28,32 @@ interface DataPackageWithPricing {
   } | null;
 }
 
+type PricingRule = {
+  _id: string;
+  packageId?: string;
+  mode: "percentage" | "fixed";
+  value: number;
+  isGlobal: boolean;
+  isActive: boolean;
+};
+
+type PaymentConfig = {
+  agentDiscountPercentage?: number;
+  firstPurchaseDiscountGhs?: number;
+};
+
 export default function PricingPage() {
   const { showToast } = useToast();
   // Query for packages and rules
-  const packages = useQuery(convexApi.admin.listDataPackagesWithPricing, {}) as DataPackageWithPricing[] | undefined;
-  const pricingRules = useQuery(convexApi.admin.listPricingRules, {});
-  const config = useQuery(convexApi.platformConfig.listPaymentConfig);
+  const packages = useQuery(convexApi.admin.listDataPackagesWithPricing, {}) as
+    | DataPackageWithPricing[]
+    | undefined;
+  const pricingRules = useQuery(convexApi.admin.listPricingRules, {}) as
+    | PricingRule[]
+    | undefined;
+  const config = useQuery(convexApi.platformConfig.listPaymentConfig) as
+    | PaymentConfig
+    | undefined;
 
   // Mutations
   const upsertPricingRule = useMutation(convexApi.admin.upsertPricingRule);
@@ -53,14 +73,20 @@ export default function PricingPage() {
 
   // Global markup rule states
   const [isGlobalModalOpen, setIsGlobalModalOpen] = useState(false);
-  const [globalMode, setGlobalMode] = useState<"percentage" | "fixed">("percentage");
+  const [globalMode, setGlobalMode] = useState<"percentage" | "fixed">(
+    "percentage",
+  );
   const [globalValue, setGlobalValue] = useState("");
   const [globalActive, setGlobalActive] = useState(true);
 
   // Package override states
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
-  const [selectedPkg, setSelectedPkg] = useState<DataPackageWithPricing | null>(null);
-  const [overrideMode, setOverrideMode] = useState<"percentage" | "fixed">("percentage");
+  const [selectedPkg, setSelectedPkg] = useState<DataPackageWithPricing | null>(
+    null,
+  );
+  const [overrideMode, setOverrideMode] = useState<"percentage" | "fixed">(
+    "percentage",
+  );
   const [overrideValue, setOverrideValue] = useState("");
   const [overrideActive, setOverrideActive] = useState(true);
 
@@ -101,7 +127,10 @@ export default function PricingPage() {
   const handleSaveAgentDiscount = async () => {
     const num = Number(agentDiscountVal);
     if (isNaN(num) || num < 0 || num > 100) {
-      showToast("Please enter a valid percentage between 0 and 100.", "warning");
+      showToast(
+        "Please enter a valid percentage between 0 and 100.",
+        "warning",
+      );
       return;
     }
     try {
@@ -128,7 +157,10 @@ export default function PricingPage() {
       setEditingFirstPurchase(false);
       showToast("First-purchase discount updated successfully.", "success");
     } catch (err: any) {
-      showToast(err.message || "Failed to update first-purchase discount", "error");
+      showToast(
+        err.message || "Failed to update first-purchase discount",
+        "error",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -189,7 +221,7 @@ export default function PricingPage() {
       setSubmitting(true);
       setError(null);
       await upsertPricingRule({
-        packageId: selectedPkg._id,
+        packageId: selectedPkg._id as any,
         isGlobal: false,
         mode: overrideMode,
         value: val,
@@ -197,7 +229,10 @@ export default function PricingPage() {
       });
       setIsOverrideModalOpen(false);
       setSelectedPkg(null);
-      showToast(`Custom pricing override for "${selectedPkg.name}" saved successfully.`, "success");
+      showToast(
+        `Custom pricing override for "${selectedPkg.name}" saved successfully.`,
+        "success",
+      );
     } catch (err: any) {
       setError(err.message || "Failed to save override rule");
     } finally {
@@ -207,14 +242,21 @@ export default function PricingPage() {
 
   const handleRemoveOverride = async (pkg: DataPackageWithPricing) => {
     if (!pkg.activeRule || pkg.activeRule.isGlobal) return;
-    if (!confirm(`Are you sure you want to remove the custom pricing override for "${pkg.name}"?`)) {
+    if (
+      !confirm(
+        `Are you sure you want to remove the custom pricing override for "${pkg.name}"?`,
+      )
+    ) {
       return;
     }
 
     try {
       setSubmitting(true);
       await deletePricingRule({ ruleId: pkg.activeRule._id as any });
-      showToast(`Pricing override for "${pkg.name}" removed successfully.`, "success");
+      showToast(
+        `Pricing override for "${pkg.name}" removed successfully.`,
+        "success",
+      );
     } catch (err: any) {
       showToast(err.message || "Failed to remove override", "error");
     } finally {
@@ -224,9 +266,10 @@ export default function PricingPage() {
 
   // Filtering list
   const filteredPackages = packages?.filter((pkg) => {
-    const matchesSearch = pkg.name.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch =
+      pkg.name.toLowerCase().includes(search.toLowerCase()) ||
       pkg.network.toLowerCase().includes(search.toLowerCase());
-    
+
     const matchesNetwork = !networkFilter || pkg.network === networkFilter;
 
     let matchesOverride = true;
@@ -272,8 +315,13 @@ export default function PricingPage() {
       header: "Package Name",
       render: (row) => (
         <div>
-          <div style={{ fontWeight: 600, color: "var(--text)" }}>{row.name}</div>
-          <div className="text-xs text-muted" style={{ fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontWeight: 600, color: "var(--text)" }}>
+            {row.name}
+          </div>
+          <div
+            className="text-xs text-muted"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
             {row.vendorPackageId}
           </div>
         </div>
@@ -314,12 +362,18 @@ export default function PricingPage() {
     {
       key: "providerCostGhs",
       header: "Cost Price",
-      render: (row) => <span className="font-mono">GHS {row.providerCostGhs.toFixed(2)}</span>,
+      render: (row) => (
+        <span className="font-mono">GHS {row.providerCostGhs.toFixed(2)}</span>
+      ),
     },
     {
       key: "customerPriceGhs",
       header: "Base Price",
-      render: (row) => <span className="font-mono text-muted">GHS {row.customerPriceGhs.toFixed(2)}</span>,
+      render: (row) => (
+        <span className="font-mono text-muted">
+          GHS {row.customerPriceGhs.toFixed(2)}
+        </span>
+      ),
     },
     {
       key: "rule",
@@ -329,7 +383,9 @@ export default function PricingPage() {
           return <span className="text-muted text-sm">No Markup (Cost)</span>;
         }
         const badgeStatus = row.activeRule.isGlobal ? "neutral" : "success";
-        const ruleLabel = row.activeRule.isGlobal ? "Global Rule" : "Custom Override";
+        const ruleLabel = row.activeRule.isGlobal
+          ? "Global Rule"
+          : "Custom Override";
         const ruleVal =
           row.activeRule.mode === "percentage"
             ? `+${row.activeRule.value}%`
@@ -338,7 +394,10 @@ export default function PricingPage() {
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
             <StatusBadge status={badgeStatus} label={ruleLabel} />
-            <span className="font-mono text-xs text-muted" style={{ fontWeight: 500 }}>
+            <span
+              className="font-mono text-xs text-muted"
+              style={{ fontWeight: 500 }}
+            >
               {ruleVal}
             </span>
           </div>
@@ -349,7 +408,9 @@ export default function PricingPage() {
       key: "computedPriceGhs",
       header: "Customer Price",
       render: (row) => (
-        <strong style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>
+        <strong
+          style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}
+        >
           GHS {row.computedPriceGhs.toFixed(2)}
         </strong>
       ),
@@ -358,9 +419,13 @@ export default function PricingPage() {
       key: "agentPriceGhs",
       header: "Agent Price",
       render: (row) => {
-        const agentPrice = row.computedPriceGhs * (1 - agentDiscountPercentage / 100);
+        const agentPrice =
+          row.computedPriceGhs * (1 - agentDiscountPercentage / 100);
         return (
-          <span className="font-mono text-sm" style={{ color: "var(--primary)", fontWeight: 600 }}>
+          <span
+            className="font-mono text-sm"
+            style={{ color: "var(--primary)", fontWeight: 600 }}
+          >
             GHS {agentPrice.toFixed(2)}
           </span>
         );
@@ -399,7 +464,10 @@ export default function PricingPage() {
       <div className="page-header" style={{ marginBottom: "var(--space-6)" }}>
         <div>
           <h1 className="page-title">Pricing Configuration</h1>
-          <p className="page-subtitle">Configure markups, override prices per package, and manage user discount tiers</p>
+          <p className="page-subtitle">
+            Configure markups, override prices per package, and manage user
+            discount tiers
+          </p>
         </div>
       </div>
 
@@ -420,22 +488,62 @@ export default function PricingPage() {
               <h3 className="card-header-title">Retail Markup</h3>
             </div>
           </div>
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: "calc(100% - 65px)" }}>
+          <div
+            className="card-body"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              height: "calc(100% - 65px)",
+            }}
+          >
             <div>
-              <p style={{ margin: "0 0 var(--space-4) 0", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                Applied globally to packages without a specific override rule. Computed from provider cost.
+              <p
+                style={{
+                  margin: "0 0 var(--space-4) 0",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                Applied globally to packages without a specific override rule.
+                Computed from provider cost.
               </p>
               {globalRule ? (
-                <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)", margin: "var(--space-2) 0" }}>
-                  <span style={{ fontSize: "var(--font-size-3xl)", fontWeight: 700, color: "var(--text)" }}>
-                    {globalRule.mode === "percentage" ? `${globalRule.value}%` : `GHS ${globalRule.value.toFixed(2)}`}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: "var(--space-2)",
+                    margin: "var(--space-2) 0",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-3xl)",
+                      fontWeight: 700,
+                      color: "var(--text)",
+                    }}
+                  >
+                    {globalRule.mode === "percentage"
+                      ? `${globalRule.value}%`
+                      : `GHS ${globalRule.value.toFixed(2)}`}
                   </span>
                   <span className="text-muted text-sm">
-                    ({globalRule.mode === "percentage" ? "Percentage" : "Fixed Amount"})
+                    (
+                    {globalRule.mode === "percentage"
+                      ? "Percentage"
+                      : "Fixed Amount"}
+                    )
                   </span>
                 </div>
               ) : (
-                <div style={{ margin: "var(--space-4) 0", fontWeight: 600, color: "var(--text-muted)" }}>
+                <div
+                  style={{
+                    margin: "var(--space-4) 0",
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                  }}
+                >
                   No Global Rule Configured
                 </div>
               )}
@@ -472,13 +580,35 @@ export default function PricingPage() {
               <h3 className="card-header-title">Agent Discount</h3>
             </div>
           </div>
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: "calc(100% - 65px)" }}>
+          <div
+            className="card-body"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              height: "calc(100% - 65px)",
+            }}
+          >
             <div>
-              <p style={{ margin: "0 0 var(--space-4) 0", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                The discount percentage agents receive on all bundle purchases relative to the calculated customer price.
+              <p
+                style={{
+                  margin: "0 0 var(--space-4) 0",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                The discount percentage agents receive on all bundle purchases
+                relative to the calculated customer price.
               </p>
               {editingAgentDiscount ? (
-                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", margin: "var(--space-2) 0" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "var(--space-2)",
+                    alignItems: "center",
+                    margin: "var(--space-2) 0",
+                  }}
+                >
                   <input
                     type="number"
                     className="input"
@@ -508,8 +638,21 @@ export default function PricingPage() {
                   </button>
                 </div>
               ) : (
-                <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)", margin: "var(--space-2) 0" }}>
-                  <span style={{ fontSize: "var(--font-size-3xl)", fontWeight: 700, color: "var(--text)" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: "var(--space-2)",
+                    margin: "var(--space-2) 0",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-3xl)",
+                      fontWeight: 700,
+                      color: "var(--text)",
+                    }}
+                  >
                     {agentDiscountPercentage}%
                   </span>
                   <span className="text-muted text-sm">Discount</span>
@@ -541,13 +684,35 @@ export default function PricingPage() {
               <h3 className="card-header-title">First Purchase Discount</h3>
             </div>
           </div>
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: "calc(100% - 65px)" }}>
+          <div
+            className="card-body"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              height: "calc(100% - 65px)",
+            }}
+          >
             <div>
-              <p style={{ margin: "0 0 var(--space-4) 0", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                A welcome flat discount automatically applied to a new user's first bundle purchase.
+              <p
+                style={{
+                  margin: "0 0 var(--space-4) 0",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                A welcome flat discount automatically applied to a new user's
+                first bundle purchase.
               </p>
               {editingFirstPurchase ? (
-                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", margin: "var(--space-2) 0" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "var(--space-2)",
+                    alignItems: "center",
+                    margin: "var(--space-2) 0",
+                  }}
+                >
                   <input
                     type="number"
                     className="input"
@@ -576,8 +741,21 @@ export default function PricingPage() {
                   </button>
                 </div>
               ) : (
-                <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)", margin: "var(--space-2) 0" }}>
-                  <span style={{ fontSize: "var(--font-size-3xl)", fontWeight: 700, color: "var(--text)" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: "var(--space-2)",
+                    margin: "var(--space-2) 0",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-3xl)",
+                      fontWeight: 700,
+                      color: "var(--text)",
+                    }}
+                  >
                     GHS {firstPurchaseDiscountGhs.toFixed(2)}
                   </span>
                   <span className="text-muted text-sm">Credit</span>
@@ -606,7 +784,9 @@ export default function PricingPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h3 className="card-header-title">Data Packages Markup Overrides</h3>
+            <h3 className="card-header-title">
+              Data Packages Markup Overrides
+            </h3>
           </div>
         </div>
         <div className="card-body">
@@ -656,11 +836,25 @@ export default function PricingPage() {
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
+            }}
+          >
             <div className="form-group">
               <label className="form-label">Markup Type</label>
               <div style={{ display: "flex", gap: "var(--space-4)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-2)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
                   <input
                     type="radio"
                     name="globalMode"
@@ -670,7 +864,15 @@ export default function PricingPage() {
                   />
                   Percentage (%)
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-2)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
                   <input
                     type="radio"
                     name="globalMode"
@@ -696,7 +898,9 @@ export default function PricingPage() {
                 onChange={(e) => setGlobalValue(e.target.value)}
                 required
                 min="0"
-                placeholder={globalMode === "percentage" ? "e.g. 10" : "e.g. 5.00"}
+                placeholder={
+                  globalMode === "percentage" ? "e.g. 10" : "e.g. 5.00"
+                }
               />
               <span className="form-hint">
                 {globalMode === "percentage"
@@ -705,14 +909,25 @@ export default function PricingPage() {
               </span>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                marginTop: "var(--space-2)",
+              }}
+            >
               <input
                 id="globalActive"
                 type="checkbox"
                 checked={globalActive}
                 onChange={(e) => setGlobalActive(e.target.checked)}
               />
-              <label className="form-label" htmlFor="globalActive" style={{ cursor: "pointer" }}>
+              <label
+                className="form-label"
+                htmlFor="globalActive"
+                style={{ cursor: "pointer" }}
+              >
                 Enable this markup rule
               </label>
             </div>
@@ -736,7 +951,11 @@ export default function PricingPage() {
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting}
+            >
               {submitting ? "Saving..." : "Save Rule"}
             </button>
           </div>
@@ -784,20 +1003,38 @@ export default function PricingPage() {
             >
               <div>
                 <span className="text-muted text-xs block">Provider Cost</span>
-                <span style={{ fontWeight: 600, color: "var(--text)" }}>GHS {selectedPkg.providerCostGhs.toFixed(2)}</span>
+                <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                  GHS {selectedPkg.providerCostGhs.toFixed(2)}
+                </span>
               </div>
               <div>
                 <span className="text-muted text-xs block">Default Price</span>
-                <span style={{ fontWeight: 600, color: "var(--text)" }}>GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
+                <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                  GHS {selectedPkg.customerPriceGhs.toFixed(2)}
+                </span>
               </div>
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
+            }}
+          >
             <div className="form-group">
               <label className="form-label">Markup Override Type</label>
               <div style={{ display: "flex", gap: "var(--space-4)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-2)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
                   <input
                     type="radio"
                     name="overrideMode"
@@ -807,7 +1044,15 @@ export default function PricingPage() {
                   />
                   Percentage (%)
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-2)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
                   <input
                     type="radio"
                     name="overrideMode"
@@ -833,18 +1078,31 @@ export default function PricingPage() {
                 onChange={(e) => setOverrideValue(e.target.value)}
                 required
                 min="0"
-                placeholder={overrideMode === "percentage" ? "e.g. 15" : "e.g. 4.50"}
+                placeholder={
+                  overrideMode === "percentage" ? "e.g. 15" : "e.g. 4.50"
+                }
               />
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                marginTop: "var(--space-2)",
+              }}
+            >
               <input
                 id="overrideActive"
                 type="checkbox"
                 checked={overrideActive}
                 onChange={(e) => setOverrideActive(e.target.checked)}
               />
-              <label className="form-label" htmlFor="overrideActive" style={{ cursor: "pointer" }}>
+              <label
+                className="form-label"
+                htmlFor="overrideActive"
+                style={{ cursor: "pointer" }}
+              >
                 Enable override for this package
               </label>
             </div>
@@ -871,7 +1129,11 @@ export default function PricingPage() {
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting}
+            >
               {submitting ? "Saving..." : "Save Override"}
             </button>
           </div>

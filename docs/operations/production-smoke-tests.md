@@ -53,9 +53,10 @@ Automatic deploy:
 
 1. Push to `master`.
 2. Confirm `Build and Push Web` succeeds.
-3. Confirm `Build and Push API` succeeds.
-4. Confirm `Deploy Platform` runs on the self-hosted k3s runner.
-5. Confirm the workflow synced Infisical secrets, applied manifests, rolled out
+3. Confirm `Build and Push Admin` succeeds.
+4. Confirm `Build and Push API` succeeds.
+5. Confirm `Deploy Platform` runs on the self-hosted k3s runner.
+6. Confirm the workflow synced Infisical secrets, applied manifests, rolled out
    web/API, and passed smoke checks.
 
 Manual deploy:
@@ -71,6 +72,7 @@ Cluster rollout checks:
 
 ```bash
 kubectl -n betterdata rollout status deployment/betterdata-web --timeout=300s
+kubectl -n betterdata rollout status deployment/betterdata-admin --timeout=300s
 kubectl -n betterdata rollout status deployment/betterdata-api --timeout=300s
 kubectl -n betterdata get pods -l app.kubernetes.io/part-of=betterdata
 ```
@@ -79,7 +81,16 @@ Rollback if production smoke checks fail:
 
 ```bash
 kubectl -n betterdata rollout undo deployment/betterdata-web
+kubectl -n betterdata rollout undo deployment/betterdata-admin
 kubectl -n betterdata rollout undo deployment/betterdata-api
+```
+
+## Cloudflare Tunnel
+
+Route the admin hostname to the Kubernetes admin service:
+
+```text
+admin.betterdatagh.com -> http://betterdata-admin.betterdata.svc.cluster.local:3001
 ```
 
 ## CORS

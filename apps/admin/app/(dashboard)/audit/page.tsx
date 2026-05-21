@@ -5,12 +5,11 @@ import { useQuery } from "convex/react";
 import { convexApi } from "@betterdata/app-api";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { Modal } from "../../components/Modal";
-import type { Id } from "../../../../../convex/_generated/dataModel";
 
 type AuditLog = {
-  _id: Id<"auditLogs">;
+  _id: string;
   _creationTime: number;
-  actorId?: Id<"users">;
+  actorId?: string;
   action: string;
   target: string;
   metadata?: any;
@@ -81,7 +80,9 @@ export default function AuditLogsPage() {
             <div style={{ fontWeight: 600, color: "var(--text)" }}>
               {row.actor.displayName || "Unnamed Admin"}
             </div>
-            <div className="text-xs text-muted font-mono">{row.actor.email}</div>
+            <div className="text-xs text-muted font-mono">
+              {row.actor.email}
+            </div>
           </div>
         );
       },
@@ -91,15 +92,29 @@ export default function AuditLogsPage() {
       header: "Action",
       render: (row) => {
         let badgeClass = "badge-info";
-        if (row.action.startsWith("promote") || row.action.startsWith("approve")) {
+        if (
+          row.action.startsWith("promote") ||
+          row.action.startsWith("approve")
+        ) {
           badgeClass = "badge-success";
-        } else if (row.action.startsWith("demote") || row.action.startsWith("suspend") || row.action.startsWith("delete")) {
+        } else if (
+          row.action.startsWith("demote") ||
+          row.action.startsWith("suspend") ||
+          row.action.startsWith("delete")
+        ) {
           badgeClass = "badge-danger";
-        } else if (row.action.startsWith("credit") || row.action.startsWith("debit")) {
+        } else if (
+          row.action.startsWith("credit") ||
+          row.action.startsWith("debit")
+        ) {
           badgeClass = "badge-warning";
         }
 
-        return <span className={`badge ${badgeClass}`}>{formatActionName(row.action)}</span>;
+        return (
+          <span className={`badge ${badgeClass}`}>
+            {formatActionName(row.action)}
+          </span>
+        );
       },
     },
     {
@@ -128,14 +143,27 @@ export default function AuditLogsPage() {
       <div className="page-header" style={{ marginBottom: "var(--space-6)" }}>
         <div>
           <h1 className="page-title">System Audit Logs</h1>
-          <p className="page-subtitle">Security and administration activity log trail</p>
+          <p className="page-subtitle">
+            Security and administration activity log trail
+          </p>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: "var(--space-6)" }}>
-        <div className="card-body" style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
+        <div
+          className="card-body"
+          style={{
+            display: "flex",
+            gap: "var(--space-4)",
+            alignItems: "center",
+          }}
+        >
           <div className="form-group" style={{ margin: 0, minWidth: "240px" }}>
-            <label className="form-label" htmlFor="actionFilter" style={{ marginBottom: "var(--space-1)" }}>
+            <label
+              className="form-label"
+              htmlFor="actionFilter"
+              style={{ marginBottom: "var(--space-1)" }}
+            >
               Filter by Action Type
             </label>
             <select
@@ -183,38 +211,77 @@ export default function AuditLogsPage() {
         onClose={() => setSelectedLog(null)}
         title="Audit Log Details"
         footer={
-          <button onClick={() => setSelectedLog(null)} className="btn btn-primary">
+          <button
+            onClick={() => setSelectedLog(null)}
+            className="btn btn-primary"
+          >
             Close
           </button>
         }
       >
         {selectedLog && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "var(--space-2)", fontSize: "var(--font-size-sm)" }}>
-              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>Log ID:</span>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "100px 1fr",
+                gap: "var(--space-2)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            >
+              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                Log ID:
+              </span>
               <span className="font-mono">{selectedLog._id}</span>
 
-              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>Timestamp:</span>
-              <span>{new Date(selectedLog._creationTime).toLocaleString()}</span>
+              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                Timestamp:
+              </span>
+              <span>
+                {new Date(selectedLog._creationTime).toLocaleString()}
+              </span>
 
-              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>Actor:</span>
+              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                Actor:
+              </span>
               <span>
                 {selectedLog.actor
                   ? `${selectedLog.actor.displayName || "Admin"} (${selectedLog.actor.email})`
                   : "System / Unknown"}
               </span>
 
-              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>Action:</span>
-              <span className="badge badge-info" style={{ display: "inline-block", width: "fit-content" }}>
+              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                Action:
+              </span>
+              <span
+                className="badge badge-info"
+                style={{ display: "inline-block", width: "fit-content" }}
+              >
                 {formatActionName(selectedLog.action)}
               </span>
 
-              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>Target ID:</span>
+              <span style={{ fontWeight: 600, color: "var(--text-muted)" }}>
+                Target ID:
+              </span>
               <span className="font-mono">{selectedLog.target}</span>
             </div>
 
             <div>
-              <span style={{ fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "var(--space-2)", fontSize: "var(--font-size-sm)" }}>
+              <span
+                style={{
+                  fontWeight: 600,
+                  color: "var(--text-muted)",
+                  display: "block",
+                  marginBottom: "var(--space-2)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              >
                 Metadata Payload:
               </span>
               <pre

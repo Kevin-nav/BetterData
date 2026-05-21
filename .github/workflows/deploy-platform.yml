@@ -11,6 +11,10 @@ on:
         description: GHCR web image tag to deploy. Leave empty to preserve the currently deployed web image.
         required: false
         default: ""
+      admin_image_tag:
+        description: GHCR admin image tag to deploy. Leave empty to preserve the currently deployed admin image.
+        required: false
+        default: ""
       environment:
         description: GitHub environment to read bootstrap secrets from.
         required: false
@@ -19,6 +23,7 @@ on:
     workflows:
       - Build and Push API
       - Build and Push Web
+      - Build and Push Admin
     branches:
       - master
     types:
@@ -33,6 +38,7 @@ env:
   NAMESPACE: betterdata
   API_IMAGE: ghcr.io/kevin-nav/betterdata-api
   WEB_IMAGE: ghcr.io/kevin-nav/betterdata-web
+  ADMIN_IMAGE: ghcr.io/kevin-nav/betterdata-admin
   PUBLIC_APP_URL: ${{ secrets.PUBLIC_APP_URL }}
   PUBLIC_ADMIN_URL: ${{ secrets.PUBLIC_ADMIN_URL }}
   API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -88,8 +94,10 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != "workflow_run" ]; then
             api_tag="${{ inputs.api_image_tag }}"
             web_tag="${{ inputs.web_image_tag }}"
+            admin_tag="${{ inputs.admin_image_tag }}"
             echo "api_tag=$api_tag" >> "$GITHUB_OUTPUT"
             echo "web_tag=$web_tag" >> "$GITHUB_OUTPUT"
+            echo "admin_tag=$admin_tag" >> "$GITHUB_OUTPUT"
             if [ -n "$api_tag" ]; then
               echo "wait_api=true" >> "$GITHUB_OUTPUT"
             else
@@ -99,6 +107,11 @@ jobs:
               echo "wait_web=true" >> "$GITHUB_OUTPUT"
             else
               echo "wait_web=false" >> "$GITHUB_OUTPUT"
+            fi
+            if [ -n "$admin_tag" ]; then
+              echo "wait_admin=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "wait_admin=false" >> "$GITHUB_OUTPUT"
             fi
             exit 0
           fi
@@ -113,6 +126,7 @@ jobs:
 
           api_changed=false
           web_changed=false
+          admin_changed=false
 
           if printf '%s\n' "$changed" | grep -Eq '^(\.github/workflows/build-api\.yml|Dockerfile\.api|apps/api/|convex/|packages/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|turbo\.json)'; then
             api_changed=true
@@ -120,6 +134,10 @@ jobs:
 
           if printf '%s\n' "$changed" | grep -Eq '^(\.github/workflows/build-web\.yml|Dockerfile\.web|apps/web/|convex/|packages/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|turbo\.json)'; then
             web_changed=true
+          fi
+
+          if printf '%s\n' "$changed" | grep -Eq '^(\.github/workflows/build-admin\.yml|\.github/workflows/deploy-platform\.yml|Dockerfile\.admin|apps/admin/|convex/|deploy/k8s/base/admin-|deploy/k8s/base/kustomization\.yaml|packages/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|turbo\.json)'; then
+            admin_changed=true
           fi
 
           if [ "$api_changed" = "true" ]; then
@@ -136,6 +154,14 @@ jobs:
           else
             echo "web_tag=" >> "$GITHUB_OUTPUT"
             echo "wait_web=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$admin_changed" = "true" ]; then
+            echo "admin_tag=sha-$short_sha" >> "$GITHUB_OUTPUT"
+            echo "wait_admin=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "admin_tag=" >> "$GITHUB_OUTPUT"
+            echo "wait_admin=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Verify required tools
@@ -175,6 +201,9 @@ jobs:
             fi
             if [ "${{ steps.deploy-inputs.outputs.wait_web }}" = "true" ]; then
               images="$images $WEB_IMAGE:${{ steps.deploy-inputs.outputs.web_tag }}"
+            fi
+            if [ "${{ steps.deploy-inputs.outputs.wait_admin }}" = "true" ]; then
+              images="$images $ADMIN_IMAGE:${{ steps.deploy-inputs.outputs.admin_tag }}"
             fi
             if [ -z "$images" ]; then
               echo "No SHA image tags need to be awaited."
@@ -280,16 +309,20 @@ jobs:
         run: |
           current_api="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}' 2>/dev/null || true)"
           current_web="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-web -o jsonpath='{.spec.template.spec.containers[?(@.name=="web")].image}' 2>/dev/null || true)"
+          current_admin="$(sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-admin -o jsonpath='{.spec.template.spec.containers[?(@.name=="admin")].image}' 2>/dev/null || true)"
           echo "api_image=$current_api" >> "$GITHUB_OUTPUT"
           echo "web_image=$current_web" >> "$GITHUB_OUTPUT"
+          echo "admin_image=$current_admin" >> "$GITHUB_OUTPUT"
 
       - name: Resolve target deployment images
         id: target-images
         run: |
           api_tag="${{ steps.deploy-inputs.outputs.api_tag }}"
           web_tag="${{ steps.deploy-inputs.outputs.web_tag }}"
+          admin_tag="${{ steps.deploy-inputs.outputs.admin_tag }}"
           current_api="${{ steps.current-images.outputs.api_image }}"
           current_web="${{ steps.current-images.outputs.web_image }}"
+          current_admin="${{ steps.current-images.outputs.admin_image }}"
 
           if [ -n "$api_tag" ]; then
             api_ref="$API_IMAGE:$api_tag"
@@ -303,15 +336,23 @@ jobs:
             web_ref="$current_web"
           fi
 
-          if [ -z "$api_ref" ] || [ -z "$web_ref" ]; then
+          if [ -n "$admin_tag" ]; then
+            admin_ref="$ADMIN_IMAGE:$admin_tag"
+          else
+            admin_ref="$current_admin"
+          fi
+
+          if [ -z "$api_ref" ] || [ -z "$web_ref" ] || [ -z "$admin_ref" ]; then
             echo "No current deployment image exists and no replacement tag was supplied." >&2
             echo "API image: ${api_ref:-<missing>}" >&2
             echo "Web image: ${web_ref:-<missing>}" >&2
+            echo "Admin image: ${admin_ref:-<missing>}" >&2
             exit 1
           fi
 
           echo "api_ref=$api_ref" >> "$GITHUB_OUTPUT"
           echo "web_ref=$web_ref" >> "$GITHUB_OUTPUT"
+          echo "admin_ref=$admin_ref" >> "$GITHUB_OUTPUT"
 
       - name: Apply namespace
         run: sudo -n kubectl apply -f deploy/k8s/base/namespace.yaml
@@ -328,6 +369,22 @@ jobs:
           sudo -n kubectl -n "$NAMESPACE" create secret generic betterdata-web-env \
             --from-literal=NODE_ENV=production \
             --from-literal=PORT=3000 \
+            --from-literal=HOSTNAME=0.0.0.0 \
+            --from-literal=PUBLIC_APP_URL="$PUBLIC_APP_URL" \
+            --from-literal=PUBLIC_ADMIN_URL="$PUBLIC_ADMIN_URL" \
+            --from-literal=API_BASE_URL="$API_BASE_URL" \
+            --from-literal=NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
+            --from-literal=NEXT_PUBLIC_CONVEX_URL="$NEXT_PUBLIC_CONVEX_URL" \
+            --from-literal=NEXT_PUBLIC_FIREBASE_API_KEY="$NEXT_PUBLIC_FIREBASE_API_KEY" \
+            --from-literal=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" \
+            --from-literal=NEXT_PUBLIC_FIREBASE_PROJECT_ID="$NEXT_PUBLIC_FIREBASE_PROJECT_ID" \
+            --dry-run=client -o yaml | sudo -n kubectl apply -f -
+
+      - name: Sync admin runtime secrets
+        run: |
+          sudo -n kubectl -n "$NAMESPACE" create secret generic betterdata-admin-env \
+            --from-literal=NODE_ENV=production \
+            --from-literal=PORT=3001 \
             --from-literal=HOSTNAME=0.0.0.0 \
             --from-literal=PUBLIC_APP_URL="$PUBLIC_APP_URL" \
             --from-literal=PUBLIC_ADMIN_URL="$PUBLIC_ADMIN_URL" \
@@ -362,19 +419,22 @@ jobs:
           echo "DEPLOY_STARTED=true" >> "$GITHUB_ENV"
           api_ref="${{ steps.target-images.outputs.api_ref }}"
           web_ref="${{ steps.target-images.outputs.web_ref }}"
+          admin_ref="${{ steps.target-images.outputs.admin_ref }}"
           sudo -n kubectl kustomize deploy/k8s/base > rendered-platform.yaml
           sed -i "s#ghcr.io/kevin-nav/betterdata-api:master#$api_ref#g" rendered-platform.yaml
           sed -i "s#ghcr.io/kevin-nav/betterdata-web:master#$web_ref#g" rendered-platform.yaml
+          sed -i "s#ghcr.io/kevin-nav/betterdata-admin:master#$admin_ref#g" rendered-platform.yaml
           sudo -n kubectl apply -f rendered-platform.yaml
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=300s
+          sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-admin --timeout=300s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=300s
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-cloudflared --timeout=180s
 
       - name: Smoke test production endpoints
         run: |
           set -e
-          sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-web betterdata-api betterdata-worker
-          sudo -n kubectl -n "$NAMESPACE" get secret betterdata-api-env betterdata-web-env
+          sudo -n kubectl -n "$NAMESPACE" get deployment betterdata-web betterdata-admin betterdata-api betterdata-worker
+          sudo -n kubectl -n "$NAMESPACE" get secret betterdata-api-env betterdata-web-env betterdata-admin-env
           local_port="$((18000 + RANDOM % 1000))"
           sudo -n kubectl -n "$NAMESPACE" port-forward service/betterdata-api "$local_port:4000" >/tmp/betterdata-api-port-forward.log 2>&1 &
           port_forward_pid="$!"
@@ -394,6 +454,26 @@ jobs:
 
           curl -fsS "http://127.0.0.1:$local_port/data-packages" >/dev/null
 
+          kill "$port_forward_pid" >/dev/null 2>&1 || true
+          trap - EXIT
+
+          admin_local_port="$((19000 + RANDOM % 1000))"
+          sudo -n kubectl -n "$NAMESPACE" port-forward service/betterdata-admin "$admin_local_port:3001" >/tmp/betterdata-admin-port-forward.log 2>&1 &
+          admin_port_forward_pid="$!"
+          trap 'kill "$admin_port_forward_pid" >/dev/null 2>&1 || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$admin_local_port/login" >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Internal admin login smoke failed." >&2
+              cat /tmp/betterdata-admin-port-forward.log >&2 || true
+              exit 1
+            fi
+            sleep 2
+          done
+
           if [ -n "$API_BASE_URL" ] && ! curl -fsS --max-time 15 "$API_BASE_URL/health" >/dev/null; then
             echo "::warning::External API health smoke failed for API_BASE_URL. Internal Kubernetes service smoke passed, so rollout will not be rolled back."
           fi
@@ -408,14 +488,19 @@ jobs:
           fi
           previous_web="${{ steps.current-images.outputs.web_image }}"
           previous_api="${{ steps.current-images.outputs.api_image }}"
+          previous_admin="${{ steps.current-images.outputs.admin_image }}"
           if [ -n "$previous_web" ]; then
             sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-web web="$previous_web" || true
+          fi
+          if [ -n "$previous_admin" ]; then
+            sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-admin admin="$previous_admin" || true
           fi
           if [ -n "$previous_api" ]; then
             sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-api api="$previous_api" || true
             sudo -n kubectl -n "$NAMESPACE" set image deployment/betterdata-worker worker="$previous_api" || true
           fi
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-web --timeout=90s || true
+          sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-admin --timeout=90s || true
           sudo -n kubectl -n "$NAMESPACE" rollout status deployment/betterdata-api --timeout=90s || true
           rm -f api.json api.clean.env rendered-platform.yaml
 

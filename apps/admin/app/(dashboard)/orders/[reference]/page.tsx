@@ -19,12 +19,22 @@ type TimelineStep = {
   neutral?: boolean;
 };
 
+type OpsAlert = {
+  _id: string;
+  reference?: string;
+  message: string;
+  category: string;
+  createdAt: number;
+};
+
 export default function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { reference } = use(params);
 
   // Queries
   const order = useQuery(convexApi.admin.getOrderByReference, { reference });
-  const openAlerts = useQuery(convexApi.admin.listOpenAlerts);
+  const openAlerts = useQuery(convexApi.admin.listOpenAlerts) as
+    | OpsAlert[]
+    | undefined;
 
   // Mutations
   const refundOrderMutation = useMutation(convexApi.admin.refundOrder);
@@ -39,7 +49,10 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
   if (order === undefined) {
     return (
       <div style={{ padding: "var(--space-6)" }}>
-        <div className="skeleton skeleton-heading" style={{ marginBottom: "var(--space-4)" }} />
+        <div
+          className="skeleton skeleton-heading"
+          style={{ marginBottom: "var(--space-4)" }}
+        />
         <div className="skeleton skeleton-card" style={{ height: "300px" }} />
       </div>
     );
@@ -47,8 +60,13 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
 
   if (order === null) {
     return (
-      <div className="card" style={{ padding: "var(--space-6)", textAlign: "center" }}>
-        <h2 className="card-header-title" style={{ color: "var(--danger)" }}>Order Not Found</h2>
+      <div
+        className="card"
+        style={{ padding: "var(--space-6)", textAlign: "center" }}
+      >
+        <h2 className="card-header-title" style={{ color: "var(--danger)" }}>
+          Order Not Found
+        </h2>
         <p className="text-muted" style={{ margin: "var(--space-4) 0" }}>
           We couldn't find an order with reference: <strong>{reference}</strong>
         </p>
@@ -63,7 +81,8 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
   const user = order.user;
 
   // Filter alerts related to this order reference
-  const relatedAlerts = openAlerts?.filter((alert) => alert.reference === reference) || [];
+  const relatedAlerts =
+    openAlerts?.filter((alert) => alert.reference === reference) || [];
 
   const handleRefund = async () => {
     setIsSubmitting(true);
@@ -71,7 +90,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
     setSuccessMessage(null);
     try {
       const args: { orderId: typeof order._id; notes?: string } = {
-        orderId: order._id,
+        orderId: order._id as any,
       };
       if (refundNotes) {
         args.notes = refundNotes;
@@ -82,7 +101,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
       setRefundNotes("");
     } catch (err: any) {
       console.error("Refund failed:", err);
-      setErrorMessage(err.message || "An error occurred while processing the refund.");
+      setErrorMessage(
+        err.message || "An error occurred while processing the refund.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +123,12 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
     if (order.status === "failed") {
       steps.push({ label: "Failed", done: true, current: true, error: true });
     } else if (order.status === "refunded") {
-      steps.push({ label: "Refunded", done: true, current: true, neutral: true });
+      steps.push({
+        label: "Refunded",
+        done: true,
+        current: true,
+        neutral: true,
+      });
     } else {
       steps.push({
         label: "Completed",
@@ -127,13 +153,27 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
       >
         <div>
           <div style={{ marginBottom: "var(--space-2)" }}>
-            <Link href="/orders" className="btn btn-secondary btn-sm" style={{ paddingLeft: 0, border: "none", background: "none" }}>
+            <Link
+              href="/orders"
+              className="btn btn-secondary btn-sm"
+              style={{ paddingLeft: 0, border: "none", background: "none" }}
+            >
               &larr; Back to Orders
             </Link>
           </div>
-          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+          <h1
+            className="page-title"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+            }}
+          >
             Order details
-            <span className="font-mono text-muted text-sm" style={{ fontWeight: "normal" }}>
+            <span
+              className="font-mono text-muted text-sm"
+              style={{ fontWeight: "normal" }}
+            >
               #{order.reference}
             </span>
           </h1>
@@ -153,13 +193,29 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
       </div>
 
       {successMessage && (
-        <div className="badge badge-success" style={{ width: "100%", padding: "var(--space-3)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
+        <div
+          className="badge badge-success"
+          style={{
+            width: "100%",
+            padding: "var(--space-3)",
+            borderRadius: "var(--radius-md)",
+            marginBottom: "var(--space-4)",
+          }}
+        >
           {successMessage}
         </div>
       )}
 
       {errorMessage && (
-        <div className="badge badge-danger" style={{ width: "100%", padding: "var(--space-3)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
+        <div
+          className="badge badge-danger"
+          style={{
+            width: "100%",
+            padding: "var(--space-3)",
+            borderRadius: "var(--radius-md)",
+            marginBottom: "var(--space-4)",
+          }}
+        >
           {errorMessage}
         </div>
       )}
@@ -203,7 +259,10 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                         : step.done
                           ? "var(--primary)"
                           : "var(--bg-inset)",
-                    color: step.done || step.error || step.neutral ? "#ffffff" : "var(--text-muted)",
+                    color:
+                      step.done || step.error || step.neutral
+                        ? "#ffffff"
+                        : "var(--text-muted)",
                     border: `2px solid ${
                       step.current
                         ? step.error
@@ -220,7 +279,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                     marginTop: "var(--space-2)",
                     fontSize: "var(--font-size-sm)",
                     fontWeight: step.current ? 600 : 500,
-                    color: step.current ? "var(--text)" : "var(--text-secondary)",
+                    color: step.current
+                      ? "var(--text)"
+                      : "var(--text-secondary)",
                   }}
                 >
                   {step.label}
@@ -235,7 +296,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                       top: "18px",
                       width: "calc(100vw / 6)",
                       height: "3px",
-                      background: arr[idx + 1]?.done ? "var(--primary)" : "var(--bg-inset)",
+                      background: arr[idx + 1]?.done
+                        ? "var(--primary)"
+                        : "var(--bg-inset)",
                       zIndex: -1,
                     }}
                   />
@@ -246,21 +309,44 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "var(--space-6)" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr",
+          gap: "var(--space-6)",
+        }}
+      >
         {/* Left Column: Order details & API payload */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-6)",
+          }}
+        >
           <div className="card">
             <div className="card-header">
               <h2 className="card-header-title">Order Information</h2>
             </div>
-            <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+            <div
+              className="card-body"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "var(--space-4)",
+              }}
+            >
               <div>
                 <div className="form-label">Reference</div>
-                <div className="font-mono" style={{ fontWeight: 600 }}>{order.reference}</div>
+                <div className="font-mono" style={{ fontWeight: 600 }}>
+                  {order.reference}
+                </div>
               </div>
               <div>
                 <div className="form-label">Network</div>
-                <div style={{ textTransform: "uppercase", fontWeight: 600 }}>{order.network}</div>
+                <div style={{ textTransform: "uppercase", fontWeight: 600 }}>
+                  {order.network}
+                </div>
               </div>
               <div>
                 <div className="form-label">Recipient Number</div>
@@ -268,7 +354,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               </div>
               <div>
                 <div className="form-label">Purchase Amount</div>
-                <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 700 }}>
+                <div
+                  style={{ fontSize: "var(--font-size-lg)", fontWeight: 700 }}
+                >
                   GHS {order.amountGhs.toFixed(2)}
                 </div>
               </div>
@@ -280,16 +368,27 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               </div>
               <div>
                 <div className="form-label">Created At</div>
-                <div className="text-muted">{new Date(order._creationTime).toLocaleString()}</div>
+                <div className="text-muted">
+                  {new Date(order._creationTime).toLocaleString()}
+                </div>
               </div>
             </div>
           </div>
 
           <div className="card">
             <div className="card-header">
-              <h2 className="card-header-title">Vendor & Fulfillment Details</h2>
+              <h2 className="card-header-title">
+                Vendor & Fulfillment Details
+              </h2>
             </div>
-            <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+            <div
+              className="card-body"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "var(--space-4)",
+              }}
+            >
               <div>
                 <div className="form-label">Vendor ID</div>
                 <div>{order.vendorId}</div>
@@ -300,7 +399,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               </div>
               <div>
                 <div className="form-label">Vendor Reference</div>
-                <div className="font-mono">{order.vendorOrderReference || "N/A"}</div>
+                <div className="font-mono">
+                  {order.vendorOrderReference || "N/A"}
+                </div>
               </div>
               <div>
                 <div className="form-label">Recipient Confirmed At</div>
@@ -337,7 +438,13 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
         </div>
 
         {/* Right Column: User & Payment Details */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-6)",
+          }}
+        >
           <div className="card">
             <div className="card-header">
               <h2 className="card-header-title">User Account</h2>
@@ -345,7 +452,14 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
             <div className="card-body">
               {user ? (
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-4)" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-3)",
+                      marginBottom: "var(--space-4)",
+                    }}
+                  >
                     <div
                       style={{
                         width: "40px",
@@ -359,18 +473,32 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                         fontWeight: 700,
                       }}
                     >
-                      {user.displayName ? user.displayName.charAt(0).toUpperCase() : "U"}
+                      {user.displayName
+                        ? user.displayName.charAt(0).toUpperCase()
+                        : "U"}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600 }}>{user.displayName || "No Name"}</div>
-                      <div className="text-sm text-muted">{user.email || "No Email"}</div>
+                      <div style={{ fontWeight: 600 }}>
+                        {user.displayName || "No Name"}
+                      </div>
+                      <div className="text-sm text-muted">
+                        {user.email || "No Email"}
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "var(--space-2)",
+                    }}
+                  >
                     <div>
                       <span className="text-muted text-sm">Role: </span>
-                      <span style={{ textTransform: "capitalize", fontWeight: 500 }}>
+                      <span
+                        style={{ textTransform: "capitalize", fontWeight: 500 }}
+                      >
                         {user.role}
                       </span>
                     </div>
@@ -379,7 +507,11 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                       <span className="font-mono">{user.phone || "N/A"}</span>
                     </div>
                     <div style={{ marginTop: "var(--space-3)" }}>
-                      <Link href={`/users/${user._id}`} className="btn btn-secondary btn-sm" style={{ width: "100%" }}>
+                      <Link
+                        href={`/users/${user._id}`}
+                        className="btn btn-secondary btn-sm"
+                        style={{ width: "100%" }}
+                      >
                         View Profile
                       </Link>
                     </div>
@@ -387,13 +519,22 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                 </div>
               ) : (
                 <div style={{ padding: "var(--space-2) 0" }}>
-                  <div style={{ fontWeight: 600, marginBottom: "var(--space-1)" }}>Guest Purchase</div>
+                  <div
+                    style={{ fontWeight: 600, marginBottom: "var(--space-1)" }}
+                  >
+                    Guest Purchase
+                  </div>
                   {order.guestContactPhone ? (
                     <div className="text-muted text-sm">
-                      Contact: <span className="font-mono">{order.guestContactPhone}</span>
+                      Contact:{" "}
+                      <span className="font-mono">
+                        {order.guestContactPhone}
+                      </span>
                     </div>
                   ) : (
-                    <div className="text-muted text-sm">No contact phone provided</div>
+                    <div className="text-muted text-sm">
+                      No contact phone provided
+                    </div>
                   )}
                 </div>
               )}
@@ -404,11 +545,20 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
             <div className="card-header">
               <h2 className="card-header-title">Payment Information</h2>
             </div>
-            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <div
+              className="card-body"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-3)",
+              }}
+            >
               <div>
                 <div className="form-label">Payment Method</div>
                 <div style={{ fontWeight: 600 }}>
-                  {order.paymentMethod === "paystack_momo" ? "Paystack Mobile Money" : "Wallet Balance"}
+                  {order.paymentMethod === "paystack_momo"
+                    ? "Paystack Mobile Money"
+                    : "Wallet Balance"}
                 </div>
               </div>
               <div>
@@ -420,7 +570,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               {order.paystackReference && (
                 <div>
                   <div className="form-label">Paystack Reference</div>
-                  <div className="font-mono text-sm">{order.paystackReference}</div>
+                  <div className="font-mono text-sm">
+                    {order.paystackReference}
+                  </div>
                 </div>
               )}
             </div>
@@ -429,12 +581,28 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
           {/* Related Alerts Panel */}
           {relatedAlerts.length > 0 && (
             <div className="card" style={{ borderColor: "var(--danger)" }}>
-              <div className="card-header" style={{ background: "var(--danger-light)" }}>
-                <h2 className="card-header-title" style={{ color: "var(--danger)", fontSize: "var(--font-size-md)" }}>
+              <div
+                className="card-header"
+                style={{ background: "var(--danger-light)" }}
+              >
+                <h2
+                  className="card-header-title"
+                  style={{
+                    color: "var(--danger)",
+                    fontSize: "var(--font-size-md)",
+                  }}
+                >
                   Active alerts ({relatedAlerts.length})
                 </h2>
               </div>
-              <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              <div
+                className="card-body"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-3)",
+                }}
+              >
                 {relatedAlerts.map((alert) => (
                   <div
                     key={alert._id}
@@ -445,10 +613,23 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                       borderLeft: `3px solid var(--danger)`,
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: "var(--font-size-sm)" }}>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "var(--font-size-sm)",
+                      }}
+                    >
                       {alert.message}
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: "var(--space-2)", fontSize: "var(--font-size-xs)" }} className="text-muted">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginTop: "var(--space-2)",
+                        fontSize: "var(--font-size-xs)",
+                      }}
+                      className="text-muted"
+                    >
                       <span>Category: {alert.category}</span>
                       <span>{new Date(alert.createdAt).toLocaleString()}</span>
                     </div>
@@ -476,15 +657,26 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
             >
               Cancel
             </button>
-            <button className="btn btn-danger" disabled={isSubmitting} onClick={handleRefund}>
+            <button
+              className="btn btn-danger"
+              disabled={isSubmitting}
+              onClick={handleRefund}
+            >
               {isSubmitting ? "Refunding..." : "Confirm Refund"}
             </button>
           </>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-4)",
+          }}
+        >
           <p>
-            Are you sure you want to refund this order? This will mark the order status and payment status as <strong>refunded</strong>.
+            Are you sure you want to refund this order? This will mark the order
+            status and payment status as <strong>refunded</strong>.
           </p>
           {order.userId && (
             <div
@@ -497,7 +689,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                 fontWeight: 500,
               }}
             >
-              This order has a registered user. The purchase amount of <strong>GHS {order.amountGhs.toFixed(2)}</strong> will be automatically credited back to their wallet balance.
+              This order has a registered user. The purchase amount of{" "}
+              <strong>GHS {order.amountGhs.toFixed(2)}</strong> will be
+              automatically credited back to their wallet balance.
             </div>
           )}
           <div className="form-group">

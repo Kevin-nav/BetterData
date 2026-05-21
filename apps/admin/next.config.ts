@@ -7,11 +7,12 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   env: {
     NEXT_PUBLIC_CONVEX_URL:
       process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL ?? "",
   },
-  transpilePackages: ["@betterdata/contracts", "@betterdata/ui"]
+  transpilePackages: ["@betterdata/contracts", "@betterdata/ui"],
 };
 
 export default nextConfig;

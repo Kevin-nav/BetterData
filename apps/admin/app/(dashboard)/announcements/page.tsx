@@ -6,10 +6,9 @@ import { convexApi } from "@betterdata/app-api";
 import { useAdminAuth } from "../../lib/auth";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { useToast } from "../../components/Toast";
-import type { Id } from "../../../../../convex/_generated/dataModel";
 
 type Announcement = {
-  _id: Id<"announcements">;
+  _id: string;
   title: string;
   body: string;
   audience: "all" | "users" | "agents";
@@ -66,16 +65,22 @@ export default function AnnouncementsPage() {
       // 2. Trigger email broadcast if requested
       if (channel === "email" || channel === "both") {
         const headers = await getAuthHeaders();
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+        const apiBaseUrl =
+          process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
-        const res = await fetch(`${apiBaseUrl}/admin/announcements/${id}/broadcast`, {
-          method: "POST",
-          headers,
-        });
+        const res = await fetch(
+          `${apiBaseUrl}/admin/announcements/${id}/broadcast`,
+          {
+            method: "POST",
+            headers,
+          },
+        );
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.message || "Failed to broadcast email campaign.");
+          throw new Error(
+            errData.message || "Failed to broadcast email campaign.",
+          );
         }
 
         const data = await res.json();
@@ -85,7 +90,7 @@ export default function AnnouncementsPage() {
       // If Email Only was requested, delete the database record so it is not visible in-app.
       // We still kept it temporarily to let the API endpoint fetch it using serviceSecret.
       if (channel === "email") {
-        await deleteAnnouncement({ announcementId: id });
+        await deleteAnnouncement({ announcementId: id as any });
       }
 
       const successMessage = `Announcement published successfully!${emailStatusMessage}`;
@@ -106,19 +111,27 @@ export default function AnnouncementsPage() {
   };
 
   const handleBroadcast = async (announcement: Announcement) => {
-    if (!confirm(`Are you sure you want to broadcast "${announcement.title}" via email to audience: ${announcement.audience}?`)) {
+    if (
+      !confirm(
+        `Are you sure you want to broadcast "${announcement.title}" via email to audience: ${announcement.audience}?`,
+      )
+    ) {
       return;
     }
 
     setBroadcastingId(announcement._id);
     try {
       const headers = await getAuthHeaders();
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+      const apiBaseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
-      const res = await fetch(`${apiBaseUrl}/admin/announcements/${announcement._id}/broadcast`, {
-        method: "POST",
-        headers,
-      });
+      const res = await fetch(
+        `${apiBaseUrl}/admin/announcements/${announcement._id}/broadcast`,
+        {
+          method: "POST",
+          headers,
+        },
+      );
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -126,7 +139,10 @@ export default function AnnouncementsPage() {
       }
 
       const data = await res.json();
-      showToast(`Broadcast sent! ${data.successCount} succeeded, ${data.failureCount} failed.`, "success");
+      showToast(
+        `Broadcast sent! ${data.successCount} succeeded, ${data.failureCount} failed.`,
+        "success",
+      );
     } catch (err: any) {
       showToast(err.message || "Failed to send email broadcast.", "error");
     } finally {
@@ -134,14 +150,18 @@ export default function AnnouncementsPage() {
     }
   };
 
-  const handleDelete = async (id: Id<"announcements">) => {
-    if (!confirm("Are you sure you want to delete this announcement? It will no longer be visible to users in-app.")) {
+  const handleDelete = async (id: string) => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this announcement? It will no longer be visible to users in-app.",
+      )
+    ) {
       return;
     }
 
     setDeletingId(id);
     try {
-      await deleteAnnouncement({ announcementId: id });
+      await deleteAnnouncement({ announcementId: id as any });
       showToast("Announcement deleted.", "success");
     } catch (err: any) {
       showToast(err.message || "Failed to delete announcement.", "error");
@@ -156,8 +176,18 @@ export default function AnnouncementsPage() {
       header: "Title",
       render: (row) => (
         <div>
-          <div style={{ fontWeight: 600, color: "var(--text)" }}>{row.title}</div>
-          <div className="text-xs text-muted" style={{ maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontWeight: 600, color: "var(--text)" }}>
+            {row.title}
+          </div>
+          <div
+            className="text-xs text-muted"
+            style={{
+              maxWidth: "300px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {row.body}
           </div>
         </div>
@@ -168,7 +198,11 @@ export default function AnnouncementsPage() {
       header: "Audience",
       render: (row) => (
         <span className={`badge badge-info`}>
-          {row.audience === "all" ? "All Users & Agents" : row.audience === "users" ? "Users Only" : "Agents Only"}
+          {row.audience === "all"
+            ? "All Users & Agents"
+            : row.audience === "users"
+              ? "Users Only"
+              : "Agents Only"}
         </span>
       ),
     },
@@ -211,7 +245,10 @@ export default function AnnouncementsPage() {
       <div className="page-header" style={{ marginBottom: "var(--space-6)" }}>
         <div>
           <h1 className="page-title">Announcements & Broadcasts</h1>
-          <p className="page-subtitle">Publish system notifications and trigger email blasts to users or agents</p>
+          <p className="page-subtitle">
+            Publish system notifications and trigger email blasts to users or
+            agents
+          </p>
         </div>
       </div>
 
@@ -228,20 +265,48 @@ export default function AnnouncementsPage() {
           <div className="card-header">
             <h3 className="card-header-title">Compose Announcement</h3>
           </div>
-          <form onSubmit={handleSubmit} className="card-body" style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          <form
+            onSubmit={handleSubmit}
+            className="card-body"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
+            }}
+          >
             {formError && (
-              <div style={{ padding: "var(--space-3)", backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid var(--danger)", borderRadius: "var(--radius-md)", color: "var(--danger)", fontSize: "var(--font-size-sm)" }}>
+              <div
+                style={{
+                  padding: "var(--space-3)",
+                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid var(--danger)",
+                  borderRadius: "var(--radius-md)",
+                  color: "var(--danger)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              >
                 {formError}
               </div>
             )}
             {formSuccess && (
-              <div style={{ padding: "var(--space-3)", backgroundColor: "rgba(34, 197, 94, 0.1)", border: "1px solid var(--success)", borderRadius: "var(--radius-md)", color: "var(--success)", fontSize: "var(--font-size-sm)" }}>
+              <div
+                style={{
+                  padding: "var(--space-3)",
+                  backgroundColor: "rgba(34, 197, 94, 0.1)",
+                  border: "1px solid var(--success)",
+                  borderRadius: "var(--radius-md)",
+                  color: "var(--success)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              >
                 {formSuccess}
               </div>
             )}
 
             <div className="form-group">
-              <label className="form-label" htmlFor="title">Title / Subject</label>
+              <label className="form-label" htmlFor="title">
+                Title / Subject
+              </label>
               <input
                 id="title"
                 type="text"
@@ -253,9 +318,17 @@ export default function AnnouncementsPage() {
               />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "var(--space-4)",
+              }}
+            >
               <div className="form-group">
-                <label className="form-label" htmlFor="audience">Audience Group</label>
+                <label className="form-label" htmlFor="audience">
+                  Audience Group
+                </label>
                 <select
                   id="audience"
                   className="select"
@@ -270,7 +343,9 @@ export default function AnnouncementsPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="channel">Delivery Channel</label>
+                <label className="form-label" htmlFor="channel">
+                  Delivery Channel
+                </label>
                 <select
                   id="channel"
                   className="select"
@@ -286,7 +361,9 @@ export default function AnnouncementsPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="body">Message Body</label>
+              <label className="form-label" htmlFor="body">
+                Message Body
+              </label>
               <textarea
                 id="body"
                 className="textarea"
@@ -299,14 +376,22 @@ export default function AnnouncementsPage() {
               />
             </div>
 
-            <button type="submit" className="btn btn-primary" disabled={isSubmitting} style={{ marginTop: "var(--space-2)" }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSubmitting}
+              style={{ marginTop: "var(--space-2)" }}
+            >
               {isSubmitting ? "Sending Announcement..." : "Send Announcement"}
             </button>
           </form>
         </div>
 
         {/* History / List */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div
+          className="card"
+          style={{ display: "flex", flexDirection: "column", height: "100%" }}
+        >
           <div className="card-header">
             <h3 className="card-header-title">Announcement History</h3>
           </div>

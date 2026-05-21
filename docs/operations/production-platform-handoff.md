@@ -11,7 +11,7 @@ path.
 - Infisical CLI is installed locally.
 - The main branch accepts DataMart's documented `X-DataMart-Signature` webhook
   header.
-- Main branch contains the production web, API, worker, KEDA, and deploy
+- Main branch contains the production web, admin, API, worker, KEDA, and deploy
   workflow wiring.
 - API production runtime is bundled to `apps/api/dist/index.js` and
   `apps/api/dist/worker.js`; containers should run these emitted files with
@@ -238,6 +238,8 @@ Added or ported in the production deployment implementation:
 - `Dockerfile.api`
 - `deploy/k8s/base/api-deployment.yaml`
 - `deploy/k8s/base/api-service.yaml`
+- `deploy/k8s/base/admin-deployment.yaml`
+- `deploy/k8s/base/admin-service.yaml`
 - `deploy/k8s/base/worker-deployment.yaml`
 - `deploy/k8s/base/worker-scaledobject.yaml`
 - updated `deploy/k8s/base/kustomization.yaml`
@@ -248,6 +250,7 @@ The deploy workflow expects:
 ```text
 ghcr.io/kevin-nav/betterdata-api:<tag>
 ghcr.io/kevin-nav/betterdata-web:<tag>
+ghcr.io/kevin-nav/betterdata-admin:<tag>
 ```
 
 The API build workflow publishes the API image. The web build workflow publishes
@@ -265,6 +268,8 @@ Build workflows are path-aware:
   and shared repo build config changes.
 - Web builds run for `apps/web`, `packages`, `convex`, web Dockerfile, lockfile,
   and shared repo build config changes.
+- Admin builds run for `apps/admin`, `packages`, `convex`, admin Dockerfile,
+  admin Kubernetes manifests, and shared repo build config changes.
 - Docs-only and unrelated deployment-doc changes do not build images.
 - If only one service changes, deploy uses that service's SHA image and keeps
   the other service on its currently deployed image.
@@ -437,7 +442,7 @@ Ensure Cloudflare routes point to Kubernetes services:
 
 ```text
 betterdatagh.com        -> http://betterdata-web:3000
-admin.betterdatagh.com  -> admin service once deployed
+admin.betterdatagh.com  -> http://betterdata-admin.betterdata.svc.cluster.local:3001
 api.betterdatagh.com    -> http://betterdata-api:4000
 ```
 

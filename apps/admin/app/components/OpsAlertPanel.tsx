@@ -6,9 +6,21 @@ import { convexApi } from "@betterdata/app-api";
 import { StatusBadge } from "./StatusBadge";
 import { useToast } from "./Toast";
 
+type OpsAlert = {
+  _id: string;
+  category: string;
+  severity: "critical" | "warning" | "info";
+  status: "open" | "acknowledged" | "resolved";
+  reference?: string;
+  message: string;
+  createdAt: number;
+};
+
 export function OpsAlertPanel() {
   const { showToast } = useToast();
-  const alerts = useQuery(convexApi.admin.listOpenAlerts);
+  const alerts = useQuery(convexApi.admin.listOpenAlerts) as
+    | OpsAlert[]
+    | undefined;
   const acknowledgeAlert = useMutation(convexApi.admin.acknowledgeAlert);
   const resolveAlert = useMutation(convexApi.admin.resolveAlert);
 
@@ -21,7 +33,10 @@ export function OpsAlertPanel() {
       showToast("Alert acknowledged.", "success");
     } catch (err) {
       console.error("Failed to acknowledge alert:", err);
-      showToast("Failed to acknowledge alert. Make sure you are authorized.", "error");
+      showToast(
+        "Failed to acknowledge alert. Make sure you are authorized.",
+        "error",
+      );
     } finally {
       setActioningId(null);
     }
@@ -34,7 +49,10 @@ export function OpsAlertPanel() {
       showToast("Alert resolved.", "success");
     } catch (err) {
       console.error("Failed to resolve alert:", err);
-      showToast("Failed to resolve alert. Make sure you are authorized.", "error");
+      showToast(
+        "Failed to resolve alert. Make sure you are authorized.",
+        "error",
+      );
     } finally {
       setActioningId(null);
     }
@@ -50,8 +68,14 @@ export function OpsAlertPanel() {
           </div>
         </div>
         <div className="card-body">
-          <div className="skeleton" style={{ height: "48px", marginBottom: "var(--space-3)" }} />
-          <div className="skeleton" style={{ height: "48px", marginBottom: "var(--space-3)" }} />
+          <div
+            className="skeleton"
+            style={{ height: "48px", marginBottom: "var(--space-3)" }}
+          />
+          <div
+            className="skeleton"
+            style={{ height: "48px", marginBottom: "var(--space-3)" }}
+          />
           <div className="skeleton" style={{ height: "48px" }} />
         </div>
       </div>
@@ -63,14 +87,15 @@ export function OpsAlertPanel() {
       <div className="card-header">
         <div>
           <div className="card-header-subtitle">Operations</div>
-          <div className="card-header-title">
-            Open Alerts ({alerts.length})
-          </div>
+          <div className="card-header-title">Open Alerts ({alerts.length})</div>
         </div>
       </div>
       <div className="card-body" style={{ padding: 0 }}>
         {alerts.length === 0 ? (
-          <div className="empty-state" style={{ padding: "var(--space-8) var(--space-4)" }}>
+          <div
+            className="empty-state"
+            style={{ padding: "var(--space-8) var(--space-4)" }}
+          >
             <div className="empty-state-title">No open alerts</div>
             <div className="empty-state-description">
               Platform operations are currently running smoothly.
@@ -84,8 +109,8 @@ export function OpsAlertPanel() {
                 alert.severity === "critical"
                   ? "var(--danger)"
                   : alert.severity === "warning"
-                  ? "var(--warning)"
-                  : "var(--info)";
+                    ? "var(--warning)"
+                    : "var(--info)";
 
               return (
                 <div
@@ -98,38 +123,82 @@ export function OpsAlertPanel() {
                     padding: "var(--space-4) var(--space-6)",
                     borderBottom: "1px solid var(--border)",
                     borderLeft: `4px solid ${borderLeftColor}`,
-                    background: alert.severity === "critical" 
-                      ? "color-mix(in srgb, var(--danger) 3%, transparent)"
-                      : "transparent"
+                    background:
+                      alert.severity === "critical"
+                        ? "color-mix(in srgb, var(--danger) 3%, transparent)"
+                        : "transparent",
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 600, fontSize: "var(--font-size-sm)", color: "var(--text)" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "var(--space-2)",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "var(--font-size-sm)",
+                          color: "var(--text)",
+                        }}
+                      >
                         {alert.category.toUpperCase()}
                       </span>
                       <StatusBadge status={alert.severity} />
                       {alert.reference && (
-                        <code style={{ fontSize: "var(--font-size-xs)", background: "var(--bg-root)", padding: "2px 6px", borderRadius: "var(--radius-sm)" }}>
+                        <code
+                          style={{
+                            fontSize: "var(--font-size-xs)",
+                            background: "var(--bg-root)",
+                            padding: "2px 6px",
+                            borderRadius: "var(--radius-sm)",
+                          }}
+                        >
                           {alert.reference}
                         </code>
                       )}
                     </div>
-                    <p style={{ margin: "var(--space-1) 0 0 0", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+                    <p
+                      style={{
+                        margin: "var(--space-1) 0 0 0",
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--text-secondary)",
+                      }}
+                    >
                       {alert.message}
                     </p>
-                    <small style={{ display: "block", marginTop: "var(--space-1)", fontSize: "11px", color: "var(--text-muted)" }}>
+                    <small
+                      style={{
+                        display: "block",
+                        marginTop: "var(--space-1)",
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {new Date(alert.createdAt).toLocaleString()}
                     </small>
                   </div>
 
-                  <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "var(--space-2)",
+                      flexShrink: 0,
+                    }}
+                  >
                     {alert.status === "open" && (
                       <button
                         onClick={() => handleAcknowledge(alert._id)}
                         disabled={actioningId !== null}
                         className="btn btn-secondary"
-                        style={{ height: "32px", fontSize: "var(--font-size-xs)", padding: "0 var(--space-3)" }}
+                        style={{
+                          height: "32px",
+                          fontSize: "var(--font-size-xs)",
+                          padding: "0 var(--space-3)",
+                        }}
                       >
                         {actioningId === alert._id ? "..." : "Acknowledge"}
                       </button>
@@ -138,7 +207,11 @@ export function OpsAlertPanel() {
                       onClick={() => handleResolve(alert._id)}
                       disabled={actioningId !== null}
                       className="btn btn-primary"
-                      style={{ height: "32px", fontSize: "var(--font-size-xs)", padding: "0 var(--space-3)" }}
+                      style={{
+                        height: "32px",
+                        fontSize: "var(--font-size-xs)",
+                        padding: "0 var(--space-3)",
+                      }}
                     >
                       {actioningId === alert._id ? "..." : "Resolve"}
                     </button>

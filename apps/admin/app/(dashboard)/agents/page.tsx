@@ -38,19 +38,31 @@ type ActiveAgentRow = {
 
 export default function AgentsPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"applications" | "agents">("applications");
+  const [activeTab, setActiveTab] = useState<"applications" | "agents">(
+    "applications",
+  );
 
   // Queries
-  const applications = useQuery(convexApi.admin.listAgentApplications, {});
-  const agents = useQuery(convexApi.admin.listAgents);
+  const applications = useQuery(convexApi.admin.listAgentApplications, {}) as
+    | AgentApplicationRow[]
+    | undefined;
+  const agents = useQuery(convexApi.admin.listAgents) as
+    | ActiveAgentRow[]
+    | undefined;
 
   // Mutations
-  const approveApplication = useMutation(convexApi.admin.approveAgentApplication);
+  const approveApplication = useMutation(
+    convexApi.admin.approveAgentApplication,
+  );
   const rejectApplication = useMutation(convexApi.admin.rejectAgentApplication);
 
   // Action Modals State
-  const [selectedApp, setSelectedApp] = useState<AgentApplicationRow | null>(null);
-  const [modalAction, setModalAction] = useState<"approve" | "reject" | null>(null);
+  const [selectedApp, setSelectedApp] = useState<AgentApplicationRow | null>(
+    null,
+  );
+  const [modalAction, setModalAction] = useState<"approve" | "reject" | null>(
+    null,
+  );
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -64,7 +76,9 @@ export default function AgentsPage() {
     try {
       if (modalAction === "approve") {
         await approveApplication({ applicationId: selectedApp._id as any });
-        setSuccessMessage(`Application for ${selectedApp.user?.displayName || "user"} approved successfully.`);
+        setSuccessMessage(
+          `Application for ${selectedApp.user?.displayName || "user"} approved successfully.`,
+        );
       } else {
         const args: { applicationId: any; reason?: string } = {
           applicationId: selectedApp._id as any,
@@ -73,14 +87,18 @@ export default function AgentsPage() {
           args.reason = rejectReason.trim();
         }
         await rejectApplication(args);
-        setSuccessMessage(`Application for ${selectedApp.user?.displayName || "user"} rejected.`);
+        setSuccessMessage(
+          `Application for ${selectedApp.user?.displayName || "user"} rejected.`,
+        );
       }
       setSelectedApp(null);
       setModalAction(null);
       setRejectReason("");
     } catch (err: any) {
       console.error("Action failed:", err);
-      setErrorMessage(err.message || "An error occurred while processing the request.");
+      setErrorMessage(
+        err.message || "An error occurred while processing the request.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -93,7 +111,9 @@ export default function AgentsPage() {
       render: (row) => (
         <div>
           <span style={{ fontWeight: 600, color: "var(--text)" }}>
-            {row.user?.displayName || <span className="text-muted italic">Unnamed User</span>}
+            {row.user?.displayName || (
+              <span className="text-muted italic">Unnamed User</span>
+            )}
           </span>
           <div className="text-xs text-muted font-mono">{row.userId}</div>
         </div>
@@ -105,7 +125,9 @@ export default function AgentsPage() {
       render: (row) => (
         <div>
           <div>{row.user?.email || "No Email"}</div>
-          <div className="font-mono text-sm text-muted">{row.user?.phone || "No Phone"}</div>
+          <div className="font-mono text-sm text-muted">
+            {row.user?.phone || "No Phone"}
+          </div>
         </div>
       ),
     },
@@ -136,7 +158,8 @@ export default function AgentsPage() {
       key: "actions",
       header: "Actions",
       render: (row) => {
-        if (row.status !== "pending") return <span className="text-muted text-sm">Reviewed</span>;
+        if (row.status !== "pending")
+          return <span className="text-muted text-sm">Reviewed</span>;
         return (
           <div style={{ display: "flex", gap: "var(--space-2)" }}>
             <button
@@ -173,7 +196,9 @@ export default function AgentsPage() {
       header: "Agent Name",
       render: (row) => (
         <span style={{ fontWeight: 600, color: "var(--text)" }}>
-          {row.displayName || <span className="text-muted italic">Unnamed User</span>}
+          {row.displayName || (
+            <span className="text-muted italic">Unnamed User</span>
+          )}
         </span>
       ),
     },
@@ -223,18 +248,36 @@ export default function AgentsPage() {
       <div className="page-header" style={{ marginBottom: "var(--space-6)" }}>
         <div>
           <h1 className="page-title">Agent Management</h1>
-          <p className="page-subtitle">Review applications and manage active resellers</p>
+          <p className="page-subtitle">
+            Review applications and manage active resellers
+          </p>
         </div>
       </div>
 
       {successMessage && (
-        <div className="badge badge-success" style={{ width: "100%", padding: "var(--space-3)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
+        <div
+          className="badge badge-success"
+          style={{
+            width: "100%",
+            padding: "var(--space-3)",
+            borderRadius: "var(--radius-md)",
+            marginBottom: "var(--space-4)",
+          }}
+        >
           {successMessage}
         </div>
       )}
 
       {errorMessage && (
-        <div className="badge badge-danger" style={{ width: "100%", padding: "var(--space-3)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)" }}>
+        <div
+          className="badge badge-danger"
+          style={{
+            width: "100%",
+            padding: "var(--space-3)",
+            borderRadius: "var(--radius-md)",
+            marginBottom: "var(--space-4)",
+          }}
+        >
           {errorMessage}
         </div>
       )}
@@ -245,7 +288,8 @@ export default function AgentsPage() {
           className={`tab${activeTab === "applications" ? " tab-active" : ""}`}
           onClick={() => setActiveTab("applications")}
         >
-          Pending Applications ({applications?.filter((a) => a.status === "pending").length || 0})
+          Pending Applications (
+          {applications?.filter((a) => a.status === "pending").length || 0})
         </button>
         <button
           className={`tab${activeTab === "agents" ? " tab-active" : ""}`}
@@ -260,7 +304,7 @@ export default function AgentsPage() {
           {activeTab === "applications" ? (
             <DataTable
               columns={appColumns}
-              data={applications as AgentApplicationRow[]}
+              data={applications ?? []}
               isLoading={applications === undefined}
               emptyStateTitle="No applications found"
               emptyStateDescription="There are no pending or reviewed agent applications."
@@ -270,7 +314,7 @@ export default function AgentsPage() {
           ) : (
             <DataTable
               columns={agentColumns}
-              data={agents as ActiveAgentRow[]}
+              data={agents ?? []}
               isLoading={agents === undefined}
               emptyStateTitle="No active agents"
               emptyStateDescription="No users have been promoted to agent status yet."
@@ -291,7 +335,11 @@ export default function AgentsPage() {
             setRejectReason("");
           }
         }}
-        title={modalAction === "approve" ? "Approve Agent Application" : "Reject Agent Application"}
+        title={
+          modalAction === "approve"
+            ? "Approve Agent Application"
+            : "Reject Agent Application"
+        }
         footer={
           <>
             <button
@@ -306,19 +354,35 @@ export default function AgentsPage() {
               Cancel
             </button>
             <button
-              className={modalAction === "approve" ? "btn btn-primary" : "btn btn-danger"}
+              className={
+                modalAction === "approve" ? "btn btn-primary" : "btn btn-danger"
+              }
               disabled={isSubmitting}
               onClick={handleAction}
             >
-              {isSubmitting ? "Processing..." : modalAction === "approve" ? "Approve Agent" : "Reject Application"}
+              {isSubmitting
+                ? "Processing..."
+                : modalAction === "approve"
+                  ? "Approve Agent"
+                  : "Reject Application"}
             </button>
           </>
         }
       >
         {selectedApp && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
+            }}
+          >
             <p>
-              Are you sure you want to <strong>{modalAction === "approve" ? "APPROVE" : "REJECT"}</strong> the agent application for{" "}
+              Are you sure you want to{" "}
+              <strong>
+                {modalAction === "approve" ? "APPROVE" : "REJECT"}
+              </strong>{" "}
+              the agent application for{" "}
               <strong>{selectedApp.user?.displayName || "this user"}</strong>?
             </p>
             <div
@@ -331,12 +395,19 @@ export default function AgentsPage() {
             >
               <div>Email: {selectedApp.user?.email || "N/A"}</div>
               <div>Phone: {selectedApp.user?.phone || "N/A"}</div>
-              {selectedApp.paymentReference && <div>Payment Ref: {selectedApp.paymentReference}</div>}
+              {selectedApp.paymentReference && (
+                <div>Payment Ref: {selectedApp.paymentReference}</div>
+              )}
             </div>
 
             {modalAction === "approve" ? (
-              <p className="text-muted" style={{ fontSize: "var(--font-size-sm)" }}>
-                Approving this application will change the user's role to <strong>agent</strong> and grant them access to wholesale bundle rates.
+              <p
+                className="text-muted"
+                style={{ fontSize: "var(--font-size-sm)" }}
+              >
+                Approving this application will change the user's role to{" "}
+                <strong>agent</strong> and grant them access to wholesale bundle
+                rates.
               </p>
             ) : (
               <div className="form-group">
