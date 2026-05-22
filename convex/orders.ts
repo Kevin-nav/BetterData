@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 
 export const createIntent = mutation({
@@ -36,7 +36,13 @@ export const createIntent = mutation({
       throw new Error("Recipient number confirmation is required.");
     }
 
-    const dataPackage = await ctx.db.get(args.packageId as Id<"dataPackages">);
+    const dataPackage = await findDataPackageForFinancialSnapshot(ctx, {
+      packageId: args.packageId,
+      vendorId: args.vendorId,
+      ...(args.vendorPackageId !== undefined
+        ? { vendorPackageId: args.vendorPackageId }
+        : {})
+    });
     const costGhsAtPurchase = dataPackage?.providerCostGhs;
     const markupGhsAtPurchase =
       costGhsAtPurchase !== undefined
@@ -71,6 +77,45 @@ export const createIntent = mutation({
     });
   }
 });
+
+async function findDataPackageForFinancialSnapshot(
+  ctx: QueryCtx | MutationCtx,
+  input: {
+    packageId: string;
+    vendorId: string;
+    vendorPackageId?: string;
+  }
+) {
+  const vendorPackageId =
+    input.vendorPackageId ?? vendorPackageIdFromScopedPackageId(input.packageId);
+
+  if (vendorPackageId !== undefined) {
+    const vendorPackage = await ctx.db
+      .query("dataPackages")
+      .withIndex("by_vendor_package_id", (q) =>
+        q.eq("vendorId", input.vendorId).eq("vendorPackageId", vendorPackageId)
+      )
+      .first();
+
+    if (vendorPackage !== null) {
+      return vendorPackage;
+    }
+  }
+
+  try {
+    return await ctx.db.get(input.packageId as Id<"dataPackages">);
+  } catch {
+    return null;
+  }
+}
+
+function vendorPackageIdFromScopedPackageId(packageId: string) {
+  if (!packageId.includes(":")) {
+    return undefined;
+  }
+
+  return packageId.split(":").at(-1);
+}
 
 export const recordVendorResult = mutation({
   args: {

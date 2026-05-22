@@ -343,7 +343,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
 
         return { received: true };
       } catch (error) {
-        request.log.error({ error, reference }, "Paystack webhook processing failed");
+        request.log.error({ err: error, reference }, "Paystack webhook processing failed");
         emitPaymentTelemetry({
           name: "payment.webhook.processing_failed",
           paymentReference: reference,
@@ -352,7 +352,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           errorMessage: error instanceof Error ? error.message : "Unknown error"
         });
         const nextRetryAt = getNextRetryAt("internal_completion", 0);
-        await createOpsAlertSafely(createConvexClient(), {
+        const retryQueued = await createOpsAlertSafely(createConvexClient(), {
           severity: "warning",
           category: "payment",
           reference,
@@ -365,6 +365,13 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           retryStatus: "queued",
           ...(nextRetryAt !== null ? { nextRetryAt } : {})
         });
+
+        if (retryQueued) {
+          return reply.code(200).send({
+            received: true,
+            retryQueued: true
+          });
+        }
 
         return reply.code(500).send({
           received: false,
@@ -382,9 +389,31 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
       now: Date.now()
     })) as RetryableOpsAlert[];
     const results = [];
+    const retryResultsByKey = new Map<string, { status: string }>();
 
     for (const alert of alerts) {
+      const retryKey = `${alert.retryAction ?? "unknown"}:${alert.reference ?? alert._id}`;
+      const previousResult = retryResultsByKey.get(retryKey);
+
+      if (previousResult !== undefined) {
+        if (previousResult.status === "succeeded") {
+          await convex.mutation(opsAlertFunctions.markRetrySucceeded, {
+            ...serviceArgs(),
+            alertId: alert._id
+          });
+        }
+
+        const duplicateResult = {
+          alertId: alert._id,
+          status: previousResult.status === "succeeded" ? "succeeded" : "skipped",
+          reason: "duplicate retry already processed in this run"
+        };
+        results.push(duplicateResult);
+        continue;
+      }
+
       const result = await processRetryAlert(convex, queue, alert);
+      retryResultsByKey.set(retryKey, { status: result.status });
       results.push(result);
     }
 
@@ -818,14 +847,16 @@ async function createOpsAlertSafely(
     retryStatus?: "not_started" | "queued" | "running" | "succeeded" | "failed";
     nextRetryAt?: number;
   }
-) {
+): Promise<boolean> {
   try {
     await convex.mutation(opsAlertFunctions.create, {
       ...serviceArgs(),
       ...alert
     });
+    return true;
   } catch {
     // Avoid masking payment/webhook responses when alert persistence fails.
+    return false;
   }
 }
 

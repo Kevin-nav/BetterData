@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: betterdata-payment-retry
+  namespace: betterdata
+  labels:
+    app.kubernetes.io/name: betterdata-payment-retry
+    app.kubernetes.io/part-of: betterdata
+spec:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: betterdata-payment-retry
+            app.kubernetes.io/part-of: betterdata
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: retry
+              image: curlimages/curl:8.10.1
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: BETTERDATA_SERVICE_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: betterdata-api-env
+                      key: BETTERDATA_SERVICE_SECRET
+              command:
+                - sh
+                - -c
+                - >
+                  curl --fail --silent --show-error
+                  --connect-timeout 5
+                  --max-time 45
+                  -X POST
+                  -H "x-betterdata-service-secret: ${BETTERDATA_SERVICE_SECRET}"
+                  http://betterdata-api.betterdata.svc.cluster.local:4000/internal/payments/retries/run
+              resources:
+                requests:
+                  cpu: 5m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 64Mi

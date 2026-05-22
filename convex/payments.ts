@@ -514,7 +514,13 @@ async function completeDataPurchase(
     throw new Error("Data purchase payment metadata is invalid.");
   }
 
-  const dataPackage = await ctx.db.get(packageId as Id<"dataPackages">);
+  const dataPackage = await findDataPackageForFinancialSnapshot(ctx, {
+    packageId,
+    vendorId,
+    ...(typeof metadata.vendorPackageId === "string"
+      ? { vendorPackageId: metadata.vendorPackageId }
+      : {})
+  });
   const costGhsAtPurchase = dataPackage?.providerCostGhs;
   const markupGhsAtPurchase =
     costGhsAtPurchase !== undefined
@@ -554,6 +560,45 @@ async function completeDataPurchase(
       });
     }
   }
+}
+
+async function findDataPackageForFinancialSnapshot(
+  ctx: QueryCtx | MutationCtx,
+  input: {
+    packageId: string;
+    vendorId: string;
+    vendorPackageId?: string;
+  }
+) {
+  const vendorPackageId =
+    input.vendorPackageId ?? vendorPackageIdFromScopedPackageId(input.packageId);
+
+  if (vendorPackageId !== undefined) {
+    const vendorPackage = await ctx.db
+      .query("dataPackages")
+      .withIndex("by_vendor_package_id", (q) =>
+        q.eq("vendorId", input.vendorId).eq("vendorPackageId", vendorPackageId)
+      )
+      .first();
+
+    if (vendorPackage !== null) {
+      return vendorPackage;
+    }
+  }
+
+  try {
+    return await ctx.db.get(input.packageId as Id<"dataPackages">);
+  } catch {
+    return null;
+  }
+}
+
+function vendorPackageIdFromScopedPackageId(packageId: string) {
+  if (!packageId.includes(":")) {
+    return undefined;
+  }
+
+  return packageId.split(":").at(-1);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
