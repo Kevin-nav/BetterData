@@ -59,6 +59,14 @@ export async function processPurchaseMessage(
       await incrementMetric("purchase.refunded");
     } else {
       await incrementMetric("purchase.processing");
+      await options.queue.enqueue(QUEUE_NAMES.statusRefresh, {
+        kind: "status-refresh",
+        orderReference: job.orderReference,
+        vendorId: job.vendorId,
+        vendorOrderReference: result.vendorOrderReference,
+        attempt: 0,
+        createdAt: new Date().toISOString()
+      });
     }
 
     await message.ack();

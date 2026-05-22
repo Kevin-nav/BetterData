@@ -68,6 +68,10 @@ const updated = await waitForOrder(orderStore, order.reference, (current) =>
 );
 assert.equal(updated?.vendorOrderReference, "GN-idem-worker");
 assert.equal(updated?.status, "processing");
+await waitForCondition(
+  async () => (await queue.getDepth(QUEUE_NAMES.statusRefresh)) === 1
+);
+assert.equal(await queue.getDepth(QUEUE_NAMES.statusRefresh), 1);
 
 await stop();
 

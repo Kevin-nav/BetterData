@@ -35,7 +35,7 @@ export type CreateOrderIntentInput = {
 export type OrderStore = {
   createIntent(input: CreateOrderIntentInput): Promise<StoredOrder>;
   getByReference(reference: string): Promise<StoredOrder | null>;
-  listOrders(): Promise<StoredOrder[]>;
+  listOrders(input?: { status?: StoredOrder["status"] }): Promise<StoredOrder[]>;
   recordVendorResult(
     reference: string,
     result: {
@@ -80,8 +80,10 @@ export function createMemoryOrderStore(): OrderStore {
       return orders.get(reference) ?? null;
     },
 
-    async listOrders() {
-      return [...orders.values()].reverse();
+    async listOrders(input) {
+      return [...orders.values()]
+        .filter((order) => input?.status === undefined || order.status === input.status)
+        .reverse();
     },
 
     async recordVendorResult(reference, result) {
@@ -167,8 +169,11 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
       return order ? mapConvexOrder(order as Partial<StoredOrder>) : null;
     },
 
-    async listOrders() {
-      const orders = await client.query(listForApi, { apiSecret });
+    async listOrders(input) {
+      const orders = await client.query(listForApi, {
+        apiSecret,
+        ...(input?.status !== undefined ? { status: input.status } : {})
+      });
 
       return Array.isArray(orders)
         ? orders.map((order) => mapConvexOrder(order as Partial<StoredOrder>))

@@ -10,5 +10,6 @@ resources:
   - api-service.yaml
   - worker-deployment.yaml
   - worker-scaledobject.yaml
+  - order-status-refresh-cronjob.yaml
   - payment-retry-cronjob.yaml
   - cloudflared-deployment.yaml

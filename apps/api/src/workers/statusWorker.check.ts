@@ -75,6 +75,7 @@ const stopRetry = await startStatusWorker({
   queue: retryQueue,
   orderStore,
   vendor: retryVendor,
+  maxAttempts: 2,
   retryDelayMs: 1
 });
 await retryQueue.enqueue(QUEUE_NAMES.statusRefresh, job);

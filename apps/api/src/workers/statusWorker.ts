@@ -10,8 +10,8 @@ export async function startStatusWorker(options: {
   maxAttempts?: number;
   retryDelayMs?: number;
 }) {
-  const maxAttempts = options.maxAttempts ?? 5;
-  const retryDelayMs = options.retryDelayMs ?? 30_000;
+  const maxAttempts = options.maxAttempts ?? 48;
+  const retryDelayMs = options.retryDelayMs ?? 5 * 60_000;
 
   return await options.queue.consume<StatusRefreshJob>(
     QUEUE_NAMES.statusRefresh,
@@ -25,6 +25,11 @@ export async function startStatusWorker(options: {
           vendorOrderReference: message.job.vendorOrderReference,
           status
         });
+
+        if (status === "processing" && message.attempts + 1 < maxAttempts) {
+          await message.retry(retryDelayMs);
+          return;
+        }
 
         await message.ack();
       } catch (error) {

@@ -163,6 +163,43 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
   );
 
+  server.post("/internal/orders/status-refresh/run", async (request) => {
+    requireInternalServiceRequest(request.headers);
+
+    const processingOrders = await orderStore.listOrders({ status: "processing" });
+    const results = [];
+
+    for (const order of processingOrders) {
+      if (!order.vendorOrderReference) {
+        results.push({
+          reference: order.reference,
+          status: "skipped",
+          reason: "missing vendor order reference"
+        });
+        continue;
+      }
+
+      await queue.enqueue(QUEUE_NAMES.statusRefresh, {
+        kind: "status-refresh",
+        orderReference: order.reference,
+        vendorId: order.vendorId,
+        vendorOrderReference: order.vendorOrderReference,
+        attempt: 0,
+        createdAt: new Date().toISOString()
+      });
+
+      results.push({
+        reference: order.reference,
+        status: "queued"
+      });
+    }
+
+    return {
+      processed: results.length,
+      results
+    };
+  });
+
   server.post(
     "/webhooks/data-vendor",
     {
@@ -347,6 +384,16 @@ function readRawBody(request: FastifyRequest) {
   }
 
   throw new Error("rawBody missing: cannot verify webhook signature");
+}
+
+function requireInternalServiceRequest(
+  headers: Record<string, string | string[] | undefined>
+) {
+  const provided = headers["x-betterdata-service-secret"];
+
+  if (Array.isArray(provided) || provided !== getRequiredEnv("BETTERDATA_SERVICE_SECRET")) {
+    throw new Error("Service authorization failed.");
+  }
 }
 
 function normalizeWebhookHeaders(
