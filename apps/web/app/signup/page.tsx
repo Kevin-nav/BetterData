@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FirebaseError } from "firebase/app";
 
 import { signUpWithEmail, signInWithGoogle } from "../lib/firebase";
 import { useAuth } from "../lib/AuthContext";
+import { createBetterDataApiClient } from "@betterdata/api-client";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const apiClient = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 
 /* ── Icons ── */
 const GoogleIcon = () => (
@@ -84,7 +88,7 @@ function getFirebaseErrorMessage(error: FirebaseError) {
   }
 }
 
-export default function SignupPage() {
+function SignupContent() {
   const router = useRouter();
   const { loading: authLoading, isAuthenticated } = useAuth();
 
@@ -92,6 +96,19 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+
+  // Agent intent params
+  const searchParams = useSearchParams();
+  const intentParam = searchParams?.get("intent");
+  const phoneParam = searchParams?.get("phone");
+  const isAgentIntent = intentParam === "agent";
+
+  // Pre-fill phone from query param
+  useEffect(() => {
+    if (phoneParam && !phone) {
+      setPhone(phoneParam);
+    }
+  }, [phoneParam]);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -105,9 +122,9 @@ export default function SignupPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace("/dashboard");
+      router.replace(isAgentIntent ? "/agents/apply" : "/dashboard");
     }
-  }, [authLoading, isAuthenticated, router]);
+  }, [authLoading, isAuthenticated, isAgentIntent, router]);
 
   if (!authLoading && isAuthenticated) {
     return null;
@@ -125,6 +142,8 @@ export default function SignupPage() {
     else if (strength < 3) errors.password = "Password is not strong enough.";
     if (password !== confirmPassword) errors.confirm = "Passwords don't match.";
     if (!termsAccepted) errors.terms = "You must accept the terms.";
+    if (isAgentIntent && !phone.trim()) errors.phone = "Phone number is required for agent applications.";
+    else if (isAgentIntent && !isValidGhanaPhoneNumber(phone)) errors.phone = "Enter a valid Ghana phone number.";
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -138,8 +157,11 @@ export default function SignupPage() {
 
     try {
       setSubmitting(true);
-      await signUpWithEmail(email.trim(), password, name.trim());
-      router.replace("/dashboard");
+      const user = await signUpWithEmail(email.trim(), password, name.trim());
+      if (isAgentIntent) {
+        await syncAgentPhone(user, phone.trim());
+      }
+      router.replace(isAgentIntent ? "/agents/apply" : "/dashboard");
     } catch (err) {
       if (err instanceof FirebaseError) {
         setError(getFirebaseErrorMessage(err));
@@ -154,10 +176,23 @@ export default function SignupPage() {
   async function handleGoogleSignup() {
     setError("");
 
+    if (isAgentIntent && !isValidGhanaPhoneNumber(phone)) {
+      setFieldErrors((current) => ({
+        ...current,
+        phone: phone.trim()
+          ? "Enter a valid Ghana phone number."
+          : "Phone number is required for agent applications.",
+      }));
+      return;
+    }
+
     try {
       setGoogleLoading(true);
-      await signInWithGoogle();
-      router.replace("/dashboard");
+      const user = await signInWithGoogle();
+      if (isAgentIntent) {
+        await syncAgentPhone(user, phone.trim());
+      }
+      router.replace(isAgentIntent ? "/agents/apply" : "/dashboard");
     } catch (err) {
       if (err instanceof FirebaseError) {
         setError(getFirebaseErrorMessage(err));
@@ -185,12 +220,22 @@ export default function SignupPage() {
         </div>
 
         {/* First-time discount banner */}
-        <div className="auth-discount-banner">
-          <span className="discount-emoji">🎉</span>
-          <span>
-            Sign up now and get <strong>a discount</strong> off your first purchase!
-          </span>
-        </div>
+        {isAgentIntent ? (
+          <div className="auth-discount-banner" style={{ background: "var(--bg-elevated)" }}>
+            <span className="discount-emoji">🏪</span>
+            <span>
+              You are signing up to <strong>apply as a Better Data agent</strong>.
+              Complete your account to continue.
+            </span>
+          </div>
+        ) : (
+          <div className="auth-discount-banner">
+            <span className="discount-emoji">🎉</span>
+            <span>
+              Sign up now and get <strong>a discount</strong> off your first purchase!
+            </span>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -252,15 +297,27 @@ export default function SignupPage() {
 
           {/* Phone */}
           <div className="form-field">
-            <label htmlFor="signup-phone">Phone Number <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></label>
+            <label htmlFor="signup-phone">
+              Phone Number{" "}
+              {isAgentIntent ? (
+                <span style={{ color: "var(--danger)" }}>*</span>
+              ) : (
+                <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span>
+              )}
+            </label>
             <input
               id="signup-phone"
               type="tel"
               placeholder="e.g. 054 123 4567"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setFieldErrors((p) => ({ ...p, phone: "" }));
+              }}
               autoComplete="tel"
+              className={fieldErrors.phone ? "input-error" : ""}
             />
+            {fieldErrors.phone && <span className="field-error">{fieldErrors.phone}</span>}
           </div>
 
           {/* Password */}
@@ -378,4 +435,29 @@ export default function SignupPage() {
       </div>
     </div>
   );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="pkg-skeleton" style={{ width: "48px", height: "48px", borderRadius: "50%", margin: "0 auto 16px" }} />
+          <p style={{ color: "var(--text-secondary)", textAlign: "center" }}>Loading signup...</p>
+        </div>
+      </div>
+    }>
+      <SignupContent />
+    </Suspense>
+  );
+}
+
+async function syncAgentPhone(user: { getIdToken: (forceRefresh?: boolean) => Promise<string> }, phone: string) {
+  const token = await user.getIdToken(true);
+  await apiClient.createSession(token);
+  await apiClient.updatePhone(phone, token);
+}
+
+function isValidGhanaPhoneNumber(value: string) {
+  return /^(\+?233|0)\d{9}$/.test(value.replace(/\s/g, ""));
 }

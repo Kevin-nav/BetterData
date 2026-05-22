@@ -25,6 +25,11 @@ function PaymentsRedirectContent() {
           return;
         }
 
+        if (status.purpose === "agent_application_fee") {
+          router.replace(`/dashboard/agent?ref=${encodeURIComponent(paymentReference)}`);
+          return;
+        }
+
         router.replace(`/buy/confirmation?reference=${encodeURIComponent(paymentReference)}`);
       } catch {
         if (active) {

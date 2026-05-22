@@ -2492,3 +2492,699 @@ img{display:block;max-width:100%}
   }
 }
 
+/* ══════════════════════════════════════════════════════
+   AGENT PROGRAM PAGES
+   ══════════════════════════════════════════════════════ */
+
+/* ── Agent Hero ── */
+.agent-hero {
+  position: relative;
+  padding: 160px 0 80px;
+  overflow: hidden;
+  text-align: center;
+}
+.agent-hero-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 20%,
+    var(--primary-glow) 0%,
+    transparent 70%
+  );
+  opacity: 0.25;
+  pointer-events: none;
+}
+.agent-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 700px;
+  margin: 0 auto;
+}
+.agent-hero-badge {
+  display: inline-block;
+  padding: 6px 16px;
+  background: var(--primary-dim);
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.82rem;
+  border-radius: var(--radius-full);
+  margin-bottom: 20px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.agent-hero-title {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+.agent-hero-title .accent {
+  background: linear-gradient(135deg, var(--primary) 0%, #06b6d4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.agent-hero-desc {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 560px;
+  margin: 0 auto 32px;
+}
+
+/* ── Agent Pricing Row ── */
+.agent-pricing-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+.agent-pricing-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px 32px;
+  text-align: center;
+  min-width: 180px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s var(--ease-spring), border-color 0.2s;
+}
+.agent-pricing-card:hover {
+  transform: translateY(-2px);
+}
+.agent-pricing-card.accent-card {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, var(--primary-dim) 0%, var(--bg-surface) 100%);
+}
+.agent-pricing-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.agent-pricing-value {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+.agent-pricing-card.accent-card .agent-pricing-value {
+  color: var(--primary);
+}
+.agent-pricing-note {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+.agent-pricing-skeleton {
+  display: inline-block;
+  width: 80px;
+  height: 28px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  animation: pulse-dot 1.2s infinite;
+}
+
+/* ── Agent Hero CTA ── */
+.agent-hero-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.agent-hero-login-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.agent-hero-login-hint a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ── Agent Benefits ── */
+.agent-benefits {
+  padding: 80px 0;
+}
+.agent-benefits .section-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+.agent-benefits .section-header h2 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.agent-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+.agent-benefit-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  transition: transform 0.2s var(--ease-spring), border-color 0.2s;
+}
+.agent-benefit-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--primary);
+}
+.agent-benefit-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.agent-benefit-icon.green { background: var(--primary-dim); color: var(--primary); }
+.agent-benefit-icon.blue { background: rgba(59,130,246,0.1); color: #3b82f6; }
+.agent-benefit-icon.orange { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.agent-benefit-icon.purple { background: rgba(168,85,247,0.1); color: #a855f7; }
+.agent-benefit-card h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.agent-benefit-card p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ── Agent Steps ── */
+.agent-steps {
+  padding: 0 0 80px;
+}
+.agent-steps .section-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+.agent-steps .section-header h2 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.overline {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.step-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  position: relative;
+}
+.step-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1rem;
+  margin-bottom: 16px;
+}
+.step-card h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.step-card p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ── Agent Apply Page ── */
+.agent-apply-info-box {
+  padding: 14px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+}
+.agent-apply-info-box p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0;
+}
+.agent-apply-section {
+  margin-bottom: 28px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-apply-section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.agent-apply-section-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+.agent-apply-fee-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+}
+.agent-apply-fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+}
+.agent-apply-fee-row span {
+  color: var(--text-secondary);
+}
+.agent-apply-fee-row strong {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+.agent-apply-fee-benefit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+/* ── Agent Status Cards ── */
+.agent-status-card {
+  padding: 32px;
+  border-radius: var(--radius-xl);
+  text-align: center;
+  margin-bottom: 16px;
+}
+.agent-status-card.pending {
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+}
+.agent-status-card.rejected {
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.agent-status-icon { margin-bottom: 16px; }
+.agent-status-card.pending .agent-status-icon { color: #f59e0b; }
+.agent-status-card.rejected .agent-status-icon { color: #ef4444; }
+.agent-status-card h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.agent-status-card p {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 400px;
+  margin: 0 auto;
+}
+.agent-status-ref {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.agent-status-ref strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display), monospace;
+  font-size: 0.92rem;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.field-success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--primary);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.field-success svg { width: 16px; height: 16px; }
+
+/* ── Dashboard Agent Cards ── */
+.agent-dash-status-card {
+  display: flex;
+  gap: 20px;
+  padding: 24px;
+  border-radius: var(--radius-xl);
+  margin-bottom: 20px;
+}
+.agent-dash-status-card.approved {
+  background: rgba(13,148,136,0.06);
+  border: 1px solid rgba(13,148,136,0.2);
+}
+.agent-dash-status-card.pending {
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+}
+.agent-dash-status-card.rejected {
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.agent-dash-status-icon { flex-shrink: 0; margin-top: 2px; }
+.agent-dash-status-card.approved .agent-dash-status-icon { color: var(--primary); }
+.agent-dash-status-card.pending .agent-dash-status-icon { color: #f59e0b; }
+.agent-dash-status-card.rejected .agent-dash-status-icon { color: #ef4444; }
+.agent-dash-status-content h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.agent-dash-status-content p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.agent-dash-ref {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.agent-dash-ref code {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--font-display), monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg-input);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.agent-dash-discount-banner {
+  padding: 14px 20px;
+  background: var(--primary-dim);
+  border: 1px solid rgba(13,148,136,0.2);
+  border-radius: var(--radius-lg);
+  font-size: 0.92rem;
+  color: var(--primary);
+  font-weight: 500;
+}
+.agent-dash-success-toast {
+  padding: 12px 16px;
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.2);
+  border-radius: var(--radius-md);
+  color: #22c55e;
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-top: 16px;
+  animation: auth-error-in 0.3s var(--ease-out);
+}
+
+/* ── Agent Promo Card ── */
+.agent-dash-promo-card {
+  display: flex;
+  gap: 24px;
+  padding: 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.agent-dash-promo-icon {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: var(--primary-dim);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-dash-promo-content h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.agent-dash-promo-content p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: 16px;
+}
+.agent-dash-promo-pricing {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.agent-dash-promo-pill {
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.agent-dash-promo-pill.accent {
+  background: var(--primary-dim);
+  border-color: rgba(13,148,136,0.2);
+  color: var(--primary);
+}
+
+/* ── Agent Responsive ── */
+@media (max-width: 768px) {
+  .agent-hero { padding: 120px 20px 60px; }
+  .agent-pricing-row { flex-direction: column; align-items: center; }
+  .agent-pricing-card { width: 100%; max-width: 280px; }
+}
+.agent-apply-fee-benefit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+/* ── Agent Status Cards ── */
+.agent-status-card {
+  padding: 32px;
+  border-radius: var(--radius-xl);
+  text-align: center;
+  margin-bottom: 16px;
+}
+.agent-status-card.pending {
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+}
+.agent-status-card.rejected {
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.agent-status-icon { margin-bottom: 16px; }
+.agent-status-card.pending .agent-status-icon { color: #f59e0b; }
+.agent-status-card.rejected .agent-status-icon { color: #ef4444; }
+.agent-status-card h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.agent-status-card p {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 400px;
+  margin: 0 auto;
+}
+.agent-status-ref {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.agent-status-ref strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display), monospace;
+  font-size: 0.92rem;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.field-success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--primary);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.field-success svg { width: 16px; height: 16px; }
+
+/* ── Dashboard Agent Cards ── */
+.agent-dash-status-card {
+  display: flex;
+  gap: 20px;
+  padding: 24px;
+  border-radius: var(--radius-xl);
+  margin-bottom: 20px;
+}
+.agent-dash-status-card.approved {
+  background: rgba(13,148,136,0.06);
+  border: 1px solid rgba(13,148,136,0.2);
+}
+.agent-dash-status-card.pending {
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+}
+.agent-dash-status-card.rejected {
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.agent-dash-status-icon { flex-shrink: 0; margin-top: 2px; }
+.agent-dash-status-card.approved .agent-dash-status-icon { color: var(--primary); }
+.agent-dash-status-card.pending .agent-dash-status-icon { color: #f59e0b; }
+.agent-dash-status-card.rejected .agent-dash-status-icon { color: #ef4444; }
+.agent-dash-status-content h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.agent-dash-status-content p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.agent-dash-ref {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.agent-dash-ref code {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--font-display), monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg-input);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.agent-dash-discount-banner {
+  padding: 14px 20px;
+  background: var(--primary-dim);
+  border: 1px solid rgba(13,148,136,0.2);
+  border-radius: var(--radius-lg);
+  font-size: 0.92rem;
+  color: var(--primary);
+  font-weight: 500;
+}
+.agent-dash-success-toast {
+  padding: 12px 16px;
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.2);
+  border-radius: var(--radius-md);
+  color: #22c55e;
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-top: 16px;
+  animation: auth-error-in 0.3s var(--ease-out);
+}
+
+/* ── Agent Promo Card ── */
+.agent-dash-promo-card {
+  display: flex;
+  gap: 24px;
+  padding: 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.agent-dash-promo-icon {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: var(--primary-dim);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-dash-promo-content h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.agent-dash-promo-content p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: 16px;
+}
+.agent-dash-promo-pricing {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.agent-dash-promo-pill {
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.agent-dash-promo-pill.accent {
+  background: var(--primary-dim);
+  border-color: rgba(13,148,136,0.2);
+  color: var(--primary);
+}
+
+/* ── Agent Responsive ── */
+@media (max-width: 768px) {
+  .agent-hero { padding: 120px 20px 60px; }
+  .agent-pricing-row { flex-direction: column; align-items: center; }
+  .agent-pricing-card { width: 100%; max-width: 280px; }
+  .agent-benefits-grid { grid-template-columns: repeat(2, 1fr); }
+  .steps-grid { grid-template-columns: 1fr; gap: 16px; }
+  .agent-dash-promo-card { flex-direction: column; }
+  .agent-dash-status-card { flex-direction: column; text-align: center; }
+}
+@media (max-width: 500px) {
+  .agent-benefits-grid { grid-template-columns: 1fr; }
+}

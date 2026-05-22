@@ -92,3 +92,8 @@ export type OpsAlertRetryStatus =
   | "running"
   | "succeeded"
   | "failed";
+
+export type AgentApplicationStatus = {
+  status: "pending" | "approved" | "rejected";
+  paymentReference?: string;
+};

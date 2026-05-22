@@ -89,3 +89,62 @@ export const getByFirebaseUid = query({
       .first();
   }
 });
+
+export const updatePhone = mutation({
+  args: {
+    serviceSecret: v.string(),
+    firebaseUid: v.string(),
+    phone: v.string()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebase_uid", (q) => q.eq("firebaseUid", args.firebaseUid))
+      .first();
+
+    if (user === null) {
+      throw new Error("User not found.");
+    }
+
+    await ctx.db.patch(user._id, { phone: args.phone });
+
+    return { phone: args.phone };
+  }
+});
+
+export const getAgentApplicationStatus = query({
+  args: {
+    serviceSecret: v.string(),
+    firebaseUid: v.string()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_firebase_uid", (q) => q.eq("firebaseUid", args.firebaseUid))
+      .first();
+
+    if (user === null) {
+      return null;
+    }
+
+    const application = await ctx.db
+      .query("agentApplications")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
+
+    if (application === null) {
+      return null;
+    }
+
+    return {
+      status: application.status,
+      ...(application.paymentReference !== undefined
+        ? { paymentReference: application.paymentReference }
+        : {})
+    };
+  }
+});

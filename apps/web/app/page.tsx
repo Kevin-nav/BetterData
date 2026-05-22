@@ -835,7 +835,7 @@ export default function HomePage() {
             Get discounted rates on every bundle and earn commissions selling
             data to your community.
           </p>
-          <Link href="/agents/apply" className="btn btn-primary btn-lg">
+          <Link href="/agents" className="btn btn-primary btn-lg">
             Apply Now
           </Link>
         </div>

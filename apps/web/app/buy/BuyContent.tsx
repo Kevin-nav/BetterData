@@ -272,7 +272,8 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       try {
         setPackagesLoading(true);
         setPackageError("");
-        const data = await getApi().listDataPackages();
+        const token = await readAuthToken(getAuthHeaders);
+        const data = await getApi().listDataPackages(token ?? undefined);
         if (!controller.signal.aborted) setPackages(data.packages);
       } catch (err) {
         if (!controller.signal.aborted) setPackageError(readApiError(err, "Unable to load packages."));
@@ -282,7 +283,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     }
     void load();
     return () => controller.abort();
-  }, [loadKey]);
+  }, [getAuthHeaders, loadKey]);
 
   /* Auto-select first package when network changes */
   useEffect(() => {

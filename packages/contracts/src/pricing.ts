@@ -16,3 +16,8 @@ export type DiscountConfig = {
   agentOnboardingFeeGhs: number;
   paymentIntentExpirySeconds: number;
 };
+
+export type AgentPricingConfig = {
+  agentOnboardingFeeGhs: number;
+  agentDiscountPercentage: number;
+};

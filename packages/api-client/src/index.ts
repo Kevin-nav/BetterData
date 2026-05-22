@@ -7,7 +7,9 @@ import type {
   SavedNumber,
   WalletTransactionType,
   VendorOrderStatus,
-  Order
+  Order,
+  AgentPricingConfig,
+  AgentApplicationStatus
 } from "@betterdata/contracts";
 
 type FetchLike = typeof fetch;
@@ -127,7 +129,7 @@ export type UserProfile = SessionUser & {
 export type BetterDataApiClient = {
   createSession: (token: string) => Promise<SessionUser>;
   getMe: (token: string) => Promise<UserProfile>;
-  listDataPackages: () => Promise<ListDataPackagesResponse>;
+  listDataPackages: (token?: string) => Promise<ListDataPackagesResponse>;
   listOrders: (token: string) => Promise<ListOrdersResponse>;
   listSavedNumbers: (token: string) => Promise<ListSavedNumbersResponse>;
   saveSavedNumber: (
@@ -147,6 +149,9 @@ export type BetterDataApiClient = {
   ) => Promise<PaymentIntentStatusResponse>;
   getAdminOverview: () => Promise<AdminOverviewResponse>;
   listAdminOrders: () => Promise<AdminOrdersResponse>;
+  getAgentPricingConfig: () => Promise<AgentPricingConfig>;
+  updatePhone: (phone: string, token: string) => Promise<{ phone: string }>;
+  getMyAgentApplication: (token: string) => Promise<AgentApplicationStatus | null>;
 };
 
 export class ApiClientError extends Error {
@@ -215,7 +220,10 @@ export function createBetterDataApiClient(
       request<UserProfile>("/auth/me", {
         headers: { Authorization: `Bearer ${token}` }
       }),
-    listDataPackages: () => request<ListDataPackagesResponse>("/data-packages"),
+    listDataPackages: (token) =>
+      request<ListDataPackagesResponse>("/data-packages", {
+        ...(token !== undefined ? { headers: { Authorization: `Bearer ${token}` } } : {})
+      }),
     listOrders: (token) =>
       request<ListOrdersResponse>("/orders", {
         headers: { Authorization: `Bearer ${token}` }
@@ -260,7 +268,19 @@ export function createBetterDataApiClient(
         `/payments/intents/${encodeURIComponent(reference)}`
       ),
     getAdminOverview: () => request<AdminOverviewResponse>("/admin/overview"),
-    listAdminOrders: () => request<AdminOrdersResponse>("/admin/orders")
+    listAdminOrders: () => request<AdminOrdersResponse>("/admin/orders"),
+    getAgentPricingConfig: () =>
+      request<AgentPricingConfig>("/config/agent-pricing"),
+    updatePhone: (phone, token) =>
+      request<{ phone: string }>("/auth/me/phone", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ phone })
+      }),
+    getMyAgentApplication: (token) =>
+      request<AgentApplicationStatus | null>("/auth/me/agent-application", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
   };
 }
 
