@@ -1,6 +1,8 @@
 import type { OrderStore } from "../orders/orderStore";
+import type { OpsAlertInput } from "../ops/opsAlerts";
 import { incrementMetric } from "../observability/metrics";
 import { QUEUE_NAMES, type PurchaseJob, type QueueMessage, type QueueProvider } from "../queue";
+import { emitAppTelemetry } from "../telemetry/appTelemetry";
 import type { DataVendor } from "../vendors/types";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
 
@@ -10,6 +12,7 @@ export type PurchaseWorkerOptions = {
   vendor: DataVendor;
   maxAttempts?: number;
   retryDelayMs?: number;
+  createOpsAlert?: (alert: OpsAlertInput) => Promise<boolean>;
   logger?: Pick<Console, "error">;
 };
 
@@ -55,8 +58,22 @@ export async function processPurchaseMessage(
       await incrementMetric("purchase.success");
     } else if (result.status === "failed") {
       await incrementMetric("purchase.failure");
+      await reportFulfillmentTerminalStatus({
+        options,
+        job,
+        status: result.status,
+        vendorOrderReference: result.vendorOrderReference,
+        vendorRaw: result.raw
+      });
     } else if (result.status === "refunded") {
       await incrementMetric("purchase.refunded");
+      await reportFulfillmentTerminalStatus({
+        options,
+        job,
+        status: result.status,
+        vendorOrderReference: result.vendorOrderReference,
+        vendorRaw: result.raw
+      });
     } else {
       await incrementMetric("purchase.processing");
       await options.queue.enqueue(QUEUE_NAMES.statusRefresh, {
@@ -78,6 +95,16 @@ export async function processPurchaseMessage(
     }
 
     await incrementMetric("purchase.dead_letter");
+    emitAppTelemetry({
+      name: "data_purchase.worker_failed",
+      attributes: {
+        "order.reference": job.orderReference,
+        "vendor.id": job.vendorId,
+        "queue.attempts": message.attempts + 1
+      },
+      recipientPhone: job.recipientPhone,
+      error
+    });
     try {
       await options.orderStore.recordOrderFailure(job.orderReference, {
         status: "failed",
@@ -96,6 +123,21 @@ export async function processPurchaseMessage(
         "Purchase worker failed to persist terminal order failure"
       );
     }
+
+    await options.createOpsAlert?.({
+      severity: "critical",
+      category: "fulfillment",
+      reference: job.orderReference,
+      message: "Data purchase fulfillment failed before reaching the vendor.",
+      metadata: {
+        vendorId: job.vendorId,
+        packageId: job.packageId,
+        network: job.network,
+        workerError: serializeError(error)
+      },
+      retryable: true,
+      retryAction: "fulfill_order"
+    });
 
     await message.deadLetter(
       error instanceof Error ? error.message : "Unknown purchase worker failure."
@@ -130,4 +172,54 @@ function isRetryableVendorError(error: unknown) {
   }
 
   return false;
+}
+
+async function reportFulfillmentTerminalStatus(input: {
+  options: PurchaseWorkerOptions;
+  job: PurchaseJob;
+  status: "failed" | "refunded";
+  vendorOrderReference: string;
+  vendorRaw?: unknown;
+}) {
+  input.options.logger?.error(
+    {
+      orderReference: input.job.orderReference,
+      vendorId: input.job.vendorId,
+      vendorOrderReference: input.vendorOrderReference,
+      status: input.status
+    },
+    "Data purchase vendor returned terminal fulfillment status"
+  );
+
+  emitAppTelemetry({
+    name: "data_purchase.fulfillment_terminal",
+    attributes: {
+      "order.reference": input.job.orderReference,
+      "vendor.id": input.job.vendorId,
+      "vendor.order_reference": input.vendorOrderReference,
+      "fulfillment.status": input.status,
+      "package.id": input.job.packageId,
+      "network": input.job.network
+    },
+    recipientPhone: input.job.recipientPhone
+  });
+
+  await input.options.createOpsAlert?.({
+    severity: input.status === "failed" ? "critical" : "warning",
+    category: "fulfillment",
+    reference: input.job.orderReference,
+    message:
+      input.status === "failed"
+        ? "Paid data purchase failed at the vendor and needs refund or manual fulfillment review."
+        : "Paid data purchase was refunded by the vendor and needs customer credit/refund review.",
+    metadata: {
+      vendorId: input.job.vendorId,
+      vendorOrderReference: input.vendorOrderReference,
+      packageId: input.job.packageId,
+      network: input.job.network,
+      vendorRaw: input.vendorRaw
+    },
+    retryable: input.status === "failed",
+    ...(input.status === "failed" ? { retryAction: "fulfill_order" as const } : {})
+  });
 }

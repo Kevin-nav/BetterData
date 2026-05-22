@@ -32,6 +32,7 @@ const NETWORK_NAMES: Record<NetworkCode, string> = {
 };
 
 const DATA_MB_PER_GB = 1000;
+const SUPPORT_EMAIL = "support@betterdatagh.com";
 
 type ReceiptState = {
   reference: string;
@@ -179,6 +180,11 @@ function ConfirmationContent() {
         <button className="btn btn--primary" onClick={() => router.push("/buy")} style={{ width: "100%" }}>
           Purchase More Data
         </button>
+        {pageState.kind === "failed" && receipt.paymentStatus === "succeeded" && (
+          <a className="btn btn--outline" href={buildSupportHref(receipt)} style={{ width: "100%" }}>
+            Contact Support
+          </a>
+        )}
         <button className="btn btn--outline" onClick={() => window.print()} style={{ width: "100%" }}>
           Print Receipt
         </button>
@@ -263,7 +269,7 @@ function resolvePageState(receipt: ReceiptState | null) {
     return {
       kind: "failed" as const,
       title: "Delivery Needs Attention",
-      subtitle: "Your payment was confirmed, but fulfillment did not complete automatically."
+      subtitle: "Your payment was confirmed, but delivery did not complete. Please contact support with this reference before paying again."
     };
   }
 
@@ -309,6 +315,21 @@ function formatStatus(status: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function buildSupportHref(receipt: ReceiptState) {
+  const subject = `Delivery issue for ${receipt.reference}`;
+  const body = [
+    `Reference: ${receipt.reference}`,
+    `Payment: ${formatStatus(receipt.paymentStatus)}`,
+    `Delivery: ${formatStatus(receipt.deliveryStatus)}`,
+    `Network: ${receipt.network ? NETWORK_NAMES[receipt.network] : "Pending"}`,
+    `Package: ${receipt.sizeMb ? formatPackageSize(receipt.sizeMb) : "Data bundle"}`,
+    `Recipient: ${receipt.recipientPhone ?? "Pending"}`,
+    `Amount: ${formatGhs(receipt.amountGhs)}`
+  ].join("\n");
+
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function readApiError(error: unknown, fallback: string) {

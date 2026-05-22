@@ -75,6 +75,67 @@ assert.equal(await queue.getDepth(QUEUE_NAMES.statusRefresh), 1);
 
 await stop();
 
+const terminalQueue = createLocalQueueProvider();
+const terminalOrderStore = createMemoryOrderStore();
+const terminalOrder = await terminalOrderStore.createIntent({
+  body: {
+    packageId: "datamart:yello-1gb",
+    network: "mtn",
+    recipientPhone: "0557654321",
+    confirmRecipientIsCorrect: true,
+    paymentMethod: "paystack_momo"
+  },
+  vendor,
+  idempotencyKey: "idem-terminal-vendor"
+});
+const terminalAlerts: Array<{
+  reference: string | undefined;
+  retryAction: string | undefined;
+  retryable: boolean | undefined;
+}> = [];
+const terminalStop = await startPurchaseWorker({
+  queue: terminalQueue,
+  orderStore: terminalOrderStore,
+  vendor: {
+    ...vendor,
+    async purchase(input) {
+      return {
+        vendorOrderReference: `GN-${input.idempotencyKey}`,
+        status: "failed",
+        raw: { status: "failed", reason: "vendor rejected order" }
+      };
+    }
+  },
+  async createOpsAlert(alert) {
+    terminalAlerts.push({
+      reference: alert.reference,
+      retryAction: alert.retryAction,
+      retryable: alert.retryable
+    });
+    return true;
+  },
+  logger: { error() {} }
+});
+await terminalQueue.enqueue(QUEUE_NAMES.purchaseRequested, {
+  ...job,
+  orderReference: terminalOrder.reference,
+  packageId: terminalOrder.packageId,
+  idempotencyKey: terminalOrder.idempotencyKey
+});
+const terminalFailed = await waitForOrder(
+  terminalOrderStore,
+  terminalOrder.reference,
+  (current) => current?.status === "failed"
+);
+assert.equal(terminalFailed?.status, "failed");
+await waitForCondition(() => terminalAlerts.length === 1);
+assert.deepEqual(terminalAlerts[0], {
+  reference: terminalOrder.reference,
+  retryAction: "fulfill_order",
+  retryable: true
+});
+await terminalStop();
+
 const alreadyFulfilledOrderStore = createMemoryOrderStore();
 const alreadyFulfilledOrder = await alreadyFulfilledOrderStore.createIntent({
   body: {

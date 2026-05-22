@@ -85,6 +85,42 @@ await waitFor(
 );
 await stopRetry();
 
+const failedStatusQueue = createLocalQueueProvider();
+const failedStatusAlerts: Array<{
+  reference: string | undefined;
+  retryAction: string | undefined;
+  retryable: boolean | undefined;
+}> = [];
+const failedStatusVendor: DataVendor = {
+  ...vendor,
+  async getOrderStatus() {
+    return "failed";
+  }
+};
+const stopFailedStatus = await startStatusWorker({
+  queue: failedStatusQueue,
+  orderStore,
+  vendor: failedStatusVendor,
+  async createOpsAlert(alert) {
+    failedStatusAlerts.push({
+      reference: alert.reference,
+      retryAction: alert.retryAction,
+      retryable: alert.retryable
+    });
+    return true;
+  },
+  logger: { error() {} }
+});
+await failedStatusQueue.enqueue(QUEUE_NAMES.statusRefresh, job);
+await waitForOrder(order.reference, (current) => current?.status === "failed");
+await waitFor(() => failedStatusAlerts.length === 1);
+assert.deepEqual(failedStatusAlerts[0], {
+  reference: order.reference,
+  retryAction: "fulfill_order",
+  retryable: true
+});
+await stopFailedStatus();
+
 const deadQueue = createLocalQueueProvider();
 const deadVendor: DataVendor = {
   ...vendor,

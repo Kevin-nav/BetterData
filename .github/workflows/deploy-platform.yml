@@ -290,6 +290,7 @@ jobs:
           PAYSTACK_PUBLIC_KEY
           RESEND_API_KEY
           SUPPORT_EMAIL
+          HONEYCOMB_API_KEY
           TELEMETRY_HASH_SECRET
           DATAMART_API_KEY
           "

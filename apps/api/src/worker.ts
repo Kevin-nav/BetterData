@@ -1,6 +1,9 @@
 import { createOrderStore } from "./orders/orderStore";
 import { configureMetricsFromEnv } from "./observability/metrics";
 import { createQueueProvider } from "./queue";
+import { createOpsAlertSafely } from "./ops/opsAlerts";
+import { emitAppTelemetry } from "./telemetry/appTelemetry";
+import { setupTelemetry, shutdownTelemetry } from "./telemetry/setup";
 import { getActiveDataVendor } from "./vendors/activeVendor";
 import { startPurchaseWorker } from "./workers/purchaseWorker";
 import { startStatusWorker } from "./workers/statusWorker";
@@ -25,6 +28,15 @@ try {
 }
 
 async function bootstrapWorker() {
+  await setupTelemetry({ serviceName: "betterdata-worker" });
+  emitAppTelemetry({
+    name: "worker.startup",
+    attributes: {
+      "service.name": "betterdata-worker",
+      "deployment.environment": process.env.NODE_ENV ?? "unknown"
+    }
+  });
+
   configureMetricsFromEnv();
 
   const queue = await createQueueProvider();
@@ -44,9 +56,16 @@ async function bootstrapWorker() {
     queue,
     orderStore,
     vendor,
+    createOpsAlert: createOpsAlertSafely,
     logger
   });
-  const stopStatusWorker = await startStatusWorker({ queue, orderStore, vendor });
+  const stopStatusWorker = await startStatusWorker({
+    queue,
+    orderStore,
+    vendor,
+    createOpsAlert: createOpsAlertSafely,
+    logger
+  });
 
   process.once("SIGINT", () => {
     void shutdown(0, "Worker received SIGINT");
@@ -66,6 +85,7 @@ async function bootstrapWorker() {
     await stopPurchaseWorker();
     await cleanupTarget("queue", queue as ShutdownTarget);
     await cleanupTarget("orderStore", orderStore as ShutdownTarget);
+    await shutdownTelemetry();
   };
 }
 

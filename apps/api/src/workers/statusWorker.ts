@@ -1,5 +1,7 @@
 import type { OrderStore } from "../orders/orderStore";
+import type { OpsAlertInput } from "../ops/opsAlerts";
 import { QUEUE_NAMES, type QueueProvider, type StatusRefreshJob } from "../queue";
+import { emitAppTelemetry } from "../telemetry/appTelemetry";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
 import type { DataVendor } from "../vendors/types";
 
@@ -9,6 +11,8 @@ export async function startStatusWorker(options: {
   vendor: DataVendor;
   maxAttempts?: number;
   retryDelayMs?: number;
+  createOpsAlert?: (alert: OpsAlertInput) => Promise<boolean>;
+  logger?: Pick<Console, "error">;
 }) {
   const maxAttempts = options.maxAttempts ?? 48;
   const retryDelayMs = options.retryDelayMs ?? 5 * 60_000;
@@ -31,12 +35,41 @@ export async function startStatusWorker(options: {
           return;
         }
 
+        if (status === "failed" || status === "refunded") {
+          await reportStatusRefreshTerminalStatus({
+            options,
+            job: message.job,
+            status
+          });
+        }
+
         await message.ack();
       } catch (error) {
         if (isRetryableVendorError(error) && message.attempts + 1 < maxAttempts) {
           await message.retry(retryDelayMs);
           return;
         }
+
+        emitAppTelemetry({
+          name: "data_purchase.status_refresh_failed",
+          attributes: {
+            "order.reference": message.job.orderReference,
+            "vendor.id": message.job.vendorId,
+            "vendor.order_reference": message.job.vendorOrderReference,
+            "queue.attempts": message.attempts + 1
+          },
+          error
+        });
+
+        options.logger?.error(
+          {
+            error,
+            orderReference: message.job.orderReference,
+            vendorId: message.job.vendorId,
+            vendorOrderReference: message.job.vendorOrderReference
+          },
+          "Status refresh worker failed terminally"
+        );
 
         await message.deadLetter(
           error instanceof Error
@@ -62,4 +95,49 @@ function isRetryableVendorError(error: unknown) {
   }
 
   return false;
+}
+
+async function reportStatusRefreshTerminalStatus(input: {
+  options: {
+    createOpsAlert?: (alert: OpsAlertInput) => Promise<boolean>;
+    logger?: Pick<Console, "error">;
+  };
+  job: StatusRefreshJob;
+  status: "failed" | "refunded";
+}) {
+  input.options.logger?.error(
+    {
+      orderReference: input.job.orderReference,
+      vendorId: input.job.vendorId,
+      vendorOrderReference: input.job.vendorOrderReference,
+      status: input.status
+    },
+    "Data purchase status refresh returned terminal fulfillment status"
+  );
+
+  emitAppTelemetry({
+    name: "data_purchase.status_refresh_terminal",
+    attributes: {
+      "order.reference": input.job.orderReference,
+      "vendor.id": input.job.vendorId,
+      "vendor.order_reference": input.job.vendorOrderReference,
+      "fulfillment.status": input.status
+    }
+  });
+
+  await input.options.createOpsAlert?.({
+    severity: input.status === "failed" ? "critical" : "warning",
+    category: "fulfillment",
+    reference: input.job.orderReference,
+    message:
+      input.status === "failed"
+        ? "Paid data purchase later failed at the vendor and needs refund or manual fulfillment review."
+        : "Paid data purchase was later refunded by the vendor and needs customer credit/refund review.",
+    metadata: {
+      vendorId: input.job.vendorId,
+      vendorOrderReference: input.job.vendorOrderReference
+    },
+    retryable: input.status === "failed",
+    ...(input.status === "failed" ? { retryAction: "fulfill_order" as const } : {})
+  });
 }

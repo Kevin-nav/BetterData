@@ -17,9 +17,17 @@ import { registerPaymentRoutes } from "./modules/payments/payments.routes";
 import { registerSavedNumberRoutes } from "./modules/saved-numbers/savedNumbers.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
 import { configureMetricsFromEnv } from "./observability/metrics";
+import { emitAppTelemetry } from "./telemetry/appTelemetry";
 import { setupTelemetry, shutdownTelemetry } from "./telemetry/setup";
 
-await setupTelemetry();
+await setupTelemetry({ serviceName: "betterdata-api" });
+emitAppTelemetry({
+  name: "app.startup",
+  attributes: {
+    "service.name": "betterdata-api",
+    "deployment.environment": process.env.NODE_ENV ?? "unknown"
+  }
+});
 
 const server = Fastify({
   logger: true
