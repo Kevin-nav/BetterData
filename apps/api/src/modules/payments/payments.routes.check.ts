@@ -21,6 +21,19 @@ assert.equal(job.packageId, "dm_123");
 assert.equal(job.paymentMethod, "paystack_momo");
 assert.equal(job.attempt, 0);
 
+const retryJob = buildPaidDataPurchaseJob({
+  providerReference: "BDP_data_purchase_123",
+  packageId: "pkg_123",
+  vendorPackageId: "dm_123",
+  network: "mtn",
+  recipientPhone: "0551234567",
+  vendorId: "datamart",
+  idempotencyKey: "BDP_data_purchase_123:retry:1"
+});
+
+assert.equal(retryJob.orderReference, "BDP_data_purchase_123");
+assert.equal(retryJob.idempotencyKey, "BDP_data_purchase_123:retry:1");
+
 const jobFromIntent = buildPaidDataPurchaseJobFromIntent("BDP_ref", {
   purpose: "data_purchase",
   providerReference: "BDP_ref",
@@ -35,6 +48,24 @@ const jobFromIntent = buildPaidDataPurchaseJobFromIntent("BDP_ref", {
 
 assert.equal(jobFromIntent?.vendorId, "datamart");
 assert.equal(jobFromIntent?.packageId, "dm_123");
+
+const retryJobFromIntent = buildPaidDataPurchaseJobFromIntent(
+  "BDP_ref",
+  {
+    purpose: "data_purchase",
+    providerReference: "BDP_ref",
+    purposeMetadata: {
+      packageId: "pkg_123",
+      vendorPackageId: "dm_123",
+      network: "mtn",
+      recipientPhone: "0551234567",
+      vendorId: "datamart"
+    }
+  },
+  { idempotencyKey: "BDP_ref:retry:2" }
+);
+
+assert.equal(retryJobFromIntent?.idempotencyKey, "BDP_ref:retry:2");
 
 assert.equal(
   buildPaidDataPurchaseJobFromIntent("BDP_wallet", {

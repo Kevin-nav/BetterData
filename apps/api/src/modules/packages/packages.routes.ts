@@ -47,30 +47,33 @@ export async function registerPackageRoutes(server: FastifyInstance) {
       const packages = await vendor.listPackages();
       const pricingContext = await getPricingContextForApi(request.log);
       const user = await getOptionalRequestUserSafely(request, request.log);
+      const apiPackages = packages.map(
+        (item): DataPackage => ({
+          id: `${vendor.id}:${item.vendorPackageId}`,
+          vendorId: vendor.id,
+          vendorPackageId: item.vendorPackageId,
+          network: item.network,
+          name: item.name,
+          sizeMb: item.sizeMb,
+          costGhs: item.costGhs,
+          customerPriceGhs: resolveVendorPackageCustomerPriceGhs(
+            vendor.id,
+            item,
+            pricingContext,
+            { applyAgentDiscount: user?.role === "agent" }
+          ),
+          isAvailable: item.isAvailable
+        })
+      ).sort(compareDataPackages);
+
+      await syncVendorPackagesForFinancials(vendor.id, apiPackages, request.log);
 
       return {
         vendor: {
           id: vendor.id,
           displayName: vendor.displayName
         },
-        packages: packages.map(
-          (item): DataPackage => ({
-            id: `${vendor.id}:${item.vendorPackageId}`,
-            vendorId: vendor.id,
-            vendorPackageId: item.vendorPackageId,
-            network: item.network,
-            name: item.name,
-            sizeMb: item.sizeMb,
-            costGhs: item.costGhs,
-            customerPriceGhs: resolveVendorPackageCustomerPriceGhs(
-              vendor.id,
-              item,
-              pricingContext,
-              { applyAgentDiscount: user?.role === "agent" }
-            ),
-            isAvailable: item.isAvailable
-          })
-        ).sort(compareDataPackages)
+        packages: apiPackages
       };
     } catch (error) {
       request.log.error({ error, vendorId: vendor.id }, "Vendor package listing failed");
@@ -99,6 +102,39 @@ export async function registerPackageRoutes(server: FastifyInstance) {
       });
     }
   });
+}
+
+async function syncVendorPackagesForFinancials(
+  vendorId: string,
+  packages: DataPackage[],
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void }
+) {
+  if (!process.env.CONVEX_URL || !process.env.BETTERDATA_SERVICE_SECRET) {
+    return;
+  }
+
+  try {
+    const upsertFromVendorForApi = makeFunctionReference<"mutation">(
+      "packages:upsertFromVendorForApi"
+    );
+    const convex = createConvexHttpClient();
+
+    await convex.mutation(upsertFromVendorForApi, {
+      serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+      vendorId,
+      packages: packages.map((pkg) => ({
+        vendorPackageId: pkg.vendorPackageId,
+        network: pkg.network,
+        name: pkg.name,
+        sizeMb: pkg.sizeMb,
+        providerCostGhs: pkg.costGhs,
+        customerPriceGhs: pkg.customerPriceGhs,
+        isAvailable: pkg.isAvailable
+      }))
+    });
+  } catch (error) {
+    log.warn({ error, vendorId }, "Unable to sync vendor packages for financial snapshots");
+  }
 }
 
 export function resolveVendorPackageCustomerPriceGhs(

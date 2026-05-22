@@ -474,7 +474,9 @@ async function processRetryAlert(
         await verifyAndCompletePayment(convex, queue, alert.reference);
         break;
       case "fulfill_order":
-        await enqueuePaidDataPurchaseFulfillment(convex, queue, alert.reference);
+        await enqueuePaidDataPurchaseFulfillment(convex, queue, alert.reference, {
+          idempotencyKey: `${alert.reference}:retry:${alert.retryCount + 1}:${Date.now()}`
+        });
         break;
       case "credit_wallet":
         await creditWalletHandler(convex, queue, alert.reference);
@@ -564,7 +566,8 @@ async function verifyAndCompletePayment(
 async function enqueuePaidDataPurchaseFulfillment(
   convex: ConvexHttpClient,
   queue: QueueProvider,
-  providerReference: string
+  providerReference: string,
+  options: { idempotencyKey?: string } = {}
 ) {
   const intent = (await convex.query(paymentFunctions.getByProviderReference, {
     ...serviceArgs(),
@@ -575,7 +578,7 @@ async function enqueuePaidDataPurchaseFulfillment(
     throw new Error("Payment intent not found for queued fulfillment.");
   }
 
-  const job = buildPaidDataPurchaseJobFromIntent(providerReference, intent);
+  const job = buildPaidDataPurchaseJobFromIntent(providerReference, intent, options);
 
   if (job === null) {
     return;
@@ -591,6 +594,7 @@ export function buildPaidDataPurchaseJob(input: {
   network: PurchaseJob["network"];
   recipientPhone: string;
   vendorId: string;
+  idempotencyKey?: string;
 }): PurchaseJob {
   return {
     kind: "purchase",
@@ -600,7 +604,7 @@ export function buildPaidDataPurchaseJob(input: {
     recipientPhone: input.recipientPhone,
     paymentMethod: "paystack_momo",
     vendorId: input.vendorId,
-    idempotencyKey: input.providerReference,
+    idempotencyKey: input.idempotencyKey ?? input.providerReference,
     attempt: 0,
     createdAt: new Date().toISOString()
   };
@@ -608,7 +612,8 @@ export function buildPaidDataPurchaseJob(input: {
 
 export function buildPaidDataPurchaseJobFromIntent(
   providerReference: string,
-  intent: PaymentIntentRecord
+  intent: PaymentIntentRecord,
+  options: { idempotencyKey?: string } = {}
 ) {
   if (intent.purpose !== "data_purchase") {
     return null;
@@ -636,7 +641,8 @@ export function buildPaidDataPurchaseJobFromIntent(
     ...(typeof vendorPackageId === "string" ? { vendorPackageId } : {}),
     vendorId,
     network,
-    recipientPhone
+    recipientPhone,
+    ...(options.idempotencyKey !== undefined ? { idempotencyKey: options.idempotencyKey } : {})
   });
 }
 

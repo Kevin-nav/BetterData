@@ -291,6 +291,8 @@ jobs:
           RESEND_API_KEY
           SUPPORT_EMAIL
           HONEYCOMB_API_KEY
+          HONEYCOMB_CONFIG_API_KEY
+          HONEYCOMB_ALERT_EMAIL
           TELEMETRY_HASH_SECRET
           DATAMART_API_KEY
           "
@@ -304,6 +306,18 @@ jobs:
             echo "Missing required production API secret keys in Infisical: $missing_keys" >&2
             exit 1
           fi
+          read_env() {
+            grep -E "^$1=" api.clean.env | head -n 1 | cut -d= -f2-
+          }
+          prod_convex_url="$(read_env CONVEX_URL | sed 's#/*$##')"
+          honeycomb_dataset="$(read_env HONEYCOMB_DATASET)"
+          honeycomb_config_key="$(read_env HONEYCOMB_CONFIG_API_KEY)"
+          honeycomb_alert_email="$(read_env HONEYCOMB_ALERT_EMAIL)"
+          echo "::add-mask::$honeycomb_config_key"
+          echo "NEXT_PUBLIC_CONVEX_URL=$prod_convex_url" >> "$GITHUB_ENV"
+          echo "HONEYCOMB_DATASET=${honeycomb_dataset:-betterdata-prod}" >> "$GITHUB_ENV"
+          echo "HONEYCOMB_CONFIG_API_KEY=$honeycomb_config_key" >> "$GITHUB_ENV"
+          echo "HONEYCOMB_ALERT_EMAIL=$honeycomb_alert_email" >> "$GITHUB_ENV"
 
       - name: Capture current deployment images
         id: current-images
@@ -413,6 +427,9 @@ jobs:
             --docker-username="$username" \
             --docker-password="$token" \
             --dry-run=client -o yaml | sudo -n kubectl apply -f -
+
+      - name: Bootstrap Honeycomb alert recipients
+        run: node scripts/ops/bootstrap-honeycomb-alerts.mjs
 
       - name: Apply target manifests and verify rollout
         id: deploy-images

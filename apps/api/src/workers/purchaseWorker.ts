@@ -36,7 +36,11 @@ export async function processPurchaseMessage(
   try {
     const existing = await options.orderStore.getByReference(job.orderReference);
 
-    if (existing?.vendorOrderReference !== undefined) {
+    if (
+      existing?.vendorOrderReference !== undefined &&
+      existing.status !== "failed" &&
+      existing.status !== "refunded"
+    ) {
       await message.ack();
       return;
     }
