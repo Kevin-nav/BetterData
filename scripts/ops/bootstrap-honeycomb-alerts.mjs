@@ -25,7 +25,11 @@ async function ensureEmailRecipient(email) {
   const recipients = await honeycomb("GET", "/1/recipients");
   const existing = recipients.find((recipient) =>
     recipient.type === "email" &&
-    (recipient.target === email || recipient.details?.email === email)
+    (
+      recipient.target === email ||
+      recipient.details?.email === email ||
+      recipient.details?.email_address === email
+    )
   );
 
   if (existing) {
@@ -34,8 +38,7 @@ async function ensureEmailRecipient(email) {
 
   return await honeycomb("POST", "/1/recipients", {
     type: "email",
-    target: email,
-    details: { email }
+    details: { email_address: email }
   });
 }
 
