@@ -153,7 +153,7 @@ export default function AdminDashboardPage() {
           label="Daily Sales"
           value={revenue ? formatGhs(revenue.daily.revenue) : "..."}
           secondaryValue={revenue ? `Profit ${formatGhs(revenue.daily.profit)}` : undefined}
-          caption={revenue ? `${revenue.daily.orderCount} completed orders` : "Last 24 hours"}
+          caption={revenue ? `${revenue.daily.orderCount} paid orders` : "Last 24 hours"}
           tone="default"
         />
         <MetricCard

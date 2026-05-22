@@ -90,16 +90,16 @@ async function calculateRevenue(ctx: QueryCtx | MutationCtx) {
   const twoMonthsAgo = now - 60 * DAY_MS;
   const ninetyDaysAgo = now - 90 * DAY_MS;
 
-  const completedOrders = await ctx.db
+  const paidOrders = await ctx.db
     .query("orders")
-    .withIndex("by_status", (q) => q.eq("status", "completed"))
+    .withIndex("by_payment_status", (q) => q.eq("paymentStatus", "verified"))
     .filter((q) => q.gt(q.field("_creationTime"), ninetyDaysAgo))
     .collect();
 
   const packageCostCache = new Map<string, number | null>();
   const financialOrders: FinancialOrder[] = [];
 
-  for (const order of completedOrders) {
+  for (const order of paidOrders) {
     const snapshot = await resolveOrderFinancials(ctx, order, packageCostCache);
     financialOrders.push(snapshot);
   }
@@ -156,7 +156,7 @@ async function resolveOrderFinancials(
     };
   }
 
-  const packageCost = await getPackageCost(ctx, order.packageId, packageCostCache);
+  const packageCost = await getPackageCost(ctx, order, packageCostCache);
 
   if (packageCost === null) {
     return {
@@ -179,22 +179,54 @@ async function resolveOrderFinancials(
 
 async function getPackageCost(
   ctx: QueryCtx | MutationCtx,
-  packageId: string,
+  order: Doc<"orders">,
   packageCostCache: Map<string, number | null>
 ) {
-  if (packageCostCache.has(packageId)) {
-    return packageCostCache.get(packageId) ?? null;
+  const cacheKey = packageCostCacheKey(order);
+
+  if (packageCostCache.has(cacheKey)) {
+    return packageCostCache.get(cacheKey) ?? null;
+  }
+
+  const vendorPackageId =
+    order.vendorPackageId ?? vendorPackageIdFromScopedPackageId(order.packageId);
+
+  if (vendorPackageId !== undefined) {
+    const dataPackage = await ctx.db
+      .query("dataPackages")
+      .withIndex("by_vendor_package_id", (q) =>
+        q.eq("vendorId", order.vendorId).eq("vendorPackageId", vendorPackageId)
+      )
+      .first();
+    const cost = dataPackage?.providerCostGhs ?? null;
+
+    if (cost !== null) {
+      packageCostCache.set(cacheKey, cost);
+      return cost;
+    }
   }
 
   try {
-    const dataPackage = await ctx.db.get(packageId as Id<"dataPackages">);
+    const dataPackage = await ctx.db.get(order.packageId as Id<"dataPackages">);
     const cost = dataPackage?.providerCostGhs ?? null;
-    packageCostCache.set(packageId, cost);
+    packageCostCache.set(cacheKey, cost);
     return cost;
   } catch {
-    packageCostCache.set(packageId, null);
+    packageCostCache.set(cacheKey, null);
     return null;
   }
+}
+
+function packageCostCacheKey(order: Doc<"orders">) {
+  return `${order.vendorId}:${order.vendorPackageId ?? order.packageId}`;
+}
+
+function vendorPackageIdFromScopedPackageId(packageId: string) {
+  if (!packageId.includes(":")) {
+    return undefined;
+  }
+
+  return packageId.split(":").at(-1);
 }
 
 function summarizeWindow(
@@ -309,7 +341,7 @@ export const backfillOrdersFinancials = mutation({
         continue;
       }
 
-      const packageCost = await getPackageCost(ctx, order.packageId, packageCostCache);
+      const packageCost = await getPackageCost(ctx, order, packageCostCache);
 
       if (packageCost === null) {
         missingPackageCostCount += 1;

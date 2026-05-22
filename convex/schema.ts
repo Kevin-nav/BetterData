@@ -81,6 +81,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_paystack_reference", ["paystackReference"])
     .index("by_vendor_order_reference", ["vendorId", "vendorOrderReference"])
+    .index("by_payment_status", ["paymentStatus"])
     .index("by_status", ["status"]),
 
   paymentIntents: defineTable({
