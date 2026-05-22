@@ -37,6 +37,10 @@ import {
   type ResolvedRequestUser
 } from "../auth/requestUser";
 import { normalizeGhanaPhoneNumber } from "../orders/orderValidation";
+import {
+  getPricingContextForApi,
+  resolveVendorPackageCustomerPriceGhs
+} from "../packages/packages.routes";
 import { getNextRetryAt, isFinalRetryFailure } from "./retryPolicy";
 
 declare module "fastify" {
@@ -656,7 +660,11 @@ async function buildConvexPaymentIntentRequest(
     throw new Error("A valid Ghana recipient phone number is required.");
   }
 
-  const selectedPackage = await resolveDataPurchasePackage(body.packageId, body.network);
+  const selectedPackage = await resolveDataPurchasePackage(
+    body.packageId,
+    body.network,
+    user?.role === "agent"
+  );
 
   return {
     purpose: body.purpose,
@@ -677,7 +685,8 @@ async function buildConvexPaymentIntentRequest(
 
 async function resolveDataPurchasePackage(
   packageId: string,
-  network: "mtn" | "telecel" | "airteltigo"
+  network: "mtn" | "telecel" | "airteltigo",
+  applyAgentDiscount = false
 ) {
   const vendor = getActiveDataVendor();
   const packages = await vendor.listPackages();
@@ -700,13 +709,25 @@ async function resolveDataPurchasePackage(
   }
 
   await ensureVendorBalanceCanCoverPurchase(vendor, selected.costGhs);
+  const pricingContext = await getPricingContextForApi();
+
+  if (pricingContext === null) {
+    throw new Error("Pricing configuration is temporarily unavailable.");
+  }
+
+  const amountGhs = resolveVendorPackageCustomerPriceGhs(
+    vendor.id,
+    selected,
+    pricingContext,
+    { applyAgentDiscount }
+  );
 
   return {
     packageId: `${vendor.id}:${selected.vendorPackageId}`,
     vendorId: vendor.id,
     vendorPackageId: selected.vendorPackageId,
     network: selected.network,
-    amountGhs: Math.round(selected.costGhs * 100) / 100,
+    amountGhs,
     sizeMb: selected.sizeMb
   };
 }

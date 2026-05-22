@@ -1,9 +1,11 @@
-import type { DataPackage } from "@betterdata/contracts";
+import type { DataPackage, VendorPackage } from "@betterdata/contracts";
 import { getRequiredEnv } from "@betterdata/config";
 import { makeFunctionReference } from "convex/server";
 import type { FastifyInstance } from "fastify";
+import type { FastifyRequest } from "fastify";
 
 import { createConvexHttpClient } from "../../convexClient";
+import { getOptionalRequestUser } from "../auth/requestUser";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
 import { mapVendorErrorToHttp } from "../../vendors/errors";
 
@@ -19,12 +21,32 @@ type ConvexPackageRecord = {
   isAvailable: boolean;
 };
 
+export type ApiPricingRule = {
+  _id: string;
+  packageId?: string;
+  mode: "percentage" | "fixed";
+  value: number;
+  isGlobal: boolean;
+};
+
+export type ApiPricingContext = {
+  packages: Array<{
+    _id: string;
+    vendorId: string;
+    vendorPackageId: string;
+  }>;
+  pricingRules: ApiPricingRule[];
+  agentDiscountPercentage: number;
+};
+
 export async function registerPackageRoutes(server: FastifyInstance) {
   server.get("/data-packages", async (request, reply) => {
     const vendor = getActiveDataVendor();
 
     try {
       const packages = await vendor.listPackages();
+      const pricingContext = await getPricingContextForApi(request.log);
+      const user = await getOptionalRequestUserSafely(request, request.log);
 
       return {
         vendor: {
@@ -40,7 +62,12 @@ export async function registerPackageRoutes(server: FastifyInstance) {
             name: item.name,
             sizeMb: item.sizeMb,
             costGhs: item.costGhs,
-            customerPriceGhs: item.costGhs,
+            customerPriceGhs: resolveVendorPackageCustomerPriceGhs(
+              vendor.id,
+              item,
+              pricingContext,
+              { applyAgentDiscount: user?.role === "agent" }
+            ),
             isAvailable: item.isAvailable
           })
         ).sort(compareDataPackages)
@@ -74,6 +101,47 @@ export async function registerPackageRoutes(server: FastifyInstance) {
   });
 }
 
+export function resolveVendorPackageCustomerPriceGhs(
+  vendorId: string,
+  item: Pick<VendorPackage, "vendorPackageId" | "costGhs">,
+  pricingContext: ApiPricingContext | null,
+  options: { applyAgentDiscount?: boolean } = {}
+) {
+  const baseCost = item.costGhs;
+
+  if (pricingContext === null) {
+    return roundGhs(baseCost);
+  }
+
+  const packageRecord = pricingContext.packages.find(
+    (pkg) => pkg.vendorId === vendorId && pkg.vendorPackageId === item.vendorPackageId
+  );
+  const packageRule =
+    packageRecord === undefined
+      ? undefined
+      : pricingContext.pricingRules.find(
+          (rule) => !rule.isGlobal && rule.packageId === packageRecord._id
+        );
+  const globalRule = pricingContext.pricingRules.find((rule) => rule.isGlobal);
+  const rule = packageRule ?? globalRule;
+
+  if (rule === undefined) {
+    return roundGhs(baseCost);
+  }
+
+  const computed =
+    rule.mode === "percentage"
+      ? baseCost * (1 + rule.value / 100)
+      : baseCost + rule.value;
+
+  const agentDiscountPercentage = options.applyAgentDiscount
+    ? pricingContext.agentDiscountPercentage
+    : 0;
+  const discounted = computed * (1 - agentDiscountPercentage / 100);
+
+  return roundGhs(Math.max(discounted, 0));
+}
+
 function compareDataPackages(a: DataPackage, b: DataPackage) {
   const networkOrder: Record<DataPackage["network"], number> = {
     mtn: 0,
@@ -85,7 +153,8 @@ function compareDataPackages(a: DataPackage, b: DataPackage) {
 }
 
 export function mapConvexFallbackPackages(
-  packages: ConvexPackageRecord[]
+  packages: ConvexPackageRecord[],
+  pricingContext: ApiPricingContext | null = null
 ): DataPackage[] {
   return packages.map((item) => ({
     id: item._id,
@@ -95,7 +164,17 @@ export function mapConvexFallbackPackages(
     name: item.name,
     sizeMb: item.sizeMb,
     costGhs: item.providerCostGhs,
-    customerPriceGhs: item.customerPriceGhs,
+    customerPriceGhs:
+      pricingContext === null
+        ? item.customerPriceGhs
+        : resolveVendorPackageCustomerPriceGhs(
+            item.vendorId,
+            {
+              vendorPackageId: item.vendorPackageId,
+              costGhs: item.providerCostGhs
+            },
+            pricingContext
+          ),
     isAvailable: item.isAvailable
   })).sort(compareDataPackages);
 }
@@ -112,6 +191,45 @@ async function listConvexPackageFallback() {
   const packages = (await convex.query(listAvailableForApi, {
     serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
   })) as ConvexPackageRecord[];
+  const pricingContext = await getPricingContextForApi();
 
-  return mapConvexFallbackPackages(packages);
+  return mapConvexFallbackPackages(packages, pricingContext);
+}
+
+export async function getPricingContextForApi(log?: {
+  warn: (obj: Record<string, unknown>, msg: string) => void;
+}) {
+  if (!process.env.CONVEX_URL || !process.env.BETTERDATA_SERVICE_SECRET) {
+    return null;
+  }
+
+  try {
+    const getPricingContext = makeFunctionReference<"query">(
+      "packages:getPricingContextForApi"
+    );
+    const convex = createConvexHttpClient();
+
+    return (await convex.query(getPricingContext, {
+      serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
+    })) as ApiPricingContext;
+  } catch (error) {
+    log?.warn({ error }, "Convex pricing context unavailable; using vendor base prices");
+    return null;
+  }
+}
+
+function roundGhs(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+async function getOptionalRequestUserSafely(
+  request: FastifyRequest,
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void }
+) {
+  try {
+    return await getOptionalRequestUser(request, createConvexHttpClient());
+  } catch (error) {
+    log.warn({ error }, "Unable to resolve optional package-listing user; using public prices");
+    return null;
+  }
 }
