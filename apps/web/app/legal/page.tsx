@@ -2,9 +2,26 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Legal | Better Data",
+  title: "Legal, Privacy Policy, and Terms",
   description:
-    "Terms and conditions, privacy policy, and cookie notice for Better Data.",
+    "Read Better Data's terms and conditions, privacy policy, cookie notice, refund guidance, and platform rules for mobile data bundle purchases in Ghana.",
+  alternates: {
+    canonical: "/legal",
+  },
+  openGraph: {
+    type: "article",
+    url: "/legal",
+    title: "Legal, Privacy Policy, and Terms | Better Data",
+    description:
+      "Better Data legal information for Ghana mobile data bundle purchases, including terms, privacy, cookies, payments, refunds, and support.",
+    siteName: "Better Data",
+  },
+  twitter: {
+    card: "summary",
+    title: "Legal, Privacy Policy, and Terms | Better Data",
+    description:
+      "Better Data terms, privacy, cookies, payments, refunds, and support information.",
+  },
 };
 
 const lastUpdated = "May 7, 2026";

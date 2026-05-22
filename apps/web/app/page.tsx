@@ -114,6 +114,81 @@ const API_BASE_URL = requirePublicEnv(
   "NEXT_PUBLIC_API_BASE_URL",
 );
 const betterDataApi = createBetterDataApiClient({ baseUrl: API_BASE_URL });
+const betterDataStructuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://betterdatagh.com/#organization",
+      name: "Better Data",
+      url: "https://betterdatagh.com",
+      logo: "https://betterdatagh.com/favicon.svg",
+      description:
+        "Better Data is a Ghana-focused mobile data bundle platform for MTN, Telecel, and AirtelTigo customers.",
+      areaServed: {
+        "@type": "Country",
+        name: "Ghana",
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://betterdatagh.com/#website",
+      name: "Better Data",
+      url: "https://betterdatagh.com",
+      publisher: {
+        "@id": "https://betterdatagh.com/#organization",
+      },
+      inLanguage: "en-GH",
+    },
+    {
+      "@type": "Service",
+      "@id": "https://betterdatagh.com/#mobile-data-service",
+      name: "Better Data mobile data bundle purchases",
+      serviceType: "Mobile data bundle purchase service",
+      provider: {
+        "@id": "https://betterdatagh.com/#organization",
+      },
+      areaServed: {
+        "@type": "Country",
+        name: "Ghana",
+      },
+      description:
+        "Buy affordable MTN, Telecel, and AirtelTigo data bundles in Ghana through a smooth Mobile Money purchase experience.",
+      termsOfService: "https://betterdatagh.com/legal#terms",
+      hasOfferCatalog: {
+        "@type": "OfferCatalog",
+        name: "Ghana mobile data bundle offers",
+        itemListElement: [
+          {
+            "@type": "Offer",
+            itemOffered: {
+              "@type": "Service",
+              name: "MTN data bundles",
+            },
+          },
+          {
+            "@type": "Offer",
+            itemOffered: {
+              "@type": "Service",
+              name: "Telecel data bundles",
+            },
+          },
+          {
+            "@type": "Offer",
+            itemOffered: {
+              "@type": "Service",
+              name: "AirtelTigo data bundles",
+            },
+          },
+        ],
+      },
+      potentialAction: {
+        "@type": "BuyAction",
+        target: "https://betterdatagh.com/buy",
+      },
+    },
+  ],
+};
 
 /* ── Icons ── */
 const ShieldIcon = () => (
@@ -445,6 +520,12 @@ export default function HomePage() {
 
   return (
     <main ref={main}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(betterDataStructuredData),
+        }}
+      />
       {/* ── Navbar ── */}
       <nav className={`navbar${navScrolled ? " scrolled" : ""}`}>
         <div className="nav-inner">
