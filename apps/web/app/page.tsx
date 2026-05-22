@@ -1,9 +1,10 @@
 "use client";
 
-import {
-  createBetterDataApiClient,
-} from "@betterdata/api-client";
-import type { CreatePaymentIntentResponse, DataPackage } from "@betterdata/contracts";
+import { createBetterDataApiClient } from "@betterdata/api-client";
+import type {
+  CreatePaymentIntentResponse,
+  DataPackage,
+} from "@betterdata/contracts";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -253,44 +254,123 @@ const LockIcon = () => (
 );
 
 const SunIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="5" />
+    <line x1="12" y1="1" x2="12" y2="3" />
+    <line x1="12" y1="21" x2="12" y2="23" />
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+    <line x1="1" y1="12" x2="3" y2="12" />
+    <line x1="21" y1="12" x2="23" y2="12" />
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
   </svg>
 );
 
 const MoonIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
   </svg>
 );
 
 const TruckIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="3" width="15" height="13" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" />
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="1" y="3" width="15" height="13" />
+    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+    <circle cx="5.5" cy="18.5" r="2.5" />
+    <circle cx="18.5" cy="18.5" r="2.5" />
   </svg>
 );
 
 const DocumentIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
   </svg>
 );
 
 const HeadsetIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
   </svg>
 );
 
 const SignalIcon = () => (
-  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" />
+  <svg
+    width="36"
+    height="36"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="12" y1="20" x2="12" y2="10" />
+    <line x1="18" y1="20" x2="18" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="16" />
   </svg>
 );
 
 const PackageBoxIcon = () => (
-  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" />
+  <svg
+    width="36"
+    height="36"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" />
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+    <line x1="12" y1="22.08" x2="12" y2="12" />
   </svg>
 );
 
@@ -305,7 +385,9 @@ export default function HomePage() {
   const [packageError, setPackageError] = useState("");
   const [loadKey, setLoadKey] = useState(0);
   const [recipientConfirmed, setRecipientConfirmed] = useState(false);
-  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(
+    null,
+  );
   const [orderError, setOrderError] = useState("");
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
@@ -362,9 +444,7 @@ export default function HomePage() {
           return;
         }
 
-        setPackageError(
-          readApiError(error, "Unable to load data packages."),
-        );
+        setPackageError(readApiError(error, "Unable to load data packages."));
       } finally {
         if (!controller.signal.aborted) {
           setPackagesLoading(false);
@@ -502,7 +582,9 @@ export default function HomePage() {
       setRefreshingStatus(true);
       setOrderError("");
 
-      const data = await betterDataApi.getPaymentIntentStatus(paymentResult.reference);
+      const data = await betterDataApi.getPaymentIntentStatus(
+        paymentResult.reference,
+      );
       setPaymentResult((current: PaymentResult | null) =>
         current
           ? {
@@ -548,7 +630,11 @@ export default function HomePage() {
                 </Link>
               </>
             )}
-            <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label="Toggle theme"
+            >
               {theme === "light" ? <MoonIcon /> : <SunIcon />}
             </button>
           </div>
@@ -573,8 +659,7 @@ export default function HomePage() {
           {/* Left - Copy */}
           <div className="hero-copy">
             <h1 className="hero-title">
-              Buy <span className="accent">Cheap Data</span>{" "}
-              Bundles Instantly
+              Buy <span className="accent">Cheap Data</span> Bundles Instantly
             </h1>
 
             <p className="hero-desc">
@@ -704,7 +789,9 @@ export default function HomePage() {
                   !recipientConfirmed
                 }
               >
-                {submittingOrder ? "Opening Paystack..." : "Pay with Mobile Money"}
+                {submittingOrder
+                  ? "Opening Paystack..."
+                  : "Pay with Mobile Money"}
               </button>
 
               {orderError ? (
@@ -746,8 +833,15 @@ export default function HomePage() {
           </div>
         </div>
         <div className="hero-wave">
-          <svg viewBox="0 0 1440 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0,60 C360,120 720,0 1440,60 L1440,100 L0,100 Z" fill="var(--bg-root)" />
+          <svg
+            viewBox="0 0 1440 100"
+            preserveAspectRatio="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M0,60 C360,120 720,0 1440,60 L1440,100 L0,100 Z"
+              fill="var(--bg-root)"
+            />
           </svg>
         </div>
       </section>
@@ -756,15 +850,33 @@ export default function HomePage() {
       <section className="network-cards reveal">
         <div className="container">
           <div className="network-cards-grid">
-            <div className="network-card mtn" onClick={() => { setNetwork("mtn"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <div
+              className="network-card mtn"
+              onClick={() => {
+                setNetwork("mtn");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
               <SignalIcon />
               <span>MTN</span>
             </div>
-            <div className="network-card telecel" onClick={() => { setNetwork("telecel"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <div
+              className="network-card telecel"
+              onClick={() => {
+                setNetwork("telecel");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
               <SignalIcon />
               <span>Telecel</span>
             </div>
-            <div className="network-card airteltigo" onClick={() => { setNetwork("airteltigo"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <div
+              className="network-card airteltigo"
+              onClick={() => {
+                setNetwork("airteltigo");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
               <SignalIcon />
               <span>AirtelTigo</span>
             </div>
@@ -784,19 +896,34 @@ export default function HomePage() {
           </div>
           <div className="features-grid">
             <div className="feature-card reveal">
-              <div className="feature-icon green"><TruckIcon /></div>
+              <div className="feature-icon green">
+                <TruckIcon />
+              </div>
               <h3>Fast Delivery</h3>
-              <p>Experience instant data delivery with our automated system. Your bundle arrives in seconds.</p>
+              <p>
+                Experience instant data delivery with our automated system. Your
+                bundle arrives in seconds.
+              </p>
             </div>
             <div className="feature-card reveal">
-              <div className="feature-icon orange"><DocumentIcon /></div>
+              <div className="feature-icon orange">
+                <DocumentIcon />
+              </div>
               <h3>Bulk Order Processing</h3>
-              <p>Upload Excel files or use text input to process hundreds of orders simultaneously.</p>
+              <p>
+                Upload Excel files or use text input to process hundreds of
+                orders simultaneously.
+              </p>
             </div>
             <div className="feature-card reveal">
-              <div className="feature-icon blue"><HeadsetIcon /></div>
+              <div className="feature-icon blue">
+                <HeadsetIcon />
+              </div>
               <h3>24/7 Support</h3>
-              <p>Our dedicated support team is available round the clock to help you with any technical issues.</p>
+              <p>
+                Our dedicated support team is available round the clock to help
+                you with any technical issues.
+              </p>
             </div>
           </div>
         </div>
@@ -1020,7 +1147,9 @@ function readApiError(error: unknown, fallback: string) {
 
 function requirePublicEnv(value: string | undefined, name: string) {
   if (!value?.trim()) {
-    throw new Error(`${name} is required before initializing the Better Data API client.`);
+    throw new Error(
+      `${name} is required before initializing the Better Data API client.`,
+    );
   }
 
   return value;
