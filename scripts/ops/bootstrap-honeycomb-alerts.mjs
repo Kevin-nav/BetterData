@@ -43,10 +43,17 @@ async function ensureEmailRecipient(email) {
 }
 
 async function ensureTrigger(input) {
-  const triggers = await honeycomb(
-    "GET",
-    `/1/triggers/${encodeURIComponent(input.dataset)}`
-  );
+  const triggersPath = `/1/triggers/${encodeURIComponent(input.dataset)}`;
+  const triggers = await honeycomb("GET", triggersPath, undefined, {
+    allowDatasetNotFound: true
+  });
+
+  if (triggers === undefined) {
+    console.warn(
+      `Honeycomb dataset ${input.dataset} was not found; recipient was created but trigger ${input.name} was skipped.`
+    );
+    return;
+  }
   const existing = triggers.find((trigger) => trigger.name === input.name);
   const body = buildTriggerBody(input);
 
@@ -82,7 +89,7 @@ function buildTriggerBody(input) {
   };
 }
 
-async function honeycomb(method, path, body) {
+async function honeycomb(method, path, body, options = {}) {
   const res = await fetch(`${apiBase}${path}`, {
     method,
     headers: {
@@ -92,6 +99,15 @@ async function honeycomb(method, path, body) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
   const text = await res.text();
+
+  if (
+    !res.ok &&
+    options.allowDatasetNotFound === true &&
+    res.status === 404 &&
+    text.toLowerCase().includes("dataset not found")
+  ) {
+    return undefined;
+  }
 
   if (!res.ok) {
     throw new Error(`Honeycomb ${method} ${path} failed with ${res.status}: ${text}`);
