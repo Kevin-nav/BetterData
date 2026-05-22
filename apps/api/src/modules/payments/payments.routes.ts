@@ -15,6 +15,7 @@ import type { FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
 import { createConvexHttpClient } from "../../convexClient";
+import { sendOpsAlertEmailSafely } from "../../ops/opsAlerts";
 import {
   buildPaystackReference,
   initializeMobileMoneyPayment,
@@ -853,6 +854,7 @@ async function createOpsAlertSafely(
       ...serviceArgs(),
       ...alert
     });
+    await sendOpsAlertEmailSafely(alert);
     return true;
   } catch {
     // Avoid masking payment/webhook responses when alert persistence fails.
