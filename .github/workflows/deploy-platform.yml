@@ -136,7 +136,7 @@ jobs:
             web_changed=true
           fi
 
-          if printf '%s\n' "$changed" | grep -Eq '^(\.github/workflows/build-admin\.yml|\.github/workflows/deploy-platform\.yml|Dockerfile\.admin|apps/admin/|convex/|deploy/k8s/base/admin-|deploy/k8s/base/kustomization\.yaml|packages/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|turbo\.json)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(\.github/workflows/build-admin\.yml|\.github/workflows/deploy-platform\.yml|Dockerfile\.admin|apps/admin/|convex/|deploy/k8s/base/admin-|packages/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|turbo\.json)'; then
             admin_changed=true
           fi
 
