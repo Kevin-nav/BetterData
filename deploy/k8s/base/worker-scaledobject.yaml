@@ -36,3 +36,11 @@ spec:
         value: "1"
       authenticationRef:
         name: betterdata-worker-amqp-auth
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: orders.status.refresh
+        mode: QueueLength
+        value: "1"
+      authenticationRef:
+        name: betterdata-worker-amqp-auth
