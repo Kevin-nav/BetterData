@@ -19,6 +19,7 @@ import type * as platformConfig from "../platformConfig.js";
 import type * as savedNumbers from "../savedNumbers.js";
 import type * as serviceAuth from "../serviceAuth.js";
 import type * as users from "../users.js";
+import type * as vendorBalances from "../vendorBalances.js";
 import type * as wallet from "../wallet.js";
 
 import type {
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   savedNumbers: typeof savedNumbers;
   serviceAuth: typeof serviceAuth;
   users: typeof users;
+  vendorBalances: typeof vendorBalances;
   wallet: typeof wallet;
 }>;
 

@@ -18,6 +18,9 @@ export type StoredOrder = {
   network: NetworkCode;
   recipientPhone: string;
   amountGhs: number;
+  costGhsAtPurchase?: number;
+  balanceRetryStartedAt?: number;
+  balanceRetryDeadlineAt?: number;
   paymentMethod: PurchaseRequest["paymentMethod"];
   paymentStatus: "pending" | "verified" | "failed" | "refunded";
   status: OrderStatus;
@@ -51,6 +54,19 @@ export type OrderStore = {
       vendorRaw: unknown;
     }
   ): Promise<void>;
+  recordBalanceRetry(
+    reference: string,
+    retry: {
+      deadlineAt: number;
+      vendorRaw?: unknown;
+    }
+  ): Promise<void>;
+  refundToWallet(
+    reference: string,
+    refund: {
+      notes?: string;
+    }
+  ): Promise<{ refunded: boolean; reason?: string }>;
 };
 
 export function createOrderStore(env: NodeJS.ProcessEnv = process.env): OrderStore {
@@ -113,6 +129,42 @@ export function createMemoryOrderStore(): OrderStore {
         vendorRaw: failure.vendorRaw,
         status: failure.status
       });
+    },
+
+    async recordBalanceRetry(reference, retry) {
+      const order = orders.get(reference);
+
+      if (!order) {
+        throw new Error(`Order ${reference} was not found.`);
+      }
+
+      orders.set(reference, {
+        ...order,
+        ...(retry.vendorRaw !== undefined ? { vendorRaw: retry.vendorRaw } : {}),
+        status: "processing",
+        balanceRetryStartedAt: order.balanceRetryStartedAt ?? Date.now(),
+        balanceRetryDeadlineAt: order.balanceRetryDeadlineAt ?? retry.deadlineAt
+      });
+    },
+
+    async refundToWallet(reference) {
+      const order = orders.get(reference);
+
+      if (!order) {
+        throw new Error(`Order ${reference} was not found.`);
+      }
+
+      if (!order.userId) {
+        throw new Error("Guest orders require manual refund review.");
+      }
+
+      orders.set(reference, {
+        ...order,
+        status: "refunded",
+        paymentStatus: "refunded"
+      });
+
+      return { refunded: true };
     }
   };
 }
@@ -135,6 +187,12 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
   );
   const recordFailureForApi = makeFunctionReference<"mutation">(
     "orders:recordFailureForApi"
+  );
+  const markBalanceRetryForApi = makeFunctionReference<"mutation">(
+    "orders:markBalanceRetryForApi"
+  );
+  const refundToWalletForApi = makeFunctionReference<"mutation">(
+    "orders:refundToWalletForApi"
   );
 
   return {
@@ -197,6 +255,23 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
         vendorRaw: failure.vendorRaw,
         status: failure.status
       });
+    },
+
+    async recordBalanceRetry(reference, retry) {
+      await client.mutation(markBalanceRetryForApi, {
+        reference,
+        apiSecret,
+        deadlineAt: retry.deadlineAt,
+        ...(retry.vendorRaw !== undefined ? { vendorRaw: retry.vendorRaw } : {})
+      });
+    },
+
+    async refundToWallet(reference, refund) {
+      return await client.mutation(refundToWalletForApi, {
+        reference,
+        apiSecret,
+        ...(refund.notes !== undefined ? { notes: refund.notes } : {})
+      });
     }
   };
 }
@@ -240,6 +315,15 @@ function mapConvexOrder(order: Partial<StoredOrder>): StoredOrder {
     network,
     recipientPhone: requiredString(order.recipientPhone, "recipientPhone"),
     amountGhs: typeof order.amountGhs === "number" ? order.amountGhs : 0,
+    ...(typeof order.costGhsAtPurchase === "number"
+      ? { costGhsAtPurchase: order.costGhsAtPurchase }
+      : {}),
+    ...(typeof order.balanceRetryStartedAt === "number"
+      ? { balanceRetryStartedAt: order.balanceRetryStartedAt }
+      : {}),
+    ...(typeof order.balanceRetryDeadlineAt === "number"
+      ? { balanceRetryDeadlineAt: order.balanceRetryDeadlineAt }
+      : {}),
     paymentMethod: order.paymentMethod ?? "wallet",
     paymentStatus: order.paymentStatus ?? "pending",
     status: order.status ?? "pending",

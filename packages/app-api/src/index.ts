@@ -11,5 +11,6 @@ export const walletFunctions = api.wallet;
 export const paymentFunctions = api.payments;
 export const platformConfigFunctions = api.platformConfig;
 export const opsAlertFunctions = api.opsAlerts;
+export const vendorBalanceFunctions = api.vendorBalances;
 export const userFunctions = api.users;
 export const savedNumberFunctions = api.savedNumbers;

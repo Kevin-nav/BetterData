@@ -74,7 +74,11 @@ export default defineSchema({
       v.literal("refunded")
     ),
     idempotencyKey: v.string(),
-    recipientConfirmedAt: v.number()
+    recipientConfirmedAt: v.number(),
+    balanceRetryStartedAt: v.optional(v.number()),
+    balanceRetryDeadlineAt: v.optional(v.number()),
+    walletRefundedAt: v.optional(v.number()),
+    refundReference: v.optional(v.string())
   })
     .index("by_reference", ["reference"])
     .index("by_idempotency_key", ["idempotencyKey"])
@@ -183,7 +187,26 @@ export default defineSchema({
     amountGhs: v.number(),
     reference: v.string(),
     notes: v.optional(v.string())
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_reference", ["reference"]),
+
+  vendorBalanceSnapshots: defineTable({
+    vendorId: v.string(),
+    balanceGhs: v.number(),
+    source: v.union(
+      v.literal("admin_refresh"),
+      v.literal("balance_endpoint"),
+      v.literal("purchase_response"),
+      v.literal("retry_check"),
+      v.literal("manual"),
+      v.literal("unknown")
+    ),
+    metadata: v.optional(v.any()),
+    createdAt: v.number()
+  })
+    .index("by_vendor_time", ["vendorId", "createdAt"])
+    .index("by_source_time", ["source", "createdAt"]),
 
   pricingRules: defineTable({
     packageId: v.optional(v.string()),

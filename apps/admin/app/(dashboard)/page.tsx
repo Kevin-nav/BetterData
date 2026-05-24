@@ -14,6 +14,7 @@ import { PaymentConfigEditor } from "../components/PaymentConfigEditor";
 import { StatusBadge } from "../components/StatusBadge";
 import { FinancialTrendChart } from "../components/FinancialTrendChart";
 import { OrderVolumeChart } from "../components/OrderVolumeChart";
+import { VendorBalanceChart } from "../components/VendorBalanceChart";
 
 type RecentOrder = {
   _id: string;
@@ -195,6 +196,7 @@ export default function AdminDashboardPage() {
       <div className="overview-chart-grid">
         <FinancialTrendChart data={revenue?.dailyTrend ?? []} />
         <OrderVolumeChart data={revenue?.dailyTrend ?? []} />
+        <VendorBalanceChart data={apiData?.vendor?.balanceHistory ?? []} />
       </div>
 
       {/* Operational Stats Row */}

@@ -85,6 +85,11 @@ export type AdminOverviewResponse = {
     balanceGhs: number | null;
     balanceStatus: "healthy" | "low" | "critical" | "unknown";
     checkedAt: string;
+    balanceHistory?: Array<{
+      balanceGhs: number;
+      source: string;
+      createdAt: number;
+    }>;
   };
   queue?: {
     purchaseDepth: number;

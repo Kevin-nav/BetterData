@@ -11,6 +11,10 @@ import { snapshotMetrics } from "../../observability/metrics";
 import { createOrderStore } from "../../orders/orderStore";
 import { createQueueProvider, QUEUE_NAMES } from "../../queue";
 import { getActiveDataVendor } from "../../vendors/activeVendor";
+import {
+  listRecentVendorBalanceSnapshots,
+  recordVendorBalanceSnapshotSafely
+} from "../../vendors/vendorBalance";
 
 type VendorBalanceStatus = "healthy" | "low" | "critical" | "unknown";
 type PaymentConfigKey =
@@ -39,6 +43,7 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       const vendor = getActiveDataVendor();
       const balance = await readVendorBalance(vendor, request.log);
       const status = classifyVendorBalance(balance.balanceGhs, process.env);
+      const balanceHistory = await readVendorBalanceHistory(vendor.id, request.log);
 
       return {
         revenue: { dailyGhs: 0, weeklyGhs: 0, monthlyGhs: 0 },
@@ -48,7 +53,8 @@ export async function registerAdminRoutes(server: FastifyInstance) {
           displayName: vendor.displayName,
           balanceGhs: balance.balanceGhs,
           balanceStatus: status,
-          checkedAt: new Date().toISOString()
+          checkedAt: new Date().toISOString(),
+          balanceHistory
         },
         queue: {
           purchaseDepth: await queue.getDepth(QUEUE_NAMES.purchaseRequested),
@@ -249,6 +255,11 @@ async function readVendorBalance(
 ) {
   try {
     const balance = await vendor.getBalance();
+    await recordVendorBalanceSnapshotSafely({
+      vendorId: vendor.id,
+      balanceGhs: balance.balanceGhs,
+      source: "admin_refresh"
+    });
 
     return {
       balanceGhs: balance.balanceGhs,
@@ -261,6 +272,51 @@ async function readVendorBalance(
       balanceGhs: null,
       raw: undefined
     };
+  }
+}
+
+async function readVendorBalanceHistory(vendorId: string, log: FastifyBaseLogger) {
+  try {
+    const snapshots = await listRecentVendorBalanceSnapshots({
+      vendorId,
+      limit: 120
+    });
+
+    if (!Array.isArray(snapshots)) {
+      return [];
+    }
+
+    return snapshots
+      .map((snapshot) => {
+        const record = snapshot as {
+          balanceGhs?: unknown;
+          source?: unknown;
+          createdAt?: unknown;
+        };
+
+        if (
+          typeof record.balanceGhs !== "number" ||
+          typeof record.createdAt !== "number" ||
+          typeof record.source !== "string"
+        ) {
+          return null;
+        }
+
+        return {
+          balanceGhs: record.balanceGhs,
+          source: record.source,
+          createdAt: record.createdAt
+        };
+      })
+      .filter((snapshot): snapshot is {
+        balanceGhs: number;
+        source: string;
+        createdAt: number;
+      } => snapshot !== null)
+      .reverse();
+  } catch (error) {
+    log.warn({ error, vendorId }, "Vendor balance history query failed");
+    return [];
   }
 }
 

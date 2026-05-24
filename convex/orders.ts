@@ -200,6 +200,103 @@ export const listForUser = query({
   }
 });
 
+export const markBalanceRetryForApi = mutation({
+  args: {
+    apiSecret: v.string(),
+    reference: v.string(),
+    deadlineAt: v.number(),
+    vendorRaw: v.optional(v.any())
+  },
+  handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
+    const order = await findOrderByReference(ctx, args.reference);
+
+    if (order === null) {
+      throw new Error("Order not found.");
+    }
+
+    const startedAt = order.balanceRetryStartedAt ?? Date.now();
+
+    await ctx.db.patch(order._id, {
+      status: "processing",
+      balanceRetryStartedAt: startedAt,
+      balanceRetryDeadlineAt: order.balanceRetryDeadlineAt ?? args.deadlineAt,
+      ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
+    });
+
+    return order._id;
+  }
+});
+
+export const refundToWalletForApi = mutation({
+  args: {
+    apiSecret: v.string(),
+    reference: v.string(),
+    notes: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
+    const order = await findOrderByReference(ctx, args.reference);
+
+    if (order === null) {
+      throw new Error("Order not found.");
+    }
+
+    if (order.userId === undefined) {
+      throw new Error("Guest orders require manual refund review.");
+    }
+
+    if (order.walletRefundedAt !== undefined || order.status === "refunded") {
+      return { refunded: false, reason: "already_refunded" };
+    }
+
+    const existingRefund = await ctx.db
+      .query("walletTransactions")
+      .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+      .filter((q) => q.eq(q.field("type"), "refund"))
+      .first();
+
+    if (existingRefund !== null) {
+      await ctx.db.patch(order._id, {
+        status: "refunded",
+        paymentStatus: "refunded",
+        walletRefundedAt: Date.now(),
+        refundReference: args.reference
+      });
+      return { refunded: false, reason: "existing_refund_transaction" };
+    }
+
+    const user = await ctx.db.get(order.userId);
+
+    if (user === null) {
+      throw new Error("Refund user not found.");
+    }
+
+    await ctx.db.patch(order.userId, {
+      walletBalanceGhs: roundGhs(user.walletBalanceGhs + order.amountGhs)
+    });
+
+    await ctx.db.insert("walletTransactions", {
+      userId: order.userId,
+      type: "refund",
+      amountGhs: order.amountGhs,
+      reference: args.reference,
+      notes: args.notes ?? "Automatic refund for unfulfilled data purchase"
+    });
+
+    await ctx.db.patch(order._id, {
+      status: "refunded",
+      paymentStatus: "refunded",
+      walletRefundedAt: Date.now(),
+      refundReference: args.reference
+    });
+
+    return { refunded: true };
+  }
+});
+
 export const listForUserForApi = query({
   args: {
     apiSecret: v.string(),
@@ -256,6 +353,13 @@ export const getByReferenceForApi = query({
     return order;
   }
 });
+
+async function findOrderByReference(ctx: QueryCtx | MutationCtx, reference: string) {
+  return await ctx.db
+    .query("orders")
+    .withIndex("by_reference", (q) => q.eq("reference", reference))
+    .first();
+}
 
 export const listForApi = query({
   args: {

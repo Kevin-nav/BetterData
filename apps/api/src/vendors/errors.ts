@@ -30,6 +30,44 @@ export function mapVendorErrorToHttp(error: unknown): VendorHttpError {
   };
 }
 
+export function isLowVendorBalanceError(error: unknown) {
+  if (error instanceof DataMartHttpError) {
+    const message = vendorErrorMessage(error.body).toLowerCase();
+
+    return (
+      message.includes("insufficient") ||
+      (message.includes("balance") && message.includes("low")) ||
+      (message.includes("wallet") && message.includes("balance"))
+    );
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    return (
+      message.includes("insufficient balance") ||
+      message.includes("vendor balance is low") ||
+      message.includes("vendor wallet")
+    );
+  }
+
+  return false;
+}
+
+export function vendorPayloadIndicatesLowBalance(payload: unknown) {
+  const message = vendorErrorMessage(payload).toLowerCase();
+
+  if (!message) {
+    return false;
+  }
+
+  return (
+    message.includes("insufficient") ||
+    (message.includes("balance") && message.includes("low")) ||
+    (message.includes("wallet") && message.includes("balance"))
+  );
+}
+
 function mapDataMartHttpError(error: DataMartHttpError): VendorHttpError {
   const vendorMessage = vendorErrorMessage(error.body).toLowerCase();
 

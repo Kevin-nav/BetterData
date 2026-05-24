@@ -4,6 +4,7 @@ import { createMemoryOrderStore } from "../orders/orderStore";
 import { createLocalQueueProvider } from "../queue/localQueue";
 import { QUEUE_NAMES, type PurchaseJob } from "../queue/types";
 import type { DataVendor } from "../vendors/types";
+import { DataMartHttpError } from "../vendors/datamart/transport";
 import { processPurchaseMessage, startPurchaseWorker } from "./purchaseWorker";
 
 const queue = createLocalQueueProvider();
@@ -135,6 +136,142 @@ assert.deepEqual(terminalAlerts[0], {
   retryable: true
 });
 await terminalStop();
+
+const lowBalanceQueue = createLocalQueueProvider();
+const lowBalanceOrderStore = createMemoryOrderStore();
+const lowBalanceOrder = await lowBalanceOrderStore.createIntent({
+  body: {
+    packageId: "datamart:yello-1gb",
+    network: "mtn",
+    recipientPhone: "0557654321",
+    confirmRecipientIsCorrect: true,
+    paymentMethod: "paystack_momo"
+  },
+  vendor,
+  userId: "user-low-balance" as any,
+  idempotencyKey: "idem-low-balance"
+});
+const lowBalanceAlerts: Array<{
+  reference: string | undefined;
+  retryAction: string | undefined;
+  retryStatus: string | undefined;
+  nextRetryAt: number | undefined;
+}> = [];
+const lowBalanceStop = await startPurchaseWorker({
+  queue: lowBalanceQueue,
+  orderStore: lowBalanceOrderStore,
+  vendor: {
+    ...vendor,
+    async purchase() {
+      throw new DataMartHttpError(
+        "Insufficient wallet balance",
+        400,
+        { message: "Insufficient wallet balance", data: { balance: 2 } }
+      );
+    }
+  },
+  async createOpsAlert(alert) {
+    lowBalanceAlerts.push({
+      reference: alert.reference,
+      retryAction: alert.retryAction,
+      retryStatus: alert.retryStatus,
+      nextRetryAt: alert.nextRetryAt
+    });
+    return true;
+  },
+  logger: { error() {} }
+});
+await lowBalanceQueue.enqueue(QUEUE_NAMES.purchaseRequested, {
+  ...job,
+  orderReference: lowBalanceOrder.reference,
+  packageId: lowBalanceOrder.packageId,
+  idempotencyKey: lowBalanceOrder.idempotencyKey
+});
+const lowBalanceProcessing = await waitForOrder(
+  lowBalanceOrderStore,
+  lowBalanceOrder.reference,
+  (current) => current?.status === "processing" && current.balanceRetryDeadlineAt !== undefined
+);
+assert.equal(lowBalanceProcessing?.status, "processing");
+await waitForCondition(() => lowBalanceAlerts.length === 1);
+assert.deepEqual(
+  {
+    reference: lowBalanceAlerts[0]?.reference,
+    retryAction: lowBalanceAlerts[0]?.retryAction,
+    retryStatus: lowBalanceAlerts[0]?.retryStatus,
+    hasNextRetryAt: typeof lowBalanceAlerts[0]?.nextRetryAt === "number"
+  },
+  {
+    reference: lowBalanceOrder.reference,
+    retryAction: "fulfill_order",
+    retryStatus: "queued",
+    hasNextRetryAt: true
+  }
+);
+await lowBalanceStop();
+
+const expiredLowBalanceStore = createMemoryOrderStore();
+const expiredLowBalanceOrder = await expiredLowBalanceStore.createIntent({
+  body: {
+    packageId: "datamart:yello-1gb",
+    network: "mtn",
+    recipientPhone: "0557654321",
+    confirmRecipientIsCorrect: true,
+    paymentMethod: "paystack_momo"
+  },
+  vendor,
+  userId: "user-low-balance-expired" as any,
+  idempotencyKey: "idem-low-balance-expired"
+});
+await expiredLowBalanceStore.recordBalanceRetry(expiredLowBalanceOrder.reference, {
+  deadlineAt: Date.now() - 1
+});
+let expiredAcked = false;
+await processPurchaseMessage(
+  {
+    id: "expired-low-balance",
+    queue: QUEUE_NAMES.purchaseRequested,
+    attempts: 0,
+    job: {
+      ...job,
+      orderReference: expiredLowBalanceOrder.reference,
+      idempotencyKey: expiredLowBalanceOrder.idempotencyKey
+    },
+    async ack() {
+      expiredAcked = true;
+    },
+    async retry() {
+      throw new Error("Expired low balance should not queue AMQP retry.");
+    },
+    async deadLetter() {
+      throw new Error("Expired low balance should not dead-letter.");
+    }
+  },
+  {
+    queue,
+    orderStore: expiredLowBalanceStore,
+    vendor: {
+      ...vendor,
+      async purchase() {
+        throw new DataMartHttpError(
+          "Insufficient wallet balance",
+          400,
+          { message: "Insufficient wallet balance" }
+        );
+      }
+    },
+    async createOpsAlert() {
+      return true;
+    },
+    logger: { error() {} }
+  }
+);
+const expiredRefunded = await expiredLowBalanceStore.getByReference(
+  expiredLowBalanceOrder.reference
+);
+assert.equal(expiredAcked, true);
+assert.equal(expiredRefunded?.status, "refunded");
+assert.equal(expiredRefunded?.paymentStatus, "refunded");
 
 const alreadyFulfilledOrderStore = createMemoryOrderStore();
 const alreadyFulfilledOrder = await alreadyFulfilledOrderStore.createIntent({

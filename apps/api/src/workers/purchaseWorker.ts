@@ -5,6 +5,11 @@ import { QUEUE_NAMES, type PurchaseJob, type QueueMessage, type QueueProvider } 
 import { emitAppTelemetry } from "../telemetry/appTelemetry";
 import type { DataVendor } from "../vendors/types";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
+import { isLowVendorBalanceError, vendorPayloadIndicatesLowBalance } from "../vendors/errors";
+import {
+  extractVendorBalanceGhs,
+  recordVendorBalanceSnapshotSafely
+} from "../vendors/vendorBalance";
 
 export type PurchaseWorkerOptions = {
   queue: QueueProvider;
@@ -15,6 +20,9 @@ export type PurchaseWorkerOptions = {
   createOpsAlert?: (alert: OpsAlertInput) => Promise<boolean>;
   logger?: Pick<Console, "error">;
 };
+
+const lowBalanceRetryWindowMs = 60 * 60 * 1000;
+const lowBalanceRetryDelayMs = 5 * 60 * 1000;
 
 export async function startPurchaseWorker(options: PurchaseWorkerOptions) {
   return await options.queue.consume<PurchaseJob>(
@@ -51,6 +59,18 @@ export async function processPurchaseMessage(
       recipientPhone: job.recipientPhone,
       idempotencyKey: job.idempotencyKey
     });
+    await recordPurchaseResponseBalance(options.vendor.id, result.raw, job.orderReference);
+
+    if (result.status === "failed" && vendorPayloadIndicatesLowBalance(result.raw)) {
+      await handleLowVendorBalance({
+        options,
+        job,
+        existing,
+        vendorRaw: result.raw
+      });
+      await message.ack();
+      return;
+    }
 
     await options.orderStore.recordVendorResult(job.orderReference, {
       vendorOrderReference: result.vendorOrderReference,
@@ -92,6 +112,32 @@ export async function processPurchaseMessage(
 
     await message.ack();
   } catch (error) {
+    if (isLowVendorBalanceError(error)) {
+      try {
+        const existing = await options.orderStore.getByReference(job.orderReference);
+        await handleLowVendorBalance({
+          options,
+          job,
+          existing,
+          vendorRaw: {
+            vendorId: job.vendorId,
+            workerError: serializeError(error)
+          }
+        });
+        await message.ack();
+        return;
+      } catch (lowBalanceHandlingError) {
+        options.logger?.error(
+          {
+            error: lowBalanceHandlingError,
+            orderReference: job.orderReference,
+            vendorId: job.vendorId
+          },
+          "Purchase worker failed to persist low balance retry state"
+        );
+      }
+    }
+
     if (isRetryableVendorError(error) && message.attempts + 1 < maxAttempts) {
       await incrementMetric("purchase.retry");
       await message.retry(retryDelayMs);
@@ -176,6 +222,131 @@ function isRetryableVendorError(error: unknown) {
   }
 
   return false;
+}
+
+async function handleLowVendorBalance(input: {
+  options: PurchaseWorkerOptions;
+  job: PurchaseJob;
+  existing: Awaited<ReturnType<OrderStore["getByReference"]>>;
+  vendorRaw?: unknown;
+}) {
+  const now = Date.now();
+  const deadlineAt =
+    input.existing?.balanceRetryDeadlineAt ?? now + lowBalanceRetryWindowMs;
+
+  await input.options.orderStore.recordBalanceRetry(input.job.orderReference, {
+    deadlineAt,
+    ...(input.vendorRaw !== undefined ? { vendorRaw: input.vendorRaw } : {})
+  });
+
+  if (now >= deadlineAt) {
+    await handleExpiredLowBalanceRetry(input);
+    return;
+  }
+
+  await incrementMetric("purchase.low_balance_retry");
+  emitAppTelemetry({
+    name: "data_purchase.vendor_balance_retry",
+    attributes: {
+      "order.reference": input.job.orderReference,
+      "vendor.id": input.job.vendorId,
+      "package.id": input.job.packageId,
+      "retry.deadline_at": deadlineAt
+    },
+    recipientPhone: input.job.recipientPhone
+  });
+
+  await input.options.createOpsAlert?.({
+    severity: "warning",
+    category: "fulfillment",
+    reference: input.job.orderReference,
+    message: "Data purchase is waiting for vendor wallet balance before retrying fulfillment.",
+    metadata: {
+      vendorId: input.job.vendorId,
+      packageId: input.job.packageId,
+      network: input.job.network,
+      balanceRetryDeadlineAt: deadlineAt,
+      vendorRaw: input.vendorRaw
+    },
+    retryable: true,
+    retryAction: "fulfill_order",
+    retryStatus: "queued",
+    nextRetryAt: Math.min(now + lowBalanceRetryDelayMs, deadlineAt)
+  });
+}
+
+async function handleExpiredLowBalanceRetry(input: {
+  options: PurchaseWorkerOptions;
+  job: PurchaseJob;
+  existing: Awaited<ReturnType<OrderStore["getByReference"]>>;
+  vendorRaw?: unknown;
+}) {
+  await incrementMetric("purchase.low_balance_timeout");
+
+  if (input.existing?.userId) {
+    const refund = await input.options.orderStore.refundToWallet(input.job.orderReference, {
+      notes: "Automatic wallet refund after vendor balance retry timeout"
+    });
+
+    await input.options.createOpsAlert?.({
+      severity: "warning",
+      category: "fulfillment",
+      reference: input.job.orderReference,
+      message: refund.refunded
+        ? "Data purchase was automatically refunded to the customer's wallet after vendor balance stayed low."
+        : "Data purchase refund was already recorded after vendor balance stayed low.",
+      metadata: {
+        vendorId: input.job.vendorId,
+        packageId: input.job.packageId,
+        network: input.job.network,
+        refund,
+        vendorRaw: input.vendorRaw
+      }
+    });
+    return;
+  }
+
+  await input.options.orderStore.recordOrderFailure(input.job.orderReference, {
+    status: "failed",
+    vendorRaw: {
+      vendorId: input.job.vendorId,
+      lowBalanceRetryExpired: true,
+      vendorRaw: input.vendorRaw
+    }
+  });
+
+  await input.options.createOpsAlert?.({
+    severity: "critical",
+    category: "fulfillment",
+    reference: input.job.orderReference,
+    message:
+      "Guest data purchase could not be fulfilled after vendor balance retry timeout and needs manual refund or fulfillment.",
+    metadata: {
+      vendorId: input.job.vendorId,
+      packageId: input.job.packageId,
+      network: input.job.network,
+      vendorRaw: input.vendorRaw
+    }
+  });
+}
+
+async function recordPurchaseResponseBalance(
+  vendorId: string,
+  payload: unknown,
+  orderReference: string
+) {
+  const balanceGhs = extractVendorBalanceGhs(payload);
+
+  if (balanceGhs === null) {
+    return;
+  }
+
+  await recordVendorBalanceSnapshotSafely({
+    vendorId,
+    balanceGhs,
+    source: "purchase_response",
+    metadata: { orderReference }
+  });
 }
 
 async function reportFulfillmentTerminalStatus(input: {
