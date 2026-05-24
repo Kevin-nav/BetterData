@@ -14,3 +14,4 @@ export const opsAlertFunctions = api.opsAlerts;
 export const vendorBalanceFunctions = api.vendorBalances;
 export const userFunctions = api.users;
 export const savedNumberFunctions = api.savedNumbers;
+export const notificationFunctions = api.notifications;

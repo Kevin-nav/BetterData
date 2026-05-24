@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { createNotification } from "./notifications";
 
 export const createIntent = mutation({
   args: {
@@ -49,7 +50,7 @@ export const createIntent = mutation({
         ? roundGhs(args.amountGhs - costGhsAtPurchase)
         : undefined;
 
-    return await ctx.db.insert("orders", {
+    const orderId = await ctx.db.insert("orders", {
       reference: args.reference,
       packageId: args.packageId,
       vendorId: args.vendorId,
@@ -75,6 +76,21 @@ export const createIntent = mutation({
         : {}),
       ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
     });
+
+    if (args.userId !== undefined) {
+      const packageName = dataPackage ? dataPackage.name : "Data bundle";
+      const networkLabel = args.network.toUpperCase();
+      await createNotification(ctx, {
+        userId: args.userId,
+        title: "Order Placed",
+        body: `Your order for ${networkLabel} ${packageName} to ${args.recipientPhone} is processing. Ref: ${args.reference}`,
+        type: "order_status",
+        referenceId: args.reference,
+        dedupeKey: `order:${args.reference}:placed`
+      });
+    }
+
+    return orderId;
   }
 });
 
@@ -149,6 +165,41 @@ export const recordVendorResult = mutation({
       ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
     });
 
+    if (
+      order.userId !== undefined &&
+      order.status !== args.status &&
+      (args.status === "completed" || args.status === "failed")
+    ) {
+      const dataPackage = await findDataPackageForFinancialSnapshot(ctx, {
+        packageId: order.packageId,
+        vendorId: order.vendorId,
+        ...(order.vendorPackageId !== undefined
+          ? { vendorPackageId: order.vendorPackageId }
+          : {})
+      });
+      const packageName = dataPackage ? dataPackage.name : "Data bundle";
+      const networkLabel = order.network.toUpperCase();
+      if (args.status === "completed") {
+        await createNotification(ctx, {
+          userId: order.userId,
+          title: "Order Successful",
+          body: `Success! Your ${networkLabel} ${packageName} data bundle has been successfully sent to ${order.recipientPhone}.`,
+          type: "order_status",
+          referenceId: order.reference,
+          dedupeKey: `order:${order.reference}:completed`
+        });
+      } else {
+        await createNotification(ctx, {
+          userId: order.userId,
+          title: "Order Failed",
+          body: `Your order for ${networkLabel} ${packageName} to ${order.recipientPhone} failed. GHS ${order.amountGhs} will be refunded.`,
+          type: "order_status",
+          referenceId: order.reference,
+          dedupeKey: `order:${order.reference}:failed`
+        });
+      }
+    }
+
     return order._id;
   }
 });
@@ -176,6 +227,26 @@ export const recordFailureForApi = mutation({
       status: args.status,
       ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
     });
+
+    if (order.userId !== undefined && order.status !== args.status) {
+      const dataPackage = await findDataPackageForFinancialSnapshot(ctx, {
+        packageId: order.packageId,
+        vendorId: order.vendorId,
+        ...(order.vendorPackageId !== undefined
+          ? { vendorPackageId: order.vendorPackageId }
+          : {})
+      });
+      const packageName = dataPackage ? dataPackage.name : "Data bundle";
+      const networkLabel = order.network.toUpperCase();
+      await createNotification(ctx, {
+        userId: order.userId,
+        title: "Order Failed",
+        body: `Your order for ${networkLabel} ${packageName} to ${order.recipientPhone} failed. GHS ${order.amountGhs} will be refunded.`,
+        type: "order_status",
+        referenceId: order.reference,
+        dedupeKey: `order:${order.reference}:failed`
+      });
+    }
 
     return order._id;
   }
@@ -291,6 +362,15 @@ export const refundToWalletForApi = mutation({
       paymentStatus: "refunded",
       walletRefundedAt: Date.now(),
       refundReference: args.reference
+    });
+
+    await createNotification(ctx, {
+      userId: order.userId,
+      title: "Refund Issued",
+      body: `GHS ${order.amountGhs} has been refunded to your wallet for order ${order.reference}.`,
+      type: "wallet_update",
+      referenceId: order.reference,
+      dedupeKey: `wallet:${order.reference}:refund`
     });
 
     return { refunded: true };

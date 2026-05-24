@@ -56,6 +56,21 @@ export type SaveSavedNumberRequest = {
   network?: SavedNumber["network"];
 };
 
+export type Notification = {
+  id: string;
+  title: string;
+  body: string;
+  type: "order_status" | "wallet_update" | "announcement" | "agent_update" | "account_alert";
+  referenceId?: string;
+  readAt?: number;
+  createdAt: number;
+  source?: "notification" | "announcement";
+};
+
+export type ListNotificationsResponse = {
+  notifications: Notification[];
+};
+
 
 
 export type CreateOrderResponse = {
@@ -143,6 +158,10 @@ export type BetterDataApiClient = {
   ) => Promise<SavedNumber>;
   deleteSavedNumber: (id: string, token: string) => Promise<{ deleted: boolean }>;
   getWalletSummary: (token: string) => Promise<WalletSummaryResponse>;
+  listNotifications: (token: string) => Promise<ListNotificationsResponse>;
+  markNotificationRead: (id: string, token: string) => Promise<{ success: boolean }>;
+  markAllNotificationsRead: (token: string) => Promise<{ success: boolean }>;
+  deleteNotification: (id: string, token: string) => Promise<{ success: boolean }>;
   createOrder: (body: PurchaseRequest, token?: string) => Promise<CreateOrderResponse>;
   getOrderStatus: (reference: string) => Promise<OrderStatusResponse>;
   createPaymentIntent: (
@@ -251,6 +270,25 @@ export function createBetterDataApiClient(
     getWalletSummary: (token) =>
       request<WalletSummaryResponse>("/wallet", {
         headers: { Authorization: `Bearer ${token}` }
+      }),
+    listNotifications: (token) =>
+      request<ListNotificationsResponse>("/notifications", {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    markNotificationRead: (id, token) =>
+      request<{ success: boolean }>(`/notifications/${encodeURIComponent(id)}/read`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    markAllNotificationsRead: (token) =>
+      request<{ success: boolean }>("/notifications/read-all", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    deleteNotification: (id, token) =>
+      request<{ success: boolean }>(`/notifications/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       }),
     createOrder: (body, token) =>
       request<CreateOrderResponse>("/orders", {

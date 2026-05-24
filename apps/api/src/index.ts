@@ -16,6 +16,7 @@ import { registerPackageRoutes } from "./modules/packages/packages.routes";
 import { registerPaymentRoutes } from "./modules/payments/payments.routes";
 import { registerSavedNumberRoutes } from "./modules/saved-numbers/savedNumbers.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
+import { registerNotificationRoutes } from "./modules/notifications/notifications.routes";
 import { configureMetricsFromEnv } from "./observability/metrics";
 import { emitAppTelemetry } from "./telemetry/appTelemetry";
 import { setupTelemetry, shutdownTelemetry } from "./telemetry/setup";
@@ -79,6 +80,7 @@ await registerOrderRoutes(server);
 await registerPaymentRoutes(server);
 await registerSavedNumberRoutes(server);
 await registerWalletRoutes(server);
+await registerNotificationRoutes(server);
 await registerAdminRoutes(server);
 await registerVendorSimulationRoutes(server);
 

@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { readNumberConfig } from "./platformConfig";
 import { requireServiceSecret } from "./serviceAuth";
+import { createNotification } from "./notifications";
 
 const paymentPurpose = v.union(
   v.literal("data_purchase"),
@@ -443,7 +444,7 @@ async function completeWalletTopUp(
   }
 
   await ctx.db.patch(userId, {
-    walletBalanceGhs: user.walletBalanceGhs + intent.amountGhs
+    walletBalanceGhs: roundGhs(user.walletBalanceGhs + intent.amountGhs)
   });
 
   await ctx.db.insert("walletTransactions", {
@@ -452,6 +453,15 @@ async function completeWalletTopUp(
     amountGhs: intent.amountGhs,
     reference: intent.providerReference,
     notes: "Paystack wallet top-up"
+  });
+
+  await createNotification(ctx, {
+    userId,
+    title: "Wallet Topped Up",
+    body: `GHS ${intent.amountGhs} has been credited to your wallet via Paystack. Ref: ${intent.providerReference}`,
+    type: "wallet_update",
+    referenceId: intent.providerReference,
+    dedupeKey: `wallet:${intent.providerReference}:top_up`
   });
 }
 
@@ -470,17 +480,29 @@ async function completeAgentApplicationFee(
     .first();
 
   if (existing !== null) {
+    if (existing.status === "approved") {
+      return;
+    }
+
     await ctx.db.patch(existing._id, {
       paymentReference: intent.providerReference,
       status: "pending"
     });
-    return;
+  } else {
+    await ctx.db.insert("agentApplications", {
+      userId,
+      paymentReference: intent.providerReference,
+      status: "pending"
+    });
   }
 
-  await ctx.db.insert("agentApplications", {
+  await createNotification(ctx, {
     userId,
-    paymentReference: intent.providerReference,
-    status: "pending"
+    title: "Agent Application Received",
+    body: "Your agent application fee payment has been received and your application is now pending admin review.",
+    type: "agent_update",
+    referenceId: intent.providerReference,
+    dedupeKey: `agent_application:${intent.providerReference}:received`
   });
 }
 

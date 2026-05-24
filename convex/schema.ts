@@ -243,5 +243,37 @@ export default defineSchema({
     action: v.string(),
     target: v.string(),
     metadata: v.optional(v.any())
-  }).index("by_actor", ["actorId"])
+  }).index("by_actor", ["actorId"]),
+
+  notifications: defineTable({
+    userId: v.id("users"),
+    title: v.string(),
+    body: v.string(),
+    type: v.union(
+      v.literal("order_status"),
+      v.literal("wallet_update"),
+      v.literal("announcement"),
+      v.literal("agent_update"),
+      v.literal("account_alert")
+    ),
+    referenceId: v.optional(v.string()),
+    dedupeKey: v.optional(v.string()),
+    readAt: v.optional(v.number()),
+    createdAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_read", ["userId", "readAt"])
+    .index("by_user_created", ["userId", "createdAt"])
+    .index("by_user_dedupe", ["userId", "dedupeKey"]),
+
+  announcementNotificationStates: defineTable({
+    userId: v.id("users"),
+    announcementId: v.id("announcements"),
+    readAt: v.optional(v.number()),
+    dismissedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_announcement", ["userId", "announcementId"])
 });

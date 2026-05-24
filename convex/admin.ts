@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { getAdminScopeForRole, isBootstrapSuperadmin } from "./adminConfig";
 import { requireServiceSecret } from "./serviceAuth";
+import { createNotification, broadcastAnnouncement } from "./notifications";
 
 /* ── Admin Auth Helpers ── */
 
@@ -658,6 +659,15 @@ export const refundOrder = mutation({
           reference: order.reference,
           notes: args.notes ?? `Admin refund for order ${order.reference}`,
         });
+
+        await createNotification(ctx, {
+          userId: order.userId,
+          title: "Refund Issued",
+          body: `GHS ${refundAmount.toFixed(2)} has been refunded to your wallet for order ${order.reference}.`,
+          type: "wallet_update",
+          referenceId: order.reference,
+          dedupeKey: `wallet:${order.reference}:refund`
+        });
       }
     }
 
@@ -776,7 +786,7 @@ export const creditWallet = mutation({
       throw new Error("Amount must be greater than zero.");
     }
 
-    const newBalance = user.walletBalanceGhs + args.amountGhs;
+    const newBalance = roundGhs(user.walletBalanceGhs + args.amountGhs);
     await ctx.db.patch(args.userId, { walletBalanceGhs: newBalance });
 
     const ref = `admin-credit-${Date.now()}`;
@@ -797,6 +807,15 @@ export const creditWallet = mutation({
         notes: args.notes,
         reference: ref,
       },
+    });
+
+    await createNotification(ctx, {
+      userId: args.userId,
+      title: "Wallet Credited",
+      body: `Your wallet has been credited with GHS ${args.amountGhs.toFixed(2)}.`,
+      type: "wallet_update",
+      referenceId: ref,
+      dedupeKey: `wallet:${ref}:admin_credit`
     });
   },
 });
@@ -820,7 +839,7 @@ export const debitWallet = mutation({
       throw new Error("Insufficient wallet balance.");
     }
 
-    const newBalance = user.walletBalanceGhs - args.amountGhs;
+    const newBalance = roundGhs(user.walletBalanceGhs - args.amountGhs);
     await ctx.db.patch(args.userId, { walletBalanceGhs: newBalance });
 
     const ref = `admin-debit-${Date.now()}`;
@@ -842,6 +861,26 @@ export const debitWallet = mutation({
         reference: ref,
       },
     });
+
+    await createNotification(ctx, {
+      userId: args.userId,
+      title: "Wallet Debited",
+      body: `Your wallet has been debited by GHS ${args.amountGhs.toFixed(2)}.`,
+      type: "wallet_update",
+      referenceId: ref,
+      dedupeKey: `wallet:${ref}:admin_debit`
+    });
+
+    if (user.role === "agent" && newBalance < 50) {
+      await createNotification(ctx, {
+        userId: args.userId,
+        title: "Low Wallet Balance Alert",
+        body: `Your wallet balance is GHS ${newBalance.toFixed(2)}, which is below GHS 50. Please top up your wallet to continue data bundling.`,
+        type: "wallet_update",
+        referenceId: ref,
+        dedupeKey: `wallet:${ref}:low_balance`
+      });
+    }
   },
 });
 
@@ -943,6 +982,15 @@ export const approveAgentApplication = mutation({
       target: args.applicationId,
       metadata: { userId: app.userId },
     });
+
+    await createNotification(ctx, {
+      userId: app.userId,
+      title: "Agent Status Approved",
+      body: "Congratulations! Your agent application has been approved. You now enjoy agent discounts and usage metrics.",
+      type: "agent_update",
+      referenceId: args.applicationId,
+      dedupeKey: `agent_application:${args.applicationId}:approved`
+    });
   },
 });
 
@@ -966,6 +1014,15 @@ export const rejectAgentApplication = mutation({
       action: "reject_agent_application",
       target: args.applicationId,
       metadata: { userId: app.userId, reason: args.reason },
+    });
+
+    await createNotification(ctx, {
+      userId: app.userId,
+      title: "Agent Status Update",
+      body: `Your agent application was not approved.${args.reason ? ` Reason: ${args.reason}` : ""}`,
+      type: "agent_update",
+      referenceId: args.applicationId,
+      dedupeKey: `agent_application:${args.applicationId}:rejected`
     });
   },
 });
@@ -1197,6 +1254,13 @@ export const createAnnouncement = mutation({
       action: "create_announcement",
       target: announcementId,
       metadata: { title: args.title, audience: args.audience },
+    });
+
+    await broadcastAnnouncement(ctx, {
+      announcementId,
+      title: args.title,
+      body: args.body,
+      audience: args.audience
     });
 
     return announcementId;
