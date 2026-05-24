@@ -222,7 +222,8 @@ img{display:block;max-width:100%}
 
 .features-grid{display:grid;grid-template-columns:1fr;gap:20px}
 @media(min-width:768px){.features-grid{grid-template-columns:repeat(3,1fr);gap:24px}}
-.feature-card{padding:32px 28px;border-radius:var(--radius-lg);background:var(--bg-surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);transition:transform 0.35s var(--ease-out),box-shadow 0.35s;position:relative;overflow:hidden}
+.feature-card-wrap{display:flex}
+.feature-card{width:100%;padding:32px 28px;border-radius:var(--radius-lg);background:var(--bg-surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);transition:transform 0.35s var(--ease-out),box-shadow 0.35s;position:relative;overflow:hidden}
 .feature-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
 .feature-icon{width:52px;height:52px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;margin-bottom:20px;color:#fff;font-size:1.3rem}
 .feature-icon.green{background:var(--primary)}
@@ -246,7 +247,8 @@ img{display:block;max-width:100%}
 .features{padding:80px 0}
 .steps-grid{display:grid;grid-template-columns:1fr;gap:20px}
 @media(min-width:768px){.steps-grid{grid-template-columns:repeat(3,1fr);gap:24px}}
-.step-card{padding:32px 28px;border-radius:var(--radius-lg);background:var(--bg-surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);transition:transform 0.35s var(--ease-out),border-color 0.35s,box-shadow 0.35s;position:relative;overflow:hidden}
+.step-card-wrap{display:flex}
+.step-card{width:100%;padding:32px 28px;border-radius:var(--radius-lg);background:var(--bg-surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);transition:transform 0.35s var(--ease-out),border-color 0.35s,box-shadow 0.35s;position:relative;overflow:hidden}
 .step-card::after{content:'';position:absolute;inset:0;border-radius:inherit;opacity:0;background:radial-gradient(circle at var(--mouse-x,50%) var(--mouse-y,50%),var(--primary-dim) 0%,transparent 60%);transition:opacity 0.3s;pointer-events:none}
 .step-card:hover::after{opacity:1}
 .step-card:hover{transform:translateY(-4px);border-color:var(--primary);box-shadow:var(--shadow-md)}

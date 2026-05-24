@@ -505,7 +505,7 @@ export default function HomePage() {
         trigger: ".steps-grid",
         start: "top 85%",
         onEnter: () => {
-          gsap.from(".step-card", {
+          gsap.from(".step-card-wrap", {
             y: 32,
             opacity: 0,
             duration: 0.6,
@@ -895,35 +895,41 @@ export default function HomePage() {
             <h2>Why Choose Us</h2>
           </div>
           <div className="features-grid">
-            <div className="feature-card reveal">
-              <div className="feature-icon green">
-                <TruckIcon />
+            <div className="feature-card-wrap reveal">
+              <div className="feature-card">
+                <div className="feature-icon green">
+                  <TruckIcon />
+                </div>
+                <h3>Fast Delivery</h3>
+                <p>
+                  Experience instant data delivery with our automated system. Your
+                  bundle arrives in seconds.
+                </p>
               </div>
-              <h3>Fast Delivery</h3>
-              <p>
-                Experience instant data delivery with our automated system. Your
-                bundle arrives in seconds.
-              </p>
             </div>
-            <div className="feature-card reveal">
-              <div className="feature-icon orange">
-                <DocumentIcon />
+            <div className="feature-card-wrap reveal">
+              <div className="feature-card">
+                <div className="feature-icon orange">
+                  <DocumentIcon />
+                </div>
+                <h3>Bulk Order Processing</h3>
+                <p>
+                  Upload Excel files or use text input to process hundreds of
+                  orders simultaneously.
+                </p>
               </div>
-              <h3>Bulk Order Processing</h3>
-              <p>
-                Upload Excel files or use text input to process hundreds of
-                orders simultaneously.
-              </p>
             </div>
-            <div className="feature-card reveal">
-              <div className="feature-icon blue">
-                <HeadsetIcon />
+            <div className="feature-card-wrap reveal">
+              <div className="feature-card">
+                <div className="feature-icon blue">
+                  <HeadsetIcon />
+                </div>
+                <h3>24/7 Support</h3>
+                <p>
+                  Our dedicated support team is available round the clock to help
+                  you with any technical issues.
+                </p>
               </div>
-              <h3>24/7 Support</h3>
-              <p>
-                Our dedicated support team is available round the clock to help
-                you with any technical issues.
-              </p>
             </div>
           </div>
         </div>
@@ -981,14 +987,15 @@ export default function HomePage() {
                 desc: "Complete payment via Mobile Money. Your data is credited within seconds, every time.",
               },
             ].map((s) => (
-              <div
-                key={s.n}
-                className="step-card"
-                onMouseMove={handleCardMouse}
-              >
-                <div className="step-num">{s.n}</div>
-                <h3>{s.title}</h3>
-                <p>{s.desc}</p>
+              <div key={s.n} className="step-card-wrap">
+                <div
+                  className="step-card"
+                  onMouseMove={handleCardMouse}
+                >
+                  <div className="step-num">{s.n}</div>
+                  <h3>{s.title}</h3>
+                  <p>{s.desc}</p>
+                </div>
               </div>
             ))}
           </div>
