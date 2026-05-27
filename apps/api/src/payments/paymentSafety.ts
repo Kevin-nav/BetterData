@@ -23,7 +23,7 @@ export function verifyPurchasePaymentSafety(
     return {
       ok: false,
       statusCode: 409,
-      message: "Verified wallet debit is required before vendor purchase."
+      message: "We could not verify your wallet payment. Please refresh your wallet and try again."
     };
   }
 

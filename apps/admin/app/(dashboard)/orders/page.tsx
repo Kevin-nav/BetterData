@@ -115,6 +115,7 @@ export default function AdminOrdersPage() {
     {
       key: "network",
       header: "Network",
+      hiddenOnMobile: true,
       render: (row) => (
         <span style={{ textTransform: "uppercase", fontWeight: 500 }}>{row.network}</span>
       ),
@@ -132,6 +133,7 @@ export default function AdminOrdersPage() {
     {
       key: "paymentMethod",
       header: "Payment Method",
+      hiddenOnMobile: true,
       render: (row) => (
         <span style={{ fontSize: "var(--font-size-sm)" }}>
           {row.paymentMethod === "paystack_momo" ? "Paystack" : "Wallet"}
@@ -141,6 +143,7 @@ export default function AdminOrdersPage() {
     {
       key: "paymentStatus",
       header: "Payment",
+      hiddenOnMobile: true,
       render: (row) => <StatusBadge status={row.paymentStatus} />,
     },
     {
@@ -151,6 +154,7 @@ export default function AdminOrdersPage() {
     {
       key: "_creationTime",
       header: "Date & Time",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="text-muted text-sm">
           {new Date(row._creationTime).toLocaleString()}

@@ -83,14 +83,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   return (
     <div>
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "var(--space-6)",
-        }}
-      >
+      <div className="flex-responsive-header">
         <div>
           <div style={{ marginBottom: "var(--space-2)" }}>
             <Link href="/agents" className="btn btn-secondary btn-sm" style={{ paddingLeft: 0, border: "none", background: "none" }}>
@@ -114,7 +107,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
 
 
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-6)", alignItems: "start" }}>
+      <div className="grid-responsive-1-1">
         {/* Left Column: Application Details */}
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
           <div className="card">
@@ -192,7 +185,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
             <div className="card-header">
               <h2 className="card-header-title">Reseller Metrics</h2>
             </div>
-            <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+            <div className="card-body grid-responsive-1-1" style={{ gap: "var(--space-4)" }}>
               <div>
                 <span className="text-muted text-sm" style={{ display: "block" }}>Total Orders Count</span>
                 <div style={{ fontSize: "var(--font-size-2xl)", fontWeight: 700 }}>

@@ -17,6 +17,10 @@ import { orderFunctions } from "@betterdata/app-api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { createConvexHttpClient } from "../../convexClient";
 import { getRequiredEnv } from "@betterdata/config";
+import {
+  getPricingContextForApi,
+  resolveVendorPackageCustomerPriceGhs
+} from "../packages/packages.routes";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -40,6 +44,70 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     const body = validation.value;
+    const vendor = getActiveDataVendor();
+    const convex = createConvexHttpClient();
+    const user = await getOptionalUserForOrder(request, convex);
+
+    if (body.paymentMethod === "wallet") {
+      if (user === null) {
+        return reply.code(401).send({
+          message: "Please log in to buy data with your wallet."
+        });
+      }
+
+      try {
+        const order = await createVerifiedWalletOrder({
+          body,
+          vendor,
+          user,
+          log: request.log
+        });
+
+        try {
+          await queue.enqueue(QUEUE_NAMES.purchaseRequested, toPurchaseJob(order));
+        } catch (error) {
+          request.log.error(
+            { error, orderReference: order.reference, vendorId: vendor.id },
+            "Wallet purchase job enqueue failed"
+          );
+
+          await orderStore.recordOrderFailure(order.reference, {
+            status: "failed",
+            vendorRaw: {
+              enqueueError: serializeError(error),
+              vendorId: vendor.id
+            }
+          });
+          await orderStore.refundToWallet(order.reference, {
+            notes: "Automatic wallet refund because fulfillment could not be queued"
+          });
+
+          return reply.code(503).send({
+            message:
+              "Your wallet was refunded because fulfillment could not start. Please try again shortly."
+          });
+        }
+
+        return reply.code(202).send({
+          reference: order.reference,
+          vendorId: vendor.id,
+          status: order.status,
+          estimatedDeliverySeconds: 30 * 60
+        });
+      } catch (error) {
+        request.log.warn(
+          { error, vendorId: vendor.id, userId: user.id },
+          "Wallet data purchase failed validation"
+        );
+        const message = readWalletPurchaseError(error);
+        const statusCode = message.includes("too low") ? 402 : 400;
+
+        return reply.code(statusCode).send({
+          message
+        });
+      }
+    }
+
     const paymentSafety = verifyPurchasePaymentSafety(body);
 
     if (!paymentSafety.ok) {
@@ -48,9 +116,6 @@ export async function registerOrderRoutes(server: FastifyInstance) {
       });
     }
 
-    const vendor = getActiveDataVendor();
-    const convex = createConvexHttpClient();
-    const user = await getOptionalUserForOrder(request, convex);
     const idempotencyKey = randomUUID();
     const order = await orderStore.createIntent({
       body,
@@ -314,6 +379,118 @@ export async function registerOrderRoutes(server: FastifyInstance) {
   });
 }
 
+async function createVerifiedWalletOrder(input: {
+  body: PurchaseRequest;
+  vendor: ReturnType<typeof getActiveDataVendor>;
+  user: { id: string; role?: string };
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void };
+}) {
+  const selected = await resolveWalletPurchasePackage(input);
+  const reference = createOrderReference();
+  const idempotencyKey = randomUUID();
+  const createWalletPurchaseForApi = orderFunctions.createWalletPurchaseForApi;
+  const convex = createConvexHttpClient();
+
+  const order = await convex.mutation(createWalletPurchaseForApi, {
+    apiSecret: getRequiredEnv("CONVEX_API_SECRET"),
+    reference,
+    userId: input.user.id as Id<"users">,
+    packageId: selected.packageId,
+    vendorId: input.vendor.id,
+    vendorPackageId: selected.vendorPackageId,
+    network: selected.network,
+    recipientPhone: input.body.recipientPhone,
+    amountGhs: selected.amountGhs,
+    idempotencyKey,
+    confirmRecipientIsCorrect: true
+  });
+
+  return {
+    reference: order.reference,
+    packageId: selected.vendorPackageId,
+    network: order.network,
+    recipientPhone: order.recipientPhone,
+    paymentMethod: order.paymentMethod,
+    vendorId: order.vendorId,
+    idempotencyKey: order.idempotencyKey,
+    status: order.status
+  };
+}
+
+async function resolveWalletPurchasePackage(input: {
+  body: PurchaseRequest;
+  vendor: ReturnType<typeof getActiveDataVendor>;
+  user: { role?: string };
+  log: { warn: (obj: Record<string, unknown>, msg: string) => void };
+}) {
+  const vendorPackageId = input.body.packageId.includes(":")
+    ? input.body.packageId.split(":").at(-1)
+    : input.body.packageId;
+  const packages = await input.vendor.listPackages();
+  const selected = packages.find(
+    (item) => item.vendorPackageId === vendorPackageId && item.network === input.body.network
+  );
+
+  if (!selected || !selected.isAvailable) {
+    throw new Error("Selected data package is not available. Please choose another package.");
+  }
+
+  if (!Number.isFinite(selected.costGhs) || selected.costGhs <= 0) {
+    throw new Error("Selected data package price is temporarily unavailable.");
+  }
+
+  await ensureVendorBalanceCanCoverPurchase(input.vendor, selected.costGhs);
+
+  const pricingContext = await getPricingContextForApi(input.log);
+
+  if (pricingContext === null) {
+    throw new Error("Pricing is temporarily unavailable. Please try again shortly.");
+  }
+
+  const amountGhs = resolveVendorPackageCustomerPriceGhs(
+    input.vendor.id,
+    selected,
+    pricingContext,
+    { applyAgentDiscount: input.user.role === "agent" }
+  );
+
+  return {
+    packageId: `${input.vendor.id}:${selected.vendorPackageId}`,
+    vendorPackageId: selected.vendorPackageId,
+    network: selected.network,
+    amountGhs
+  };
+}
+
+async function ensureVendorBalanceCanCoverPurchase(
+  vendor: ReturnType<typeof getActiveDataVendor>,
+  purchaseCostGhs: number
+) {
+  try {
+    const balance = await vendor.getBalance();
+
+    if (!Number.isFinite(balance.balanceGhs) || balance.balanceGhs < purchaseCostGhs) {
+      throw new Error("low_balance");
+    }
+  } catch {
+    throw new Error(
+      "Data purchases are temporarily unavailable because vendor balance is low. Please try again shortly."
+    );
+  }
+}
+
+function readWalletPurchaseError(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    if (error.message.includes("Verified wallet debit")) {
+      return "We could not verify your wallet payment. Please refresh your wallet and try again.";
+    }
+
+    return error.message;
+  }
+
+  return "Wallet purchase failed. Please try again.";
+}
+
 async function getOptionalUserForOrder(
   request: FastifyRequest,
   convex: ReturnType<typeof createConvexHttpClient>
@@ -384,6 +561,10 @@ function readRawBody(request: FastifyRequest) {
   }
 
   throw new Error("rawBody missing: cannot verify webhook signature");
+}
+
+function createOrderReference() {
+  return `BD-${randomUUID().toUpperCase()}`;
 }
 
 function requireInternalServiceRequest(

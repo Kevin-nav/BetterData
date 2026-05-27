@@ -12,6 +12,7 @@ import {
   Megaphone,
   ClipboardList,
   LogOut,
+  X,
 } from "lucide-react";
 
 import { useAdminAuth } from "../lib/auth";
@@ -75,10 +76,17 @@ export function Sidebar({
         {/* Brand */}
         <div className="sidebar-brand">
           <div className="sidebar-brand-dot">BD</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div className="sidebar-brand-text">Better Data</div>
             <div className="sidebar-brand-label">Admin</div>
           </div>
+          <button
+            className="btn btn-ghost btn-icon sidebar-close-btn"
+            onClick={onClose}
+            aria-label="Close menu"
+          >
+            <X />
+          </button>
         </div>
 
         {/* Navigation */}

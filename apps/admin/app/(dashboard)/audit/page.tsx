@@ -62,6 +62,7 @@ export default function AuditLogsPage() {
     {
       key: "_creationTime",
       header: "Timestamp",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="text-muted text-sm font-mono">
           {new Date(row._creationTime).toLocaleString()}
@@ -120,6 +121,7 @@ export default function AuditLogsPage() {
     {
       key: "target",
       header: "Target Entity",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="font-mono text-sm text-muted">{row.target}</span>
       ),
@@ -151,14 +153,12 @@ export default function AuditLogsPage() {
 
       <div className="card" style={{ marginBottom: "var(--space-6)" }}>
         <div
-          className="card-body"
+          className="card-body flex-responsive-row"
           style={{
-            display: "flex",
-            gap: "var(--space-4)",
-            alignItems: "center",
+            alignItems: "flex-end",
           }}
         >
-          <div className="form-group" style={{ margin: 0, minWidth: "240px" }}>
+          <div className="form-group" style={{ margin: 0, minWidth: "240px", flex: 1 }}>
             <label
               className="form-label"
               htmlFor="actionFilter"
@@ -184,7 +184,7 @@ export default function AuditLogsPage() {
             <button
               onClick={() => setSelectedAction("")}
               className="btn btn-ghost"
-              style={{ marginTop: "18px" }}
+              style={{ height: "40px" }}
             >
               Clear Filter
             </button>

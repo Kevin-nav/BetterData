@@ -163,14 +163,7 @@ export function PaymentConfigEditor() {
           return (
             <div
               key={key}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "var(--space-4)",
-                paddingBottom: "var(--space-4)",
-                borderBottom: "1px solid var(--border)",
-              }}
+              className="config-item-row"
             >
               <div style={{ flex: 1 }}>
                 <h4 style={{ margin: 0, fontSize: "var(--font-size-base)", fontWeight: 600 }}>{label}</h4>
@@ -189,7 +182,7 @@ export function PaymentConfigEditor() {
                 )}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
+              <div className="config-item-actions">
                 {isEditing ? (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>

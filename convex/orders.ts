@@ -94,6 +94,139 @@ export const createIntent = mutation({
   }
 });
 
+export const createWalletPurchaseForApi = mutation({
+  args: {
+    apiSecret: v.string(),
+    reference: v.string(),
+    userId: v.id("users"),
+    packageId: v.string(),
+    vendorId: v.string(),
+    vendorPackageId: v.optional(v.string()),
+    network: v.union(v.literal("mtn"), v.literal("telecel"), v.literal("airteltigo")),
+    recipientPhone: v.string(),
+    amountGhs: v.number(),
+    idempotencyKey: v.string(),
+    confirmRecipientIsCorrect: v.boolean()
+  },
+  handler: async (ctx, args) => {
+    requireApiSecret(args.apiSecret);
+
+    if (!args.confirmRecipientIsCorrect) {
+      throw new Error("Recipient number confirmation is required.");
+    }
+
+    if (!Number.isFinite(args.amountGhs) || args.amountGhs <= 0) {
+      throw new Error("Wallet purchase amount is invalid.");
+    }
+
+    const existingOrder = await ctx.db
+      .query("orders")
+      .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+      .first();
+
+    if (existingOrder !== null) {
+      return existingOrder;
+    }
+
+    const user = await ctx.db.get(args.userId);
+
+    if (user === null) {
+      throw new Error("Wallet user not found.");
+    }
+
+    if (user.isSuspended) {
+      throw new Error("Your account is suspended. Please contact support.");
+    }
+
+    if (roundGhs(user.walletBalanceGhs) < roundGhs(args.amountGhs)) {
+      throw new Error(
+        `Your wallet balance is too low for this purchase. Please top up your wallet or choose Mobile Money.`
+      );
+    }
+
+    const existingDebit = await ctx.db
+      .query("walletTransactions")
+      .withIndex("by_reference", (q) => q.eq("reference", args.reference))
+      .filter((q) => q.eq(q.field("type"), "purchase"))
+      .first();
+
+    if (existingDebit === null) {
+      await ctx.db.patch(args.userId, {
+        walletBalanceGhs: roundGhs(user.walletBalanceGhs - args.amountGhs)
+      });
+
+      await ctx.db.insert("walletTransactions", {
+        userId: args.userId,
+        type: "purchase",
+        amountGhs: roundGhs(args.amountGhs),
+        reference: args.reference,
+        notes: "Data bundle purchase"
+      });
+    }
+
+    const dataPackage = await findDataPackageForFinancialSnapshot(ctx, {
+      packageId: args.packageId,
+      vendorId: args.vendorId,
+      ...(args.vendorPackageId !== undefined
+        ? { vendorPackageId: args.vendorPackageId }
+        : {})
+    });
+    const costGhsAtPurchase = dataPackage?.providerCostGhs;
+    const markupGhsAtPurchase =
+      costGhsAtPurchase !== undefined
+        ? roundGhs(args.amountGhs - costGhsAtPurchase)
+        : undefined;
+    const now = Date.now();
+
+    const orderId = await ctx.db.insert("orders", {
+      reference: args.reference,
+      userId: args.userId,
+      packageId: args.packageId,
+      vendorId: args.vendorId,
+      ...(args.vendorPackageId !== undefined
+        ? { vendorPackageId: args.vendorPackageId }
+        : {}),
+      network: args.network,
+      recipientPhone: args.recipientPhone,
+      amountGhs: roundGhs(args.amountGhs),
+      ...(costGhsAtPurchase !== undefined ? { costGhsAtPurchase } : {}),
+      ...(markupGhsAtPurchase !== undefined ? { markupGhsAtPurchase } : {}),
+      paymentMethod: "wallet",
+      paymentStatus: "verified",
+      status: "pending",
+      idempotencyKey: args.idempotencyKey,
+      recipientConfirmedAt: now
+    });
+
+    const order = await ctx.db.get(orderId);
+
+    const packageName = dataPackage ? dataPackage.name : "Data bundle";
+    const networkLabel = args.network.toUpperCase();
+    await createNotification(ctx, {
+      userId: args.userId,
+      title: "Wallet Debited",
+      body: `GHS ${roundGhs(args.amountGhs)} has been debited for your ${networkLabel} ${packageName} order to ${args.recipientPhone}.`,
+      type: "wallet_update",
+      referenceId: args.reference,
+      dedupeKey: `wallet:${args.reference}:purchase`
+    });
+    await createNotification(ctx, {
+      userId: args.userId,
+      title: "Order Placed",
+      body: `Your order for ${networkLabel} ${packageName} to ${args.recipientPhone} is processing. Ref: ${args.reference}`,
+      type: "order_status",
+      referenceId: args.reference,
+      dedupeKey: `order:${args.reference}:placed`
+    });
+
+    if (order === null) {
+      throw new Error("Wallet order creation failed.");
+    }
+
+    return order;
+  }
+});
+
 async function findDataPackageForFinancialSnapshot(
   ctx: QueryCtx | MutationCtx,
   input: {

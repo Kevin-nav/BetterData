@@ -143,14 +143,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
   return (
     <div>
       {/* Top Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "var(--space-6)",
-        }}
-      >
+      <div className="flex-responsive-header">
         <div>
           <div style={{ marginBottom: "var(--space-2)" }}>
             <Link
@@ -309,13 +302,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr",
-          gap: "var(--space-6)",
-        }}
-      >
+      <div className="grid-responsive-2-1">
         {/* Left Column: Order details & API payload */}
         <div
           style={{
@@ -329,10 +316,8 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               <h2 className="card-header-title">Order Information</h2>
             </div>
             <div
-              className="card-body"
+              className="card-body grid-responsive-1-1"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
                 gap: "var(--space-4)",
               }}
             >
@@ -382,10 +367,8 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               </h2>
             </div>
             <div
-              className="card-body"
+              className="card-body grid-responsive-1-1"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
                 gap: "var(--space-4)",
               }}
             >

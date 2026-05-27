@@ -23,7 +23,6 @@ function getApi() {
   }
   return _apiClient;
 }
-
 /* ── Network Detection ── */
 const NETWORK_PREFIXES: Record<string, NetworkCode> = {
   "024": "mtn", "054": "mtn", "055": "mtn",
@@ -170,25 +169,49 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     typeof userProfile?.walletBalanceGhs === "number"
       ? `Balance: GHS ${userProfile.walletBalanceGhs.toFixed(2)}`
       : "Balance: --";
+  const walletBalance = userProfile?.walletBalanceGhs ?? 0;
+  const singleSubmitDisabled =
+    submitting ||
+    !selectedPkg ||
+    !recipientConfirmed ||
+    !phone.trim() ||
+    (payMethod === "wallet" &&
+      (!isAuthenticated ||
+        (selectedPkg !== null && walletBalance < selectedPkg.customerPriceGhs)));
+  const bulkSubmitDisabled =
+    submitting ||
+    bulkPills.length === 0 ||
+    invalidCount > 0 ||
+    !recipientConfirmed ||
+    (payMethod === "wallet" &&
+      (!isAuthenticated || (totalCostGhs > 0 && walletBalance < totalCostGhs)));
 
   // Bulk helper to find package ID by network & size in GB.
   const findPackageByGb = (net: NetworkCode, gb: number): DataPackage | null => {
+    const requestedMb = Math.round(gb * DATA_MB_PER_GB);
+
     return packages.find(p => {
       if (p.network !== net || !p.isAvailable) return false;
-      return Math.abs(p.sizeMb / DATA_MB_PER_GB - gb) < 0.05;
+      return p.sizeMb === requestedMb;
     }) ?? null;
   };
 
-  // Helper to suggest sizes dynamically from actual database packages
+  const getAvailableGbSizesForNetwork = (net: NetworkCode) => {
+    const netPkgs = packages.filter((p) => p.network === net && p.isAvailable);
+
+    return Array.from(new Set(netPkgs.map((p) => p.sizeMb / DATA_MB_PER_GB))).sort(
+      (a, b) => a - b
+    );
+  };
+
+  const formatGbSize = (gb: number) =>
+    Number(gb.toFixed(2)).toLocaleString("en-GH", {
+      maximumFractionDigits: 2
+    });
+
+  // Helper to suggest sizes dynamically from actual vendor packages.
   const suggestSizesForNetwork = (net: NetworkCode, input: number) => {
-    const netPkgs = packages.filter(p => p.network === net && p.isAvailable);
-    const sizes = Array.from(
-      new Set(
-        netPkgs.map(p => {
-          return Math.round((p.sizeMb / DATA_MB_PER_GB) * 2) / 2;
-        })
-      )
-    ).sort((a, b) => a - b);
+    const sizes = getAvailableGbSizesForNetwork(net);
 
     let lower: number | null = null;
     let higher: number | null = null;
@@ -197,6 +220,94 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       if (size > input && higher === null) higher = size;
     }
     return { lower, higher };
+  };
+
+  const formatSizeSuggestion = (lower: number | null, higher: number | null) => {
+    const parts = [lower, higher]
+      .filter((value): value is number => value !== null)
+      .map((value) => `${formatGbSize(value)}GB`);
+
+    return parts.length > 0 ? parts.join(" or ") : "an available package size";
+  };
+
+  const parseGbInput = (value: string) => {
+    const match = value.trim().match(/^(\d+(?:\.\d+)?)/);
+
+    if (!match) {
+      return null;
+    }
+
+    const parsed = Number(match[1]);
+
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  const inputHasDelimiter = (value: string) => /[\s,;]+$/.test(value);
+
+  const submitGbInput = (rawValue: string) => {
+    const value = parseGbInput(rawValue);
+
+    if (value !== null) {
+      handleGbSubmit(value);
+      return;
+    }
+
+    if (pendingPillId) {
+      setBulkPills((prev) =>
+        prev.map((p) =>
+          p.id === pendingPillId
+            ? { ...p, error: "Enter a valid GB size for this recipient." }
+            : p
+        )
+      );
+    }
+  };
+
+  const submitPhoneInput = (rawValue: string) => {
+    const cleaned = rawValue.replace(/\D/g, "");
+    const detected = detectNetwork(cleaned);
+
+    if (cleaned.length === 10 && detected) {
+      beginBulkGbEntry(cleaned, detected);
+      return;
+    }
+
+    if (rawValue.trim() !== "") {
+      const newPill: BulkPill = {
+        id: Math.random().toString(36).substring(2, 9),
+        phone: rawValue,
+        network: detected || "mtn",
+        sizeMb: 0,
+        priceGhs: 0,
+        packageId: "",
+        isValid: false,
+        error: !detected ? "Unknown network prefix" : "Must be 10 digits",
+      };
+      setBulkPills((prev) => [...prev, newPill]);
+      setBulkInputVal("");
+      setSheetOpen(true);
+    }
+  };
+
+  const beginBulkGbEntry = (phoneNumber: string, detected: NetworkCode) => {
+    const pId = Math.random().toString(36).substring(2, 9);
+    const newPill: BulkPill = {
+      id: pId,
+      phone: phoneNumber,
+      network: detected,
+      sizeMb: 0,
+      priceGhs: 0,
+      packageId: "",
+      isValid: false,
+      error: "Enter GB size...",
+    };
+
+    setBulkPills((prev) => [...prev, newPill]);
+    setPendingPillId(pId);
+    setTempPhone(phoneNumber);
+    setBulkInputPhase("gb");
+    setBulkInputVal("");
+    setShowSuggestions(false);
   };
 
   const getActiveNetwork = (): NetworkCode | null => {
@@ -307,6 +418,19 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
   const handleSinglePay = async () => {
     if (!selectedPkg || !phone.trim() || !recipientConfirmed) return;
+    if (payMethod === "wallet") {
+      if (!isAuthenticated) {
+        setOrderError("Please log in to buy data with your wallet.");
+        return;
+      }
+
+      if (walletBalance < selectedPkg.customerPriceGhs) {
+        setOrderError(
+          `Your wallet balance is GHS ${walletBalance.toFixed(2)}. Top up at least GHS ${(selectedPkg.customerPriceGhs - walletBalance).toFixed(2)} or choose Mobile Money.`
+        );
+        return;
+      }
+    }
     setSubmitting(true);
     setOrderError("");
 
@@ -476,7 +600,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     } else {
       const { lower, higher } = suggestSizesForNetwork(targetNetwork, gb);
       setSuggestedSizesState({ lower, higher });
-      setShowSuggestions(true);
+          setShowSuggestions(true);
 
       if (pendingPillId) {
         setBulkPills((prev) =>
@@ -484,7 +608,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
             p.id === pendingPillId
               ? {
                   ...p,
-                  error: `Invalid size (${gb}GB). Try ${lower ? lower + "GB" : ""}${lower && higher ? "/" : ""}${higher ? higher + "GB" : ""}`,
+                  error: `Invalid size (${formatGbSize(gb)}GB). Try ${formatSizeSuggestion(lower, higher)}.`,
                 }
               : p
           )
@@ -495,7 +619,6 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
   const handleBulkInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setBulkInputVal(val);
 
     if (bulkInputPhase === "phone") {
       const cleaned = val.replace(/\D/g, "");
@@ -504,72 +627,36 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
       if (cleaned.length === 10) {
         if (detected) {
-          const pId = Math.random().toString(36).substring(2, 9);
-          const newPill: BulkPill = {
-            id: pId,
-            phone: cleaned,
-            network: detected,
-            sizeMb: 0,
-            priceGhs: 0,
-            packageId: "",
-            isValid: false,
-            error: "Enter GB size...",
-          };
-          setBulkPills((prev) => [...prev, newPill]);
-          setPendingPillId(pId);
-          setTempPhone(cleaned);
-          setBulkInputPhase("gb");
-          setBulkInputVal("");
-          setShowSuggestions(false);
+          beginBulkGbEntry(cleaned, detected);
         }
+
+        return;
       }
+
+      if (inputHasDelimiter(val)) {
+        submitPhoneInput(val);
+        return;
+      }
+
+      setBulkInputVal(val);
+      return;
     }
+
+    if (inputHasDelimiter(val)) {
+      submitGbInput(val);
+      return;
+    }
+
+    setBulkInputVal(val);
   };
 
   const handleBulkInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" || e.key === " " || e.key === ",") {
       e.preventDefault();
       if (bulkInputPhase === "phone") {
-        const cleaned = bulkInputVal.replace(/\D/g, "");
-        const detected = detectNetwork(cleaned);
-        if (cleaned.length === 10 && detected) {
-          const pId = Math.random().toString(36).substring(2, 9);
-          const newPill: BulkPill = {
-            id: pId,
-            phone: cleaned,
-            network: detected,
-            sizeMb: 0,
-            priceGhs: 0,
-            packageId: "",
-            isValid: false,
-            error: "Enter GB size...",
-          };
-          setBulkPills((prev) => [...prev, newPill]);
-          setPendingPillId(pId);
-          setTempPhone(cleaned);
-          setBulkInputPhase("gb");
-          setBulkInputVal("");
-          setShowSuggestions(false);
-        } else if (bulkInputVal.trim() !== "") {
-          const newPill: BulkPill = {
-            id: Math.random().toString(36).substring(2, 9),
-            phone: bulkInputVal,
-            network: detected || "mtn",
-            sizeMb: 0,
-            priceGhs: 0,
-            packageId: "",
-            isValid: false,
-            error: !detected ? "Unknown network prefix" : "Must be 10 digits",
-          };
-          setBulkPills((prev) => [...prev, newPill]);
-          setBulkInputVal("");
-          setSheetOpen(true);
-        }
+        submitPhoneInput(bulkInputVal);
       } else {
-        const valNum = parseFloat(bulkInputVal);
-        if (!isNaN(valNum)) {
-          handleGbSubmit(valNum);
-        }
+        submitGbInput(bulkInputVal);
       }
     } else if (e.key === "Backspace" && bulkInputVal === "") {
       if (bulkInputPhase === "gb") {
@@ -757,6 +844,20 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     if (hasErrors) {
       setOrderError("Please remove or correct the entries with errors before paying.");
       return;
+    }
+
+    if (payMethod === "wallet") {
+      if (!isAuthenticated) {
+        setOrderError("Please log in to buy data with your wallet.");
+        return;
+      }
+
+      if (walletBalance < totalCostGhs) {
+        setOrderError(
+          `Your wallet balance is GHS ${walletBalance.toFixed(2)}. Top up at least GHS ${(totalCostGhs - walletBalance).toFixed(2)} or choose Mobile Money.`
+        );
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -1031,7 +1132,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                               className="gb-suggestion-opt"
                               onClick={() => handleGbSubmit(suggestedSizesState.lower!)}
                             >
-                              <span>{suggestedSizesState.lower}GB</span>
+                              <span>{formatGbSize(suggestedSizesState.lower)}GB</span>
                               <span className="opt-price">
                                 GHS {findPackageByGb(activeNet, suggestedSizesState.lower)?.customerPriceGhs.toFixed(2)}
                               </span>
@@ -1042,7 +1143,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                               className="gb-suggestion-opt"
                               onClick={() => handleGbSubmit(suggestedSizesState.higher!)}
                             >
-                              <span>{suggestedSizesState.higher}GB</span>
+                              <span>{formatGbSize(suggestedSizesState.higher)}GB</span>
                               <span className="opt-price">
                                 GHS {findPackageByGb(activeNet, suggestedSizesState.higher)?.customerPriceGhs.toFixed(2)}
                               </span>
@@ -1050,7 +1151,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                           )}
                           {!suggestedSizesState.lower && !suggestedSizesState.higher && (
                             <div className="gb-suggestion-label" style={{ fontStyle: "italic", fontWeight: "normal" }}>
-                              No matching packages. Maximum 50GB.
+                              No matching package size for this network.
                             </div>
                           )}
                         </div>
@@ -1238,7 +1339,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <button
                   className="btn btn-primary btn-lg btn-full"
                   style={{ marginTop: 18 }}
-                  disabled={submitting || !selectedPkg || !recipientConfirmed || !phone.trim()}
+                  disabled={singleSubmitDisabled}
                   onClick={handleSinglePay}
                 >
                   {submitting
@@ -1304,7 +1405,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <button
                   className="btn btn-primary btn-lg btn-full"
                   style={{ marginTop: 18 }}
-                  disabled={submitting || bulkPills.length === 0 || invalidCount > 0 || !recipientConfirmed}
+                  disabled={bulkSubmitDisabled}
                   onClick={handleBulkPay}
                 >
                   {submitting
@@ -1398,7 +1499,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
                 <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
               </label>
-              <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={submitting || !recipientConfirmed || !phone.trim()} onClick={handleSinglePay}>
+              <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={singleSubmitDisabled} onClick={handleSinglePay}>
                 {submitting ? "Processing..." : `Pay GHS ${selectedPkg.customerPriceGhs.toFixed(2)} with ${payMethod === "momo" ? "MoMo" : "Wallet"}`}
               </button>
               {orderError && <div className="order-message order-error">{orderError}</div>}
@@ -1445,7 +1546,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
                 <span>I have checked the recipient numbers and accept responsibility for wrong-number purchases.</span>
               </label>
-              <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={submitting || bulkPills.length === 0 || invalidCount > 0 || !recipientConfirmed} onClick={handleBulkPay}>
+              <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={bulkSubmitDisabled} onClick={handleBulkPay}>
                 {submitting ? "Processing..." : `Pay GHS ${totalCostGhs.toFixed(2)} for ${bulkPills.length} bundles with ${payMethod === "momo" ? "MoMo" : "Wallet"}`}
               </button>
               {orderError && <div className="order-message order-error">{orderError}</div>}

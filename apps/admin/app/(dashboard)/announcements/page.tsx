@@ -209,6 +209,7 @@ export default function AnnouncementsPage() {
     {
       key: "sentAt",
       header: "Date Sent",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="text-muted text-sm">
           {row.sentAt ? new Date(row.sentAt).toLocaleString() : "—"}
@@ -318,13 +319,7 @@ export default function AnnouncementsPage() {
               />
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "var(--space-4)",
-              }}
-            >
+            <div className="grid-responsive-1-1" style={{ gap: "var(--space-4)" }}>
               <div className="form-group">
                 <label className="form-label" htmlFor="audience">
                   Audience Group

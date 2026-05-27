@@ -122,6 +122,7 @@ export default function AgentsPage() {
     {
       key: "contact",
       header: "Contact Info",
+      hiddenOnMobile: true,
       render: (row) => (
         <div>
           <div>{row.user?.email || "No Email"}</div>
@@ -134,6 +135,7 @@ export default function AgentsPage() {
     {
       key: "paymentReference",
       header: "Payment Ref",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="font-mono text-sm">
           {row.paymentReference || <span className="text-muted">—</span>}
@@ -148,6 +150,7 @@ export default function AgentsPage() {
     {
       key: "_creationTime",
       header: "Applied Date",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="text-muted text-sm">
           {new Date(row._creationTime).toLocaleString()}
@@ -205,11 +208,13 @@ export default function AgentsPage() {
     {
       key: "email",
       header: "Email",
+      hiddenOnMobile: true,
       render: (row) => <span className="text-muted">{row.email || "N/A"}</span>,
     },
     {
       key: "phone",
       header: "Phone",
+      hiddenOnMobile: true,
       render: (row) => <span className="font-mono">{row.phone || "N/A"}</span>,
     },
     {
@@ -224,6 +229,7 @@ export default function AgentsPage() {
     {
       key: "totalOrders",
       header: "Orders Fulfilled",
+      hiddenOnMobile: true,
       render: (row) => <span>{row.totalOrders}</span>,
     },
     {

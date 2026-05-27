@@ -4,6 +4,7 @@ export type ColumnDef<T> = {
   key: string;
   header: string;
   render?: (row: T) => React.ReactNode;
+  hiddenOnMobile?: boolean;
 };
 
 type DataTableProps<T> = {
@@ -32,7 +33,9 @@ export function DataTable<T>({
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col.key}>{col.header}</th>
+                <th key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
+                  {col.header}
+                </th>
               ))}
             </tr>
           </thead>
@@ -40,7 +43,7 @@ export function DataTable<T>({
             {Array.from({ length: 5 }).map((_, rIdx) => (
               <tr key={rIdx}>
                 {columns.map((col) => (
-                  <td key={col.key}>
+                  <td key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
                     <div className="skeleton skeleton-text" style={{ width: "60%" }} />
                   </td>
                 ))}
@@ -85,7 +88,9 @@ export function DataTable<T>({
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key}>{col.header}</th>
+              <th key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
+                {col.header}
+              </th>
             ))}
           </tr>
         </thead>
@@ -96,7 +101,7 @@ export function DataTable<T>({
               onClick={() => onRowClick && onRowClick(row)}
             >
               {columns.map((col) => (
-                <td key={col.key}>
+                <td key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
                   {col.render ? col.render(row) : (row[col.key as keyof T] as React.ReactNode)}
                 </td>
               ))}

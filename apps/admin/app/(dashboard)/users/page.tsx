@@ -108,6 +108,7 @@ export default function UsersListPage() {
     {
       key: "email",
       header: "Email",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="text-muted">{row.email || "N/A"}</span>
       ),
@@ -156,6 +157,7 @@ export default function UsersListPage() {
     {
       key: "status",
       header: "Status",
+      hiddenOnMobile: true,
       render: (row) => (
         <StatusBadge
           status={row.isSuspended ? "failed" : "completed"}
@@ -166,6 +168,7 @@ export default function UsersListPage() {
     {
       key: "_creationTime",
       header: "Joined Date",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="text-muted text-sm">
           {new Date(row._creationTime).toLocaleDateString()}

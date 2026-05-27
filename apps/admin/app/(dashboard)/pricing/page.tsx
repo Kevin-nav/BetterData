@@ -362,6 +362,7 @@ export default function PricingPage() {
     {
       key: "providerCostGhs",
       header: "Cost Price",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="font-mono">GHS {row.providerCostGhs.toFixed(2)}</span>
       ),
@@ -369,6 +370,7 @@ export default function PricingPage() {
     {
       key: "customerPriceGhs",
       header: "Base Price",
+      hiddenOnMobile: true,
       render: (row) => (
         <span className="font-mono text-muted">
           GHS {row.customerPriceGhs.toFixed(2)}
@@ -378,6 +380,7 @@ export default function PricingPage() {
     {
       key: "rule",
       header: "Applied Rule",
+      hiddenOnMobile: true,
       render: (row) => {
         if (!row.activeRule) {
           return <span className="text-muted text-sm">No Markup (Cost)</span>;
@@ -418,6 +421,7 @@ export default function PricingPage() {
     {
       key: "agentPriceGhs",
       header: "Agent Price",
+      hiddenOnMobile: true,
       render: (row) => {
         const agentPrice =
           row.computedPriceGhs * (1 - agentDiscountPercentage / 100);

@@ -304,15 +304,7 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
 
   return (
     <div>
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "var(--space-6)",
-        }}
-      >
+      <div className="flex-responsive-header">
         <div>
           <div style={{ marginBottom: "var(--space-2)" }}>
             <Link
@@ -385,14 +377,7 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 2fr",
-          gap: "var(--space-6)",
-          alignItems: "start",
-        }}
-      >
+      <div className="grid-responsive-1-2">
         {/* Left Column: User details */}
         <div
           style={{
