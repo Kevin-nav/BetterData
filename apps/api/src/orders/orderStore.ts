@@ -46,7 +46,7 @@ export type OrderStore = {
       vendorRaw?: unknown;
       status: OrderStatus;
     }
-  ): Promise<void>;
+  ): Promise<any>;
   recordOrderFailure(
     reference: string,
     failure: {
@@ -109,12 +109,19 @@ export function createMemoryOrderStore(): OrderStore {
         throw new Error(`Order ${reference} was not found.`);
       }
 
-      orders.set(reference, {
+      const updated = {
         ...order,
         vendorOrderReference: result.vendorOrderReference,
         ...(result.vendorRaw !== undefined ? { vendorRaw: result.vendorRaw } : {}),
         status: result.status
-      });
+      };
+      orders.set(reference, updated);
+
+      return {
+        orderId: reference,
+        userId: order.userId,
+        isFirstPurchase: false
+      };
     },
 
     async recordOrderFailure(reference, failure) {
@@ -239,7 +246,7 @@ function createConvexOrderStore(convexUrl: string): OrderStore {
     },
 
     async recordVendorResult(reference, result) {
-      await client.mutation(recordVendorResult, {
+      return await client.mutation(recordVendorResult, {
         reference,
         apiSecret,
         vendorOrderReference: result.vendorOrderReference,

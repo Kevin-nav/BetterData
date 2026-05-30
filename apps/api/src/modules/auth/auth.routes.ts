@@ -3,6 +3,7 @@ import { getRequiredEnv } from "@betterdata/config";
 import { userFunctions, platformConfigFunctions } from "@betterdata/app-api";
 
 import { createConvexHttpClient } from "../../convexClient";
+import { sendWelcomeEmail } from "../../integrations/resend/client";
 import {
   verifyFirebaseToken
 } from "../../integrations/firebase/auth";
@@ -50,7 +51,16 @@ export async function registerAuthRoutes(server: FastifyInstance) {
         phone?: string;
         displayName?: string;
         role?: string;
+        isNew?: boolean;
       };
+
+      if (user.isNew && user.email) {
+        sendWelcomeEmail({
+          userId: user.id,
+          email: user.email,
+          displayName: user.displayName ?? firebaseUser.displayName
+        });
+      }
 
       return {
         id: user.id,

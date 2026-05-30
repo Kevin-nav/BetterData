@@ -13,6 +13,7 @@ import {
   ClipboardList,
   LogOut,
   X,
+  Mail,
 } from "lucide-react";
 
 import { useAdminAuth } from "../lib/auth";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
 ];
 
 const SYSTEM_ITEMS = [
+  { label: "Emails", href: "/emails", icon: Mail },
   { label: "Settings", href: "/settings", icon: Settings },
   { label: "Announcements", href: "/announcements", icon: Megaphone },
   { label: "Audit Log", href: "/audit", icon: ClipboardList },

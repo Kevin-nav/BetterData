@@ -1,5 +1,6 @@
 import type { OrderStore } from "../orders/orderStore";
 import type { OpsAlertInput } from "../ops/opsAlerts";
+import { sendFirstPurchaseEmail } from "../integrations/resend/client";
 import { QUEUE_NAMES, type QueueProvider, type StatusRefreshJob } from "../queue";
 import { emitAppTelemetry } from "../telemetry/appTelemetry";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
@@ -25,10 +26,29 @@ export async function startStatusWorker(options: {
           message.job.vendorOrderReference
         );
 
-        await options.orderStore.recordVendorResult(message.job.orderReference, {
+        const recordResult = await options.orderStore.recordVendorResult(message.job.orderReference, {
           vendorOrderReference: message.job.vendorOrderReference,
           status
         });
+
+        if (recordResult?.isFirstPurchase && recordResult?.email) {
+          try {
+            await sendFirstPurchaseEmail({
+              userId: recordResult.userId,
+              email: recordResult.email,
+              displayName: recordResult.displayName,
+              reference: message.job.orderReference,
+              amountGhs: recordResult.amountGhs,
+              recipientPhone: recordResult.recipientPhone,
+              network: recordResult.network
+            });
+          } catch (emailErr) {
+            options.logger?.error(
+              { error: emailErr, orderReference: message.job.orderReference, userId: recordResult.userId },
+              "Failed to send first purchase email in statusWorker"
+            );
+          }
+        }
 
         if (status === "processing" && message.attempts + 1 < maxAttempts) {
           await message.retry(retryDelayMs);

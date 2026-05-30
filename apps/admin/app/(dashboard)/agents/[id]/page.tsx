@@ -7,6 +7,7 @@ import { convexApi } from "@betterdata/app-api";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { Modal } from "../../../components/Modal";
 import { useToast } from "../../../components/Toast";
+import { useAdminAuth } from "../../../lib/auth";
 
 type AgentDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -15,6 +16,7 @@ type AgentDetailPageProps = {
 export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const { id } = use(params);
   const { showToast } = useToast();
+  const { getAuthHeaders } = useAdminAuth();
 
   // Queries
   const user = useQuery(convexApi.admin.getUser, { userId: id as any });
@@ -60,6 +62,22 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
       if (modalAction === "approve") {
         await approveApplication({ applicationId: application._id as any });
         showToast("Agent application approved successfully.", "success");
+
+        try {
+          const headers = await getAuthHeaders();
+          const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+          const emailResponse = await fetch(`${apiBaseUrl}/admin/agents/${id}/email-approved`, {
+            method: "POST",
+            headers
+          });
+          if (!emailResponse.ok) {
+            const errorText = await emailResponse.text();
+            throw new Error(`Server returned status ${emailResponse.status}: ${errorText}`);
+          }
+        } catch (emailErr: any) {
+          console.error("Failed to trigger agent approval email:", emailErr);
+          showToast("Agent approved, but notification email failed to send.", "warning");
+        }
       } else {
         const args: { applicationId: any; reason?: string } = {
           applicationId: application._id as any,

@@ -314,7 +314,19 @@ export const completeSucceededIntent = mutation({
         : {})
     });
 
-    return intent._id;
+    const user = intent.userId ? await ctx.db.get(intent.userId) : null;
+
+    return {
+      intentId: intent._id,
+      purpose: intent.purpose,
+      userId: intent.userId,
+      amountGhs: intent.amountGhs,
+      reference: intent.providerReference,
+      ...(intent.userId ? {
+        userEmail: user?.email,
+        userName: user?.displayName
+      } : {})
+    };
   }
 });
 

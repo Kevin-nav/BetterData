@@ -13,6 +13,7 @@ import { mapVendorErrorToHttp } from "../../vendors/errors";
 import { verifyDataVendorWebhook } from "../../vendors/webhookVerification";
 import { validatePurchaseRequest } from "./orderValidation";
 import { requireRequestUser } from "../auth/requestUser";
+import { sendFirstPurchaseEmail } from "../../integrations/resend/client";
 import { orderFunctions } from "@betterdata/app-api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { createConvexHttpClient } from "../../convexClient";
@@ -200,10 +201,29 @@ export async function registerOrderRoutes(server: FastifyInstance) {
         );
 
         if (order?.vendorOrderReference) {
-          await orderStore.recordVendorResult(order.reference, {
+          const recordResult = await orderStore.recordVendorResult(order.reference, {
             vendorOrderReference: order.vendorOrderReference,
             status
           });
+
+          if (recordResult?.isFirstPurchase && recordResult?.email) {
+            try {
+              await sendFirstPurchaseEmail({
+                userId: recordResult.userId,
+                email: recordResult.email,
+                displayName: recordResult.displayName,
+                reference: order.reference,
+                amountGhs: recordResult.amountGhs,
+                recipientPhone: recordResult.recipientPhone,
+                network: recordResult.network
+              });
+            } catch (emailErr) {
+              request.log.error(
+                { error: emailErr, orderReference: order.reference },
+                "Failed to send first purchase congratulations email"
+              );
+            }
+          }
         }
       } catch (error) {
         request.log.error({ error, vendorId: vendor.id }, "Vendor status lookup failed");
