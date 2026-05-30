@@ -32,15 +32,22 @@ export async function startStatusWorker(options: {
         });
 
         if (recordResult?.isFirstPurchase && recordResult?.email) {
-          sendFirstPurchaseEmail({
-            userId: recordResult.userId,
-            email: recordResult.email,
-            displayName: recordResult.displayName,
-            reference: message.job.orderReference,
-            amountGhs: recordResult.amountGhs,
-            recipientPhone: recordResult.recipientPhone,
-            network: recordResult.network
-          });
+          try {
+            await sendFirstPurchaseEmail({
+              userId: recordResult.userId,
+              email: recordResult.email,
+              displayName: recordResult.displayName,
+              reference: message.job.orderReference,
+              amountGhs: recordResult.amountGhs,
+              recipientPhone: recordResult.recipientPhone,
+              network: recordResult.network
+            });
+          } catch (emailErr) {
+            options.logger?.error(
+              { error: emailErr, orderReference: message.job.orderReference, userId: recordResult.userId },
+              "Failed to send first purchase email in statusWorker"
+            );
+          }
         }
 
         if (status === "processing" && message.attempts + 1 < maxAttempts) {

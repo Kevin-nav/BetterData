@@ -80,15 +80,22 @@ export async function processPurchaseMessage(
     });
 
     if (recordResult?.isFirstPurchase && recordResult?.email) {
-      sendFirstPurchaseEmail({
-        userId: recordResult.userId,
-        email: recordResult.email,
-        displayName: recordResult.displayName,
-        reference: job.orderReference,
-        amountGhs: recordResult.amountGhs,
-        recipientPhone: recordResult.recipientPhone,
-        network: recordResult.network
-      });
+      try {
+        await sendFirstPurchaseEmail({
+          userId: recordResult.userId,
+          email: recordResult.email,
+          displayName: recordResult.displayName,
+          reference: job.orderReference,
+          amountGhs: recordResult.amountGhs,
+          recipientPhone: recordResult.recipientPhone,
+          network: recordResult.network
+        });
+      } catch (emailErr) {
+        options.logger?.error(
+          { error: emailErr, orderReference: job.orderReference, userId: recordResult.userId },
+          "Failed to send first purchase email in purchase worker"
+        );
+      }
     }
 
     if (result.status === "completed") {

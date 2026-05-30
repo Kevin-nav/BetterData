@@ -316,7 +316,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             providerPayload: verified
           });
 
-          handlePaymentCompletionEmail(completionResult);
+          await handlePaymentCompletionEmail(completionResult);
 
           await enqueuePaidDataPurchaseFulfillment(convex, queue, reference);
           emitPaymentTelemetry({
@@ -563,7 +563,7 @@ async function verifyAndCompletePayment(
     providerPayload: verified
   });
 
-  handlePaymentCompletionEmail(completionResult);
+  await handlePaymentCompletionEmail(completionResult);
 
   await enqueuePaidDataPurchaseFulfillment(convex, queue, reference);
 }
@@ -914,13 +914,13 @@ function readErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function handlePaymentCompletionEmail(completionResult: any) {
+async function handlePaymentCompletionEmail(completionResult: any): Promise<void> {
   if (!completionResult || !completionResult.userEmail) {
     return;
   }
 
   if (completionResult.purpose === "wallet_top_up") {
-    sendWalletTopUpEmail({
+    await sendWalletTopUpEmail({
       userId: completionResult.userId,
       email: completionResult.userEmail,
       displayName: completionResult.userName,
@@ -928,7 +928,7 @@ function handlePaymentCompletionEmail(completionResult: any) {
       reference: completionResult.reference
     });
   } else if (completionResult.purpose === "agent_application_fee") {
-    sendAgentApplicationReceivedEmail({
+    await sendAgentApplicationReceivedEmail({
       userId: completionResult.userId,
       email: completionResult.userEmail,
       displayName: completionResult.userName,
