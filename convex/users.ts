@@ -49,7 +49,8 @@ export const findOrCreateFromFirebase = mutation({
         email: args.email ?? existing.email,
         phone: args.phone ?? existing.phone,
         displayName: args.displayName ?? existing.displayName,
-        role: bootstrapRole.role ?? existing.role
+        role: bootstrapRole.role ?? existing.role,
+        isNew: false
       };
     }
 
@@ -70,7 +71,8 @@ export const findOrCreateFromFirebase = mutation({
       email: args.email,
       phone: args.phone,
       displayName: args.displayName,
-      role: bootstrapRole.role ?? "user"
+      role: bootstrapRole.role ?? "user",
+      isNew: true
     };
   }
 });
@@ -146,5 +148,66 @@ export const getAgentApplicationStatus = query({
         ? { paymentReference: application.paymentReference }
         : {})
     };
+  }
+});
+
+export const markReengagementEmailSent = mutation({
+  args: {
+    serviceSecret: v.string(),
+    userId: v.id("users")
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+    const user = await ctx.db.get(args.userId);
+    if (user === null) {
+      throw new Error("User not found.");
+    }
+    await ctx.db.patch(args.userId, {
+      reengagementEmailSentAt: Date.now()
+    });
+  }
+});
+
+export const listInactiveUsersForReengagement = query({
+  args: {
+    serviceSecret: v.string(),
+    now: v.number()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+    
+    // Inactive target: 3 weeks = 21 days
+    const inactivityThresholdMs = 21 * 24 * 60 * 60 * 1000;
+    const cutoffTime = args.now - inactivityThresholdMs;
+
+    const allUsers = await ctx.db.query("users").collect();
+    
+    const inactiveUsers = [];
+    for (const user of allUsers) {
+      if (!user.email) continue;
+      if (user.reengagementEmailSentAt !== undefined) continue;
+      
+      const signupTime = user._creationTime;
+      if (signupTime > cutoffTime) continue;
+
+      const completedOrders = await ctx.db
+        .query("orders")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .filter((q) => q.eq(q.field("status"), "completed"))
+        .collect();
+      
+      if (completedOrders.length === 0) continue;
+      
+      const hasRecentPurchase = completedOrders.some(order => order.recipientConfirmedAt > cutoffTime || order._creationTime > cutoffTime);
+      if (hasRecentPurchase) continue;
+
+      inactiveUsers.push({
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName
+      });
+    }
+
+    return inactiveUsers;
   }
 });

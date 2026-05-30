@@ -1,4 +1,4 @@
-import { adminFunctions, opsAlertFunctions, platformConfigFunctions } from "@betterdata/app-api";
+import { adminFunctions, opsAlertFunctions, platformConfigFunctions, userFunctions } from "@betterdata/app-api";
 import { getRequiredEnv } from "@betterdata/config";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -6,7 +6,7 @@ import type { Id } from "../../../../../convex/_generated/dataModel";
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { createConvexHttpClient } from "../../convexClient";
-import { sendBroadcastEmail } from "../../integrations/resend/client";
+import { sendBroadcastEmail, sendAgentApplicationApprovedEmail, sendReengagementEmail } from "../../integrations/resend/client";
 import { snapshotMetrics } from "../../observability/metrics";
 import { createOrderStore } from "../../orders/orderStore";
 import { createQueueProvider, QUEUE_NAMES } from "../../queue";
@@ -194,6 +194,77 @@ export async function registerAdminRoutes(server: FastifyInstance) {
       };
     }
   );
+
+  server.post<{ Params: { userId: string } }>(
+    "/admin/agents/:userId/email-approved",
+    adminRouteOptions,
+    async (request, reply) => {
+      const { userId } = request.params;
+      const convex = createConvexHttpClient();
+
+      const user = await convex.query(adminFunctions.getUser, {
+        userId: userId as Id<"users">
+      });
+
+      if (!user || !user.email) {
+        return reply.code(404).send({ message: "User email not found." });
+      }
+
+      await sendAgentApplicationApprovedEmail({
+        userId: user._id,
+        email: user.email,
+        displayName: user.displayName
+      });
+
+      return { sent: true };
+    }
+  );
+
+  server.post(
+    "/internal/users/reengagement-check/run",
+    async (request, reply) => {
+      requireInternalServiceRequest(request.headers);
+      const convex = createConvexHttpClient();
+
+      const inactiveUsers = await convex.query(userFunctions.listInactiveUsersForReengagement, {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+        now: Date.now()
+      }) as Array<{ id: string; email: string; displayName?: string }>;
+
+      request.log.info({ count: inactiveUsers.length }, "Found inactive users for re-engagement check");
+
+      for (const user of inactiveUsers) {
+        try {
+          await sendReengagementEmail({
+            userId: user.id,
+            email: user.email,
+            displayName: user.displayName
+          });
+
+          await convex.mutation(userFunctions.markReengagementEmailSent, {
+            serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+            userId: user.id as Id<"users">
+          });
+        } catch (error) {
+          request.log.error({ error, userId: user.id }, "Failed to send re-engagement email to user");
+        }
+      }
+
+      return {
+        processed: inactiveUsers.length
+      };
+    }
+  );
+}
+
+function requireInternalServiceRequest(
+  headers: Record<string, string | string[] | undefined>
+) {
+  const provided = headers["x-betterdata-service-secret"];
+
+  if (Array.isArray(provided) || provided !== getRequiredEnv("BETTERDATA_SERVICE_SECRET")) {
+    throw new Error("Service authorization failed.");
+  }
 }
 
 export function maskPhone(phone: string) {

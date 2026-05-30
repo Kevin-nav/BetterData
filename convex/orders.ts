@@ -298,6 +298,10 @@ export const recordVendorResult = mutation({
       ...(args.vendorRaw !== undefined ? { vendorRaw: args.vendorRaw } : {})
     });
 
+    let isFirstPurchase = false;
+    let userEmail: string | undefined = undefined;
+    let userDisplayName: string | undefined = undefined;
+
     if (
       order.userId !== undefined &&
       order.status !== args.status &&
@@ -321,6 +325,23 @@ export const recordVendorResult = mutation({
           referenceId: order.reference,
           dedupeKey: `order:${order.reference}:completed`
         });
+
+        // First purchase check
+        const otherCompleted = await ctx.db
+          .query("orders")
+          .withIndex("by_user", (q) => q.eq("userId", order.userId!))
+          .filter((q) => q.eq(q.field("status"), "completed"))
+          .collect();
+        const completedCount = otherCompleted.filter((o) => o._id !== order._id).length;
+        if (completedCount === 0) {
+          isFirstPurchase = true;
+        }
+
+        const user = await ctx.db.get(order.userId);
+        if (user) {
+          userEmail = user.email;
+          userDisplayName = user.displayName;
+        }
       } else {
         await createNotification(ctx, {
           userId: order.userId,
@@ -333,7 +354,16 @@ export const recordVendorResult = mutation({
       }
     }
 
-    return order._id;
+    return {
+      orderId: order._id,
+      userId: order.userId,
+      isFirstPurchase,
+      email: userEmail,
+      displayName: userDisplayName,
+      amountGhs: order.amountGhs,
+      recipientPhone: order.recipientPhone,
+      network: order.network
+    };
   }
 });
 
