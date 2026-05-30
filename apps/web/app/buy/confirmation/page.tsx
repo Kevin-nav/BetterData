@@ -45,6 +45,7 @@ type ReceiptState = {
   paymentStatus: PaymentIntentStatus;
   deliveryStatus: OrderStatus | "pending";
   failureReason?: string;
+  createdAt?: number;
 };
 
 function ConfirmationContent() {
@@ -56,6 +57,11 @@ function ConfirmationContent() {
   const [localRecord, setLocalRecord] = useState<GuestPurchaseRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [globalError, setGlobalError] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!reference) {
@@ -150,15 +156,7 @@ function ConfirmationContent() {
           Better Data
         </Link>
         <div className="receipt-timestamp">
-          {localRecord?.createdAt
-            ? new Date(localRecord.createdAt).toLocaleDateString("en-GH", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
-            : new Date().toLocaleDateString("en-GH", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
+          {mounted && receipt ? formatReceiptDate(receipt.createdAt, localRecord?.createdAt, true) : ""}
         </div>
       </div>
 
@@ -240,10 +238,14 @@ async function buildReceiptState(
     }
   }
 
+  const recordTime = localRecord?.createdAt ? new Date(localRecord.createdAt).getTime() : undefined;
+  const createdAt = payment.createdAt ?? (recordTime && !isNaN(recordTime) ? recordTime : undefined);
+
   return {
     reference: payment.reference,
     paymentStatus: payment.status,
     deliveryStatus,
+    ...(createdAt ? { createdAt } : {}),
     ...defined("packageId", payment.dataPurchase?.packageId ?? localRecord?.packageId),
     ...defined("network", payment.dataPurchase?.network ?? localRecord?.network),
     ...defined("recipientPhone", payment.dataPurchase?.recipientPhone ?? localRecord?.recipientPhone),
@@ -322,7 +324,39 @@ function isTerminal(receipt: ReceiptState) {
   );
 }
 
-function formatPackageSize(sizeMb: number) {
+function formatReceiptDate(
+  receiptCreatedAt: number | undefined,
+  localRecordCreatedAt: string | undefined,
+  fallbackToCurrent: boolean
+): string {
+  if (typeof receiptCreatedAt === "number" && !isNaN(receiptCreatedAt)) {
+    return new Date(receiptCreatedAt).toLocaleDateString("en-GH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }
+  if (localRecordCreatedAt) {
+    const parsed = Date.parse(localRecordCreatedAt);
+    if (!isNaN(parsed)) {
+      return new Date(parsed).toLocaleDateString("en-GH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    }
+  }
+  if (fallbackToCurrent) {
+    return new Date().toLocaleDateString("en-GH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }
+  return "";
+}
+
+function formatPackageSize(sizeMb: number | undefined) {
+  if (typeof sizeMb !== "number" || isNaN(sizeMb)) {
+    return "Data bundle";
+  }
   if (sizeMb >= DATA_MB_PER_GB) {
     return `${Number(sizeMb / DATA_MB_PER_GB).toLocaleString("en-GH", {
       maximumFractionDigits: 1
@@ -332,7 +366,7 @@ function formatPackageSize(sizeMb: number) {
 }
 
 function formatPhone(phone: string | undefined) {
-  if (!phone) return "Pending";
+  if (typeof phone !== "string") return "Pending";
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 10) return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
   return phone;
