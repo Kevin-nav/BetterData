@@ -17,6 +17,24 @@ async function sendEmailAndLog(input: {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn("RESEND_API_KEY environment variable is not defined. Email send skipped.");
+    try {
+      const { subject } = getEmailHtml(input.type, input.data);
+      const convex = createConvexHttpClient();
+      const payload: any = {
+        serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
+        toEmail: input.email,
+        subject,
+        type: input.type,
+        status: "failed",
+        errorMessage: "Skipped: RESEND_API_KEY environment variable is not defined."
+      };
+      if (input.userId !== undefined) {
+        payload.userId = input.userId;
+      }
+      await convex.mutation(emailsFunctions.logSentEmail, payload);
+    } catch (convexErr) {
+      console.error("Failed to log skipped email to Convex:", convexErr);
+    }
     return;
   }
 

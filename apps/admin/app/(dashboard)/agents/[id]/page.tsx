@@ -66,12 +66,17 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
         try {
           const headers = await getAuthHeaders();
           const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
-          fetch(`${apiBaseUrl}/admin/agents/${id}/email-approved`, {
+          const emailResponse = await fetch(`${apiBaseUrl}/admin/agents/${id}/email-approved`, {
             method: "POST",
             headers
-          }).catch(e => console.error("Agent approval email trigger failed", e));
-        } catch (emailErr) {
-          console.error("Failed to retrieve auth headers for agent approval email", emailErr);
+          });
+          if (!emailResponse.ok) {
+            const errorText = await emailResponse.text();
+            throw new Error(`Server returned status ${emailResponse.status}: ${errorText}`);
+          }
+        } catch (emailErr: any) {
+          console.error("Failed to trigger agent approval email:", emailErr);
+          showToast("Agent approved, but notification email failed to send.", "warning");
         }
       } else {
         const args: { applicationId: any; reason?: string } = {
