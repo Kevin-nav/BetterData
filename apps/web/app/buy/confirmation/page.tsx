@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBetterDataApiClient } from "@betterdata/api-client";
 import type {
@@ -143,12 +144,37 @@ function ConfirmationContent() {
 
   return (
     <div className="confirm-card receipt-card">
-      <div className={`confirm-icon confirm-icon--${pageState.kind}`}>
-        {pageState.kind === "completed" ? <SuccessIcon /> : pageState.kind === "failed" ? <WarningIcon /> : <ProgressIcon />}
+      <div className="receipt-brand-header">
+        <Link href="/" className="logo">
+          <div className="logo-dot" />
+          Better Data
+        </Link>
+        <div className="receipt-timestamp">
+          {localRecord?.createdAt
+            ? new Date(localRecord.createdAt).toLocaleDateString("en-GH", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : new Date().toLocaleDateString("en-GH", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+        </div>
       </div>
 
-      <h1 className="confirm-title">{pageState.title}</h1>
-      <p className="confirm-subtitle">{pageState.subtitle}</p>
+      <div className="receipt-status-section">
+        <div className={`confirm-icon confirm-icon--${pageState.kind}`}>
+          {pageState.kind === "completed" ? <SuccessIcon /> : pageState.kind === "failed" ? <WarningIcon /> : <ProgressIcon />}
+        </div>
+        <h1 className="confirm-title">{pageState.title}</h1>
+        <p className="confirm-subtitle">{pageState.subtitle}</p>
+      </div>
+
+      <div className="receipt-tear-divider">
+        <span className="receipt-tear-notch receipt-tear-notch--left"></span>
+        <span className="receipt-tear-line"></span>
+        <span className="receipt-tear-notch receipt-tear-notch--right"></span>
+      </div>
 
       <div className="receipt-summary">
         <div>
@@ -174,6 +200,12 @@ function ConfirmationContent() {
         <ReceiptRow label="Delivery" value={formatStatus(receipt.deliveryStatus)} />
         <ReceiptRow label="Reference" value={receipt.reference} />
         {receipt.failureReason && <ReceiptRow label="Reason" value={receipt.failureReason} />}
+      </div>
+
+      <div className="receipt-footer">
+        <div className="receipt-barcode" aria-hidden="true" />
+        <p className="receipt-footer-text">Thank you for buying from Better Data!</p>
+        <p className="receipt-support-text">For support: {SUPPORT_EMAIL}</p>
       </div>
 
       <div className="confirm-actions no-print">
