@@ -196,6 +196,8 @@ export const listInactiveUsersForReengagement = query({
         .filter((q) => q.eq(q.field("status"), "completed"))
         .collect();
       
+      if (completedOrders.length === 0) continue;
+      
       const hasRecentPurchase = completedOrders.some(order => order.recipientConfirmedAt > cutoffTime || order._creationTime > cutoffTime);
       if (hasRecentPurchase) continue;
 

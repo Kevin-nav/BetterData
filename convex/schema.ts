@@ -300,4 +300,7 @@ export default defineSchema({
     .index("by_email", ["toEmail"])
     .index("by_type", ["type"])
     .index("by_sent_at", ["sentAt"])
+    .index("by_type_and_sent_at", ["type", "sentAt"])
+    .index("by_to_email_and_sent_at", ["toEmail", "sentAt"])
+    .index("by_subject_and_sent_at", ["subject", "sentAt"])
 });

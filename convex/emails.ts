@@ -68,21 +68,29 @@ export const listSentEmails = query({
       throw new Error("Unauthorized.");
     }
 
-    let q = ctx.db.query("sentEmails");
+    let q: any = ctx.db.query("sentEmails");
 
     if (args.type) {
       const typeFilter = args.type;
-      q = q.filter((f) => f.eq(f.field("type"), typeFilter));
-    }
-
-    if (args.search) {
+      q = q.withIndex("by_type_and_sent_at", (q: any) => q.eq("type", typeFilter));
+      if (args.search) {
+        const searchStr = args.search.trim();
+        q = q.filter((f: any) =>
+          f.or(
+            f.eq(f.field("toEmail"), searchStr),
+            f.eq(f.field("subject"), searchStr)
+          )
+        );
+      }
+    } else if (args.search) {
       const searchStr = args.search.trim();
-      q = q.filter((f) =>
-        f.or(
-          f.eq(f.field("toEmail"), searchStr),
-          f.eq(f.field("subject"), searchStr)
-        )
-      );
+      if (searchStr.includes("@")) {
+        q = q.withIndex("by_to_email_and_sent_at", (q: any) => q.eq("toEmail", searchStr));
+      } else {
+        q = q.withIndex("by_subject_and_sent_at", (q: any) => q.eq("subject", searchStr));
+      }
+    } else {
+      q = q.withIndex("by_sent_at");
     }
 
     return await q.order("desc").paginate(args.paginationOpts);
@@ -99,21 +107,29 @@ export const listSentEmailsByService = query({
   handler: async (ctx, args) => {
     requireServiceSecret(args.serviceSecret);
 
-    let q = ctx.db.query("sentEmails");
+    let q: any = ctx.db.query("sentEmails");
 
     if (args.type) {
-      const t = args.type;
-      q = q.filter((f) => f.eq(f.field("type"), t as any));
-    }
-
-    if (args.search) {
+      const typeFilter = args.type as any;
+      q = q.withIndex("by_type_and_sent_at", (q: any) => q.eq("type", typeFilter));
+      if (args.search) {
+        const searchStr = args.search.trim();
+        q = q.filter((f: any) =>
+          f.or(
+            f.eq(f.field("toEmail"), searchStr),
+            f.eq(f.field("subject"), searchStr)
+          )
+        );
+      }
+    } else if (args.search) {
       const searchStr = args.search.trim();
-      q = q.filter((f) =>
-        f.or(
-          f.eq(f.field("toEmail"), searchStr),
-          f.eq(f.field("subject"), searchStr)
-        )
-      );
+      if (searchStr.includes("@")) {
+        q = q.withIndex("by_to_email_and_sent_at", (q: any) => q.eq("toEmail", searchStr));
+      } else {
+        q = q.withIndex("by_subject_and_sent_at", (q: any) => q.eq("subject", searchStr));
+      }
+    } else {
+      q = q.withIndex("by_sent_at");
     }
 
     return await q.order("desc").paginate(args.paginationOpts);
