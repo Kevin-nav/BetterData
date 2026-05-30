@@ -119,6 +119,7 @@ export function createMemoryOrderStore(): OrderStore {
 
       return {
         orderId: reference,
+        userId: order.userId,
         isFirstPurchase: false
       };
     },

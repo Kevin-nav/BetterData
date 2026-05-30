@@ -356,6 +356,7 @@ export const recordVendorResult = mutation({
 
     return {
       orderId: order._id,
+      userId: order.userId,
       isFirstPurchase,
       email: userEmail,
       displayName: userDisplayName,

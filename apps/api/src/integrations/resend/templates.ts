@@ -14,8 +14,21 @@ export interface EmailData {
   network?: string | undefined;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function getEmailHtml(type: EmailType, data: EmailData): { subject: string; html: string } {
-  const name = data.displayName || "there";
+  const name = escapeHtml(data.displayName || "there");
+  const ref = data.reference ? escapeHtml(data.reference) : "N/A";
+  const phone = data.recipientPhone ? escapeHtml(data.recipientPhone) : "N/A";
+  const escapedNetwork = data.network ? escapeHtml(data.network) : "";
+
   let subject = "";
   let bodyHtml = "";
 
@@ -42,8 +55,8 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
     case "first_purchase":
       subject = "Congratulations on your first purchase! 🚀";
       const formattedAmount = data.amountGhs ? data.amountGhs.toFixed(2) : "0.00";
-      const recipient = data.recipientPhone ? `to ${data.recipientPhone}` : "";
-      const netLabel = data.network ? data.network.toUpperCase() : "data";
+      const recipient = data.recipientPhone ? `to ${phone}` : "";
+      const netLabel = escapedNetwork ? escapedNetwork.toUpperCase() : "data";
       bodyHtml = `
         <h1>Congratulations on your first bundle! 🎉</h1>
         <p>Hi ${name}, you just successfully sent your first ${netLabel} bundle ${recipient}! We hope you (or your recipient) enjoy high-speed internet.</p>
@@ -55,7 +68,7 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
         <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
           <div class="detail-row">
             <span class="detail-label">Order Reference</span>
-            <span class="detail-value">${data.reference || "N/A"}</span>
+            <span class="detail-value">${ref}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Amount Paid</span>
@@ -63,7 +76,7 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
           </div>
           <div class="detail-row">
             <span class="detail-label">Recipient</span>
-            <span class="detail-value">${data.recipientPhone || "N/A"}</span>
+            <span class="detail-value">${phone}</span>
           </div>
         </div>
 
@@ -83,7 +96,7 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
         <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
           <span style="font-size: 14px; color: #166534; display: block; font-weight: 600; text-transform: uppercase;">Amount Credited</span>
           <span style="font-size: 36px; font-weight: 800; color: #15803d; display: block; margin: 8px 0;">GHS ${topUpAmount}</span>
-          <span style="font-size: 12px; color: #166534; display: block; font-family: monospace;">Ref: ${data.reference || "N/A"}</span>
+          <span style="font-size: 12px; color: #166534; display: block; font-family: monospace;">Ref: ${ref}</span>
         </div>
 
         <p>Use your wallet balance to buy data instantly at any time without waiting for mobile money OTP requests.</p>
@@ -100,7 +113,7 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
         <h1>We've received your application fee!</h1>
         <p>Hi ${name}, thank you for your application to join the BetterData Agent Reseller program.</p>
         
-        <p>Your onboarding fee of <strong>GHS ${data.amountGhs ? data.amountGhs.toFixed(2) : "0.00"}</strong> (Ref: ${data.reference || "N/A"}) has been verified. Your application is now in queue for review by our operations team.</p>
+        <p>Your onboarding fee of <strong>GHS ${data.amountGhs ? data.amountGhs.toFixed(2) : "0.00"}</strong> (Ref: ${ref}) has been verified. Your application is now in queue for review by our operations team.</p>
         
         <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
           <p style="margin: 0; font-size: 14px; color: #475569;"><strong>Next Steps:</strong> Approval is usually completed within 2-4 hours during business days. We will review your profile credentials and send you another email as soon as your account gets activated.</p>
