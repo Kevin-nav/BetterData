@@ -1,10 +1,5 @@
 "use client";
 
-import { createBetterDataApiClient } from "@betterdata/api-client";
-import type {
-  CreatePaymentIntentResponse,
-  DataPackage,
-} from "@betterdata/contracts";
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -106,15 +101,6 @@ const NETWORKS = [
   { name: "AirtelTigo", id: "airteltigo", Logo: AirtelTigoLogo },
 ] as const;
 
-type NetworkId = (typeof NETWORKS)[number]["id"];
-
-type PaymentResult = CreatePaymentIntentResponse;
-
-const API_BASE_URL = requirePublicEnv(
-  process.env.NEXT_PUBLIC_API_BASE_URL,
-  "NEXT_PUBLIC_API_BASE_URL",
-);
-const betterDataApi = createBetterDataApiClient({ baseUrl: API_BASE_URL });
 const betterDataStructuredData = {
   "@context": "https://schema.org",
   "@graph": [
@@ -234,22 +220,6 @@ const CheckIcon = () => (
     strokeLinejoin="round"
   >
     <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const LockIcon = () => (
-  <svg
-    width="12"
-    height="12"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </svg>
 );
 
@@ -377,20 +347,6 @@ const PackageBoxIcon = () => (
 export default function HomePage() {
   const { isAuthenticated } = useAuth();
   const main = useRef<HTMLElement>(null);
-  const [network, setNetwork] = useState<NetworkId>("mtn");
-  const [phone, setPhone] = useState("");
-  const [packages, setPackages] = useState<DataPackage[]>([]);
-  const [selectedPackageId, setSelectedPackageId] = useState("");
-  const [packagesLoading, setPackagesLoading] = useState(true);
-  const [packageError, setPackageError] = useState("");
-  const [loadKey, setLoadKey] = useState(0);
-  const [recipientConfirmed, setRecipientConfirmed] = useState(false);
-  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(
-    null,
-  );
-  const [orderError, setOrderError] = useState("");
-  const [submittingOrder, setSubmittingOrder] = useState(false);
-  const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [navScrolled, setNavScrolled] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
@@ -410,59 +366,12 @@ export default function HomePage() {
     localStorage.setItem("theme", next);
   };
 
-  const networkPackages = packages.filter(
-    (item) => item.network === network && item.isAvailable,
-  );
-  const selectedPackage =
-    networkPackages.find((item) => item.id === selectedPackageId) ??
-    networkPackages[0];
-
   /* Navbar scroll detection */
   useEffect(() => {
     const onScroll = () => setNavScrolled(window.scrollY > 40);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadPackages() {
-      try {
-        setPackagesLoading(true);
-        setPackageError("");
-
-        const data = await betterDataApi.listDataPackages();
-
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setPackages(data.packages);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setPackageError(readApiError(error, "Unable to load data packages."));
-      } finally {
-        if (!controller.signal.aborted) {
-          setPackagesLoading(false);
-        }
-      }
-    }
-
-    void loadPackages();
-
-    return () => controller.abort();
-  }, [loadKey]);
-
-  useEffect(() => {
-    const firstPackage = packages.find(
-      (item) => item.network === network && item.isAvailable,
-    );
-    setSelectedPackageId(firstPackage?.id ?? "");
-  }, [network, packages]);
 
   /* GSAP Animations */
   useGSAP(
@@ -528,78 +437,6 @@ export default function HomePage() {
     e.currentTarget.style.setProperty("--mouse-y", `${y}%`);
   };
 
-  const retryLoadPackages = () => {
-    setPackageError("");
-    setLoadKey((key) => key + 1);
-  };
-
-  const submitQuickPurchase = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setOrderError("");
-    setPaymentResult(null);
-
-    if (!selectedPackage) {
-      setOrderError("Choose a package before continuing.");
-      return;
-    }
-
-    if (!phone.trim()) {
-      setOrderError("Enter the recipient phone number.");
-      return;
-    }
-
-    if (!recipientConfirmed) {
-      setOrderError("Confirm the recipient number is correct.");
-      return;
-    }
-
-    try {
-      setSubmittingOrder(true);
-
-      const data = await betterDataApi.createPaymentIntent({
-        purpose: "data_purchase",
-        packageId: selectedPackage.id,
-        network,
-        recipientPhone: phone.trim(),
-        confirmRecipientIsCorrect: true,
-      });
-
-      setPaymentResult(data);
-      window.location.href = data.authorizationUrl;
-    } catch (error) {
-      setOrderError(readApiError(error, "Unable to initialize payment."));
-    } finally {
-      setSubmittingOrder(false);
-    }
-  };
-
-  const refreshOrderStatus = async () => {
-    if (!paymentResult) {
-      return;
-    }
-
-    try {
-      setRefreshingStatus(true);
-      setOrderError("");
-
-      const data = await betterDataApi.getPaymentIntentStatus(
-        paymentResult.reference,
-      );
-      setPaymentResult((current: PaymentResult | null) =>
-        current
-          ? {
-              ...current,
-              status: data.status,
-            }
-          : current,
-      );
-    } catch (error) {
-      setOrderError(readApiError(error, "Unable to refresh payment status."));
-    } finally {
-      setRefreshingStatus(false);
-    }
-  };
-
   return (
     <main ref={main}>
       <script
@@ -616,6 +453,9 @@ export default function HomePage() {
             Better Data
           </Link>
           <div className="nav-actions">
+            <Link href="/buy" className="nav-link nav-buy-link">
+              Buy Data
+            </Link>
             {isAuthenticated ? (
               <Link href="/dashboard" className="btn btn-primary">
                 Dashboard
@@ -672,7 +512,7 @@ export default function HomePage() {
                 How it works
               </Link>
               <Link href="/buy" className="btn btn-primary btn-lg">
-                Get Started
+                Buy Data Now
               </Link>
             </div>
 
@@ -682,154 +522,46 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right — Quick Buy Widget */}
+          {/* Right - checkout launcher */}
           <div className="widget-wrap">
-            <form className="widget" onSubmit={submitQuickPurchase}>
+            <div className="widget checkout-launcher">
               <div className="widget-head">
                 <div className="icon">
                   <ZapIcon />
                 </div>
-                <h2>Quick Purchase</h2>
+                <h2>Start your data purchase</h2>
               </div>
 
-              <div className="field-group">
-                <label className="field-label">Select Network</label>
-                <div className="net-grid">
-                  {NETWORKS.map((n) => (
-                    <div
-                      key={n.id}
-                      className="net-opt"
-                      data-active={network === n.id}
-                      onClick={() => {
-                        setNetwork(n.id);
-                        setPaymentResult(null);
-                      }}
-                    >
-                      <div className="net-icon">
-                        <n.Logo />
-                      </div>
-                      <span>{n.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <p className="launcher-copy">
+                Choose your network and continue to the secure checkout with all
+                available bundles, saved numbers, wallet, and bulk options.
+              </p>
 
-              <div className="field-group">
-                <label className="field-label">Choose Package</label>
-                <div className="package-list">
-                  {packagesLoading ? (
-                    <div className="package-empty">Loading packages...</div>
-                  ) : packageError ? (
-                    <div className="package-empty package-error">
-                      <span>{packageError}</span>
-                      <button type="button" onClick={retryLoadPackages}>
-                        Retry
-                      </button>
-                    </div>
-                  ) : networkPackages.length === 0 ? (
-                    <div className="package-empty">
-                      No packages available for this network.
-                    </div>
-                  ) : (
-                    networkPackages.slice(0, 4).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="package-opt"
-                        data-active={selectedPackage?.id === item.id}
-                        onClick={() => {
-                          setSelectedPackageId(item.id);
-                          setPaymentResult(null);
-                        }}
-                      >
-                        <span>{formatPackageSize(item.sizeMb)}</span>
-                        <strong>GHS {item.customerPriceGhs.toFixed(2)}</strong>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="field-group">
-                <label className="field-label">Phone Number</label>
-                <input
-                  type="tel"
-                  className="text-input"
-                  placeholder="e.g. 054 123 4567"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    setPaymentResult(null);
-                  }}
-                />
-              </div>
-
-              <label className="confirm-row">
-                <input
-                  type="checkbox"
-                  checked={recipientConfirmed}
-                  onChange={(event) =>
-                    setRecipientConfirmed(event.currentTarget.checked)
-                  }
-                />
-                <span>
-                  I have checked the recipient number and accept responsibility
-                  for wrong-number purchases.
-                </span>
-              </label>
-
-              <button
-                type="submit"
-                className="btn btn-primary btn-lg btn-full"
-                style={{ marginTop: 18 }}
-                disabled={
-                  submittingOrder ||
-                  packagesLoading ||
-                  !selectedPackage ||
-                  !recipientConfirmed
-                }
-              >
-                {submittingOrder
-                  ? "Opening Paystack..."
-                  : "Pay with Mobile Money"}
-              </button>
-
-              {orderError ? (
-                <div className="order-message order-error">{orderError}</div>
-              ) : null}
-
-              {paymentResult ? (
-                <div className="order-result">
-                  <div>
-                    <span>Payment Reference</span>
-                    <strong>{paymentResult.reference}</strong>
-                  </div>
-                  <div className="order-result-grid">
-                    <div>
-                      <span>Status</span>
-                      <strong>{formatStatus(paymentResult.status)}</strong>
-                    </div>
-                    <div>
-                      <span>Amount</span>
-                      <strong>GHS {paymentResult.amountGhs.toFixed(2)}</strong>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="status-link"
-                    onClick={refreshOrderStatus}
-                    disabled={refreshingStatus}
+              <div className="launcher-grid" aria-label="Choose a network">
+                {NETWORKS.map((n) => (
+                  <Link
+                    key={n.id}
+                    href={`/buy?network=${n.id}`}
+                    className="launcher-network"
                   >
-                    {refreshingStatus ? "Checking..." : "Check payment"}
-                  </button>
-                </div>
-              ) : null}
-
-              <div className="widget-footer">
-                <LockIcon />
-                <span>Secured by Paystack Mobile Money.</span>
+                    <div className="net-icon">
+                      <n.Logo />
+                    </div>
+                    <span>{n.name}</span>
+                  </Link>
+                ))}
               </div>
-            </form>
+
+              <Link href="/buy" className="btn btn-primary btn-lg btn-full">
+                Go to Checkout
+              </Link>
+
+              <div className="launcher-benefits">
+                <span>MoMo payment</span>
+                <span>No account required</span>
+                <span>Order tracking</span>
+              </div>
+            </div>
           </div>
         </div>
         <div className="hero-wave">
@@ -850,40 +582,22 @@ export default function HomePage() {
       <section className="network-cards reveal">
         <div className="container">
           <div className="network-cards-grid">
-            <div
-              className="network-card mtn"
-              onClick={() => {
-                setNetwork("mtn");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            >
+            <Link href="/buy?network=mtn" className="network-card mtn">
               <SignalIcon />
               <span>MTN</span>
-            </div>
-            <div
-              className="network-card telecel"
-              onClick={() => {
-                setNetwork("telecel");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            >
+            </Link>
+            <Link href="/buy?network=telecel" className="network-card telecel">
               <SignalIcon />
               <span>Telecel</span>
-            </div>
-            <div
-              className="network-card airteltigo"
-              onClick={() => {
-                setNetwork("airteltigo");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            >
+            </Link>
+            <Link href="/buy?network=airteltigo" className="network-card airteltigo">
               <SignalIcon />
               <span>AirtelTigo</span>
-            </div>
-            <div className="network-card bulk">
+            </Link>
+            <Link href="/buy?mode=bulk" className="network-card bulk">
               <PackageBoxIcon />
               <span>Bulk Orders</span>
-            </div>
+            </Link>
           </div>
         </div>
       </section>
@@ -1111,53 +825,9 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+      <Link href="/buy" className="mobile-sticky-buy">
+        Buy Data
+      </Link>
     </main>
   );
-}
-
-const DATA_MB_PER_GB = 1000;
-
-function formatPackageSize(sizeMb: number) {
-  if (sizeMb >= DATA_MB_PER_GB) {
-    return `${Number(sizeMb / DATA_MB_PER_GB).toLocaleString("en-GH", {
-      maximumFractionDigits: 1,
-    })}GB`;
-  }
-
-  return `${sizeMb}MB`;
-}
-
-function formatStatus(status: PaymentResult["status"]) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function formatEta(seconds?: number) {
-  if (seconds === undefined) {
-    return "Checking";
-  }
-
-  if (seconds === 0) {
-    return "Instant";
-  }
-
-  const minutes = Math.round(seconds / 60);
-  return minutes >= 60 ? `${Math.round(minutes / 60)} hr` : `${minutes} min`;
-}
-
-function readApiError(error: unknown, fallback: string) {
-  if (error instanceof Error) {
-    return error.message || fallback;
-  }
-
-  return fallback;
-}
-
-function requirePublicEnv(value: string | undefined, name: string) {
-  if (!value?.trim()) {
-    throw new Error(
-      `${name} is required before initializing the Better Data API client.`,
-    );
-  }
-
-  return value;
 }

@@ -402,11 +402,12 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     setSelectedPkgId(first?.id ?? "");
   }, [network, packages]);
 
-  /* URL param: ?network= & ?phone= */
+  /* URL param: ?network=, ?phone= & ?mode= */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const net = params.get("network");
     if (net === "mtn" || net === "telecel" || net === "airteltigo") setNetwork(net);
+    if (params.get("mode") === "bulk") setMode("bulk");
     const phoneParam = params.get("phone");
     if (phoneParam) {
       setPhone(phoneParam);
@@ -933,10 +934,14 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
       <div className="container" style={standalone ? {} : { padding: 0 }}>
         {/* ── Promo Banner (only in standalone public mode) ── */}
-        {standalone && !promoDismissed && (
+        {standalone && !isAuthenticated && !promoDismissed && (
           <div className="promo-banner" style={{ marginTop: 32 }}>
-            <p>Create a free account and get a <strong>discount</strong> on your first purchase! Agents get discounted rates on every bundle.</p>
-            <Link href="/signup">Sign Up</Link>
+            <p>
+              Create a free account for <strong>faster repeat buys</strong>,
+              saved numbers, order history, wallet payments, and first-purchase
+              discounts.
+            </p>
+            <Link href="/signup">Create Account</Link>
             <button className="promo-close" onClick={dismissPromo} aria-label="Dismiss">&times;</button>
           </div>
         )}
