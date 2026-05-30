@@ -902,7 +902,7 @@ In `apps/api/src/telemetry/setup.ts`:
   - `new AmqplibInstrumentation({ ... })`
   - `new UndiciInstrumentation({ ... })`
 - Do not configure `headersToSpanAttributes` for request headers.
-- Add ignore hooks for Honeycomb export calls to avoid self-tracing loops.
+- Add ignore hooks for Honeycomb export calls to avoid self-tracing loops: in the HTTP and Undici instrumentation setup (use the options named `ignoreIncomingRequestHook` and `ignoreOutgoingRequestHook`), implement hooks that inspect the outgoing request URL/host and return `true` when it matches the Honeycomb exporter endpoint (use the exporter config or `HONEYCOMB_*` env vars to obtain the exact host/URL), thereby skipping instrumentation for those requests; ensure matching covers scheme, host, port and common path variants and apply the same check for both incoming and outgoing hooks to avoid self-tracing loops.
 - Add route or request hooks only for safe attributes such as route pattern, method, status, service name, and deployment environment.
 - Do not capture query strings as attributes unless sanitized and proven not to contain tokens. Prefer route templates.
 
@@ -947,6 +947,8 @@ In `apps/api/src/index.ts` and `apps/api/src/worker.ts`:
 
 - Keep explicit `await setupTelemetry(...)` as a safe fallback only if `setupTelemetry` is idempotent.
 - Update `setupTelemetry` so calling it twice returns immediately when `sdk` is already initialized or setup is in progress.
+- Make telemetry startup resilient: wrap setupTelemetry initialization in a try/catch block that, on any failure, logs a warning (including the error) and sets a `telemetryDisabled` flag so callers/app can continue without telemetry. Ensure that `shutdownTelemetry()` is a no-op when telemetry is not initialized or is disabled.
+- Call sites in `index.ts` and `worker.ts` should return immediately when telemetry is disabled or already initialized.
 - Preserve `shutdownTelemetry()`.
 
 **Step 8: Run tests and build**
