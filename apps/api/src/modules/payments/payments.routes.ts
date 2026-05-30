@@ -16,6 +16,7 @@ import type { Id } from "../../../../../convex/_generated/dataModel";
 
 import { createConvexHttpClient } from "../../convexClient";
 import { sendOpsAlertEmailSafely } from "../../ops/opsAlerts";
+import { sendWalletTopUpEmail, sendAgentApplicationReceivedEmail } from "../../integrations/resend/client";
 import {
   buildPaystackReference,
   initializeMobileMoneyPayment,
@@ -303,7 +304,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         }
 
         if (verified.status === "success" && verified.currency === "GHS") {
-          await convex.mutation(paymentFunctions.completeSucceededIntent, {
+          const completionResult = await convex.mutation(paymentFunctions.completeSucceededIntent, {
             ...serviceArgs(),
             providerReference: reference,
             amountGhs: verified.amountGhs,
@@ -314,6 +315,8 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
               : {}),
             providerPayload: verified
           });
+
+          handlePaymentCompletionEmail(completionResult);
 
           await enqueuePaidDataPurchaseFulfillment(convex, queue, reference);
           emitPaymentTelemetry({
@@ -548,7 +551,7 @@ async function verifyAndCompletePayment(
     throw new Error(`Paystack retry verification status: ${verified.status}.`);
   }
 
-  await convex.mutation(paymentFunctions.completeSucceededIntent, {
+  const completionResult = await convex.mutation(paymentFunctions.completeSucceededIntent, {
     ...serviceArgs(),
     providerReference: reference,
     amountGhs: verified.amountGhs,
@@ -559,6 +562,8 @@ async function verifyAndCompletePayment(
       : {}),
     providerPayload: verified
   });
+
+  handlePaymentCompletionEmail(completionResult);
 
   await enqueuePaidDataPurchaseFulfillment(convex, queue, reference);
 }
@@ -907,4 +912,28 @@ function readErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function handlePaymentCompletionEmail(completionResult: any) {
+  if (!completionResult || !completionResult.userEmail) {
+    return;
+  }
+
+  if (completionResult.purpose === "wallet_top_up") {
+    sendWalletTopUpEmail({
+      userId: completionResult.userId,
+      email: completionResult.userEmail,
+      displayName: completionResult.userName,
+      amountGhs: completionResult.amountGhs,
+      reference: completionResult.reference
+    });
+  } else if (completionResult.purpose === "agent_application_fee") {
+    sendAgentApplicationReceivedEmail({
+      userId: completionResult.userId,
+      email: completionResult.userEmail,
+      displayName: completionResult.userName,
+      amountGhs: completionResult.amountGhs,
+      reference: completionResult.reference
+    });
+  }
 }

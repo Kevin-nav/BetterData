@@ -1,6 +1,7 @@
 import type { OrderStore } from "../orders/orderStore";
 import type { OpsAlertInput } from "../ops/opsAlerts";
 import { incrementMetric } from "../observability/metrics";
+import { sendFirstPurchaseEmail } from "../integrations/resend/client";
 import { QUEUE_NAMES, type PurchaseJob, type QueueMessage, type QueueProvider } from "../queue";
 import { emitAppTelemetry } from "../telemetry/appTelemetry";
 import type { DataVendor } from "../vendors/types";
@@ -72,11 +73,23 @@ export async function processPurchaseMessage(
       return;
     }
 
-    await options.orderStore.recordVendorResult(job.orderReference, {
+    const recordResult = await options.orderStore.recordVendorResult(job.orderReference, {
       vendorOrderReference: result.vendorOrderReference,
       vendorRaw: result.raw,
       status: result.status
     });
+
+    if (recordResult?.isFirstPurchase && recordResult?.email) {
+      sendFirstPurchaseEmail({
+        userId: recordResult.userId,
+        email: recordResult.email,
+        displayName: recordResult.displayName,
+        reference: job.orderReference,
+        amountGhs: recordResult.amountGhs,
+        recipientPhone: recordResult.recipientPhone,
+        network: recordResult.network
+      });
+    }
 
     if (result.status === "completed") {
       await incrementMetric("purchase.success");

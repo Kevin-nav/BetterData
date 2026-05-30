@@ -16,7 +16,8 @@ export default defineSchema({
     isSuspended: v.boolean(),
     walletBalanceGhs: v.number(),
     deviceFingerprint: v.optional(v.string()),
-    firstPurchaseDiscountUsed: v.boolean()
+    firstPurchaseDiscountUsed: v.boolean(),
+    reengagementEmailSentAt: v.optional(v.number())
   })
     .index("by_firebase_uid", ["firebaseUid"])
     .index("by_email", ["email"])
@@ -275,5 +276,28 @@ export default defineSchema({
     updatedAt: v.number()
   })
     .index("by_user", ["userId"])
-    .index("by_user_announcement", ["userId", "announcementId"])
+    .index("by_user_announcement", ["userId", "announcementId"]),
+
+  sentEmails: defineTable({
+    userId: v.optional(v.id("users")),
+    toEmail: v.string(),
+    subject: v.string(),
+    type: v.union(
+      v.literal("welcome"),
+      v.literal("first_purchase"),
+      v.literal("wallet_top_up"),
+      v.literal("agent_application_received"),
+      v.literal("agent_application_approved"),
+      v.literal("reengagement"),
+      v.literal("broadcast"),
+      v.literal("manual")
+    ),
+    status: v.union(v.literal("sent"), v.literal("failed")),
+    errorMessage: v.optional(v.string()),
+    sentAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_email", ["toEmail"])
+    .index("by_type", ["type"])
+    .index("by_sent_at", ["sentAt"])
 });

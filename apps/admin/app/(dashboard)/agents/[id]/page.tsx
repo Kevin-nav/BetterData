@@ -7,6 +7,7 @@ import { convexApi } from "@betterdata/app-api";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { Modal } from "../../../components/Modal";
 import { useToast } from "../../../components/Toast";
+import { useAdminAuth } from "../../../lib/auth";
 
 type AgentDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -15,6 +16,7 @@ type AgentDetailPageProps = {
 export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const { id } = use(params);
   const { showToast } = useToast();
+  const { getAuthHeaders } = useAdminAuth();
 
   // Queries
   const user = useQuery(convexApi.admin.getUser, { userId: id as any });
@@ -60,6 +62,17 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
       if (modalAction === "approve") {
         await approveApplication({ applicationId: application._id as any });
         showToast("Agent application approved successfully.", "success");
+
+        try {
+          const headers = await getAuthHeaders();
+          const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+          fetch(`${apiBaseUrl}/admin/agents/${id}/email-approved`, {
+            method: "POST",
+            headers
+          }).catch(e => console.error("Agent approval email trigger failed", e));
+        } catch (emailErr) {
+          console.error("Failed to retrieve auth headers for agent approval email", emailErr);
+        }
       } else {
         const args: { applicationId: any; reason?: string } = {
           applicationId: application._id as any,
