@@ -52,7 +52,7 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
       `;
       break;
 
-    case "first_purchase":
+    case "first_purchase": {
       subject = "Congratulations on your first purchase! 🚀";
       const formattedAmount = data.amountGhs ? data.amountGhs.toFixed(2) : "0.00";
       const recipient = data.recipientPhone ? `to ${phone}` : "";
@@ -85,8 +85,9 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
         </p>
       `;
       break;
+    }
 
-    case "wallet_top_up":
+    case "wallet_top_up": {
       subject = "Wallet Credited: GHS " + (data.amountGhs ? data.amountGhs.toFixed(2) : "0.00") + " 💰";
       const topUpAmount = data.amountGhs ? data.amountGhs.toFixed(2) : "0.00";
       bodyHtml = `
@@ -106,6 +107,7 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
         </p>
       `;
       break;
+    }
 
     case "agent_application_received":
       subject = "Agent Application Fee Received 🔎";

@@ -207,15 +207,22 @@ export async function registerOrderRoutes(server: FastifyInstance) {
           });
 
           if (recordResult?.isFirstPurchase && recordResult?.email) {
-            sendFirstPurchaseEmail({
-              userId: recordResult.userId,
-              email: recordResult.email,
-              displayName: recordResult.displayName,
-              reference: order.reference,
-              amountGhs: recordResult.amountGhs,
-              recipientPhone: recordResult.recipientPhone,
-              network: recordResult.network
-            });
+            try {
+              await sendFirstPurchaseEmail({
+                userId: recordResult.userId,
+                email: recordResult.email,
+                displayName: recordResult.displayName,
+                reference: order.reference,
+                amountGhs: recordResult.amountGhs,
+                recipientPhone: recordResult.recipientPhone,
+                network: recordResult.network
+              });
+            } catch (emailErr) {
+              request.log.error(
+                { error: emailErr, orderReference: order.reference },
+                "Failed to send first purchase congratulations email"
+              );
+            }
           }
         }
       } catch (error) {
