@@ -43,6 +43,10 @@ async function sendEmailAndLog(input: {
   let status: "sent" | "failed" = "sent";
   let errorMessage: string | undefined = undefined;
 
+  const controller = new AbortController();
+  const timeoutMs = process.env.RESEND_TIMEOUT_MS ? parseInt(process.env.RESEND_TIMEOUT_MS, 10) : 10000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -56,6 +60,7 @@ async function sendEmailAndLog(input: {
         subject: subject,
         html: html,
       }),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -65,8 +70,14 @@ async function sendEmailAndLog(input: {
     }
   } catch (err: any) {
     status = "failed";
-    errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`Error sending email to ${input.email}:`, err);
+    if (err instanceof Error && err.name === "AbortError") {
+      errorMessage = `Request timed out after ${timeoutMs}ms`;
+    } else {
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
+    console.error(`Error sending email to ${input.email}:`, errorMessage);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   // Log to Convex
@@ -91,13 +102,16 @@ async function sendEmailAndLog(input: {
   }
 }
 
-export async function sendWelcomeEmail(input: { userId?: string | undefined; email: string; displayName?: string | undefined }) {
-  sendEmailAndLog({
+export async function sendWelcomeEmail(input: { userId?: string | undefined; email: string; displayName?: string | undefined }): Promise<void> {
+  return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
     type: "welcome",
     data: { displayName: input.displayName }
-  }).catch(err => console.error("Error in sendWelcomeEmail async wrapper:", err));
+  }).catch(err => {
+    console.error("Error in sendWelcomeEmail:", err);
+    throw err;
+  });
 }
 
 export async function sendFirstPurchaseEmail(input: {
@@ -108,8 +122,8 @@ export async function sendFirstPurchaseEmail(input: {
   amountGhs: number;
   recipientPhone: string;
   network: string;
-}) {
-  sendEmailAndLog({
+}): Promise<void> {
+  return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
     type: "first_purchase",
@@ -120,7 +134,10 @@ export async function sendFirstPurchaseEmail(input: {
       recipientPhone: input.recipientPhone,
       network: input.network
     }
-  }).catch(err => console.error("Error in sendFirstPurchaseEmail async wrapper:", err));
+  }).catch(err => {
+    console.error("Error in sendFirstPurchaseEmail:", err);
+    throw err;
+  });
 }
 
 export async function sendWalletTopUpEmail(input: {
@@ -129,8 +146,8 @@ export async function sendWalletTopUpEmail(input: {
   displayName?: string | undefined;
   amountGhs: number;
   reference: string;
-}) {
-  sendEmailAndLog({
+}): Promise<void> {
+  return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
     type: "wallet_top_up",
@@ -139,7 +156,10 @@ export async function sendWalletTopUpEmail(input: {
       amountGhs: input.amountGhs,
       reference: input.reference
     }
-  }).catch(err => console.error("Error in sendWalletTopUpEmail async wrapper:", err));
+  }).catch(err => {
+    console.error("Error in sendWalletTopUpEmail:", err);
+    throw err;
+  });
 }
 
 export async function sendAgentApplicationReceivedEmail(input: {
@@ -148,8 +168,8 @@ export async function sendAgentApplicationReceivedEmail(input: {
   displayName?: string | undefined;
   amountGhs: number;
   reference: string;
-}) {
-  sendEmailAndLog({
+}): Promise<void> {
+  return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
     type: "agent_application_received",
@@ -158,33 +178,42 @@ export async function sendAgentApplicationReceivedEmail(input: {
       amountGhs: input.amountGhs,
       reference: input.reference
     }
-  }).catch(err => console.error("Error in sendAgentApplicationReceivedEmail async wrapper:", err));
+  }).catch(err => {
+    console.error("Error in sendAgentApplicationReceivedEmail:", err);
+    throw err;
+  });
 }
 
 export async function sendAgentApplicationApprovedEmail(input: {
   userId?: string | undefined;
   email: string;
   displayName?: string | undefined;
-}) {
-  sendEmailAndLog({
+}): Promise<void> {
+  return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
     type: "agent_application_approved",
     data: { displayName: input.displayName }
-  }).catch(err => console.error("Error in sendAgentApplicationApprovedEmail async wrapper:", err));
+  }).catch(err => {
+    console.error("Error in sendAgentApplicationApprovedEmail:", err);
+    throw err;
+  });
 }
 
 export async function sendReengagementEmail(input: {
   userId?: string | undefined;
   email: string;
   displayName?: string | undefined;
-}) {
-  sendEmailAndLog({
+}): Promise<void> {
+  return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
     type: "reengagement",
     data: { displayName: input.displayName }
-  }).catch(err => console.error("Error in sendReengagementEmail async wrapper:", err));
+  }).catch(err => {
+    console.error("Error in sendReengagementEmail:", err);
+    throw err;
+  });
 }
 
 export async function sendBroadcastEmail(
@@ -203,6 +232,10 @@ export async function sendBroadcastEmail(
 
   // Send individually for privacy (so users don't see other recipients)
   const sendPromises = emails.map(async (email) => {
+    const controller = new AbortController();
+    const timeoutMs = process.env.RESEND_TIMEOUT_MS ? parseInt(process.env.RESEND_TIMEOUT_MS, 10) : 10000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -216,6 +249,7 @@ export async function sendBroadcastEmail(
           subject: subject,
           html: bodyHtml,
         }),
+        signal: controller.signal,
       });
 
       if (res.ok) {
@@ -252,8 +286,14 @@ export async function sendBroadcastEmail(
           console.error("Convex log failed for failed broadcast email:", convexErr);
         }
       }
-    } catch (err) {
-      console.error(`Error sending email to ${email}:`, err);
+    } catch (err: any) {
+      let errMsg = "";
+      if (err instanceof Error && err.name === "AbortError") {
+        errMsg = `Request timed out after ${timeoutMs}ms`;
+      } else {
+        errMsg = err instanceof Error ? err.message : String(err);
+      }
+      console.error(`Error sending email to ${email}:`, errMsg);
       failureCount++;
       // Log failure to Convex
       try {
@@ -264,11 +304,13 @@ export async function sendBroadcastEmail(
           subject: subject,
           type: "broadcast",
           status: "failed",
-          errorMessage: err instanceof Error ? err.message : String(err)
+          errorMessage: errMsg
         });
       } catch (convexErr) {
         console.error("Convex log failed for errored broadcast email:", convexErr);
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   });
 
