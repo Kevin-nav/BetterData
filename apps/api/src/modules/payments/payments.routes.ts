@@ -160,6 +160,22 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
               : {})
           }
         });
+        if (prepared.purpose === "agent_application_fee") {
+          capturePostHogEvent({
+            distinctId:
+              hashAnalyticsId("user", user?.id) ??
+              hashAnalyticsId("payment", prepared.reference) ??
+              "anonymous",
+            event: "agent_application_started",
+            properties: {
+              platform: "web",
+              role: user?.role ?? "user",
+              is_authenticated: user !== null,
+              payment_hash: hashAnalyticsId("payment", prepared.reference),
+              amount_ghs: prepared.amountGhs
+            }
+          });
+        }
 
         await convex.mutation(paymentFunctions.markInitialized, {
           ...serviceArgs(),
@@ -329,6 +345,10 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         }
 
         if (verified.status === "success" && verified.currency === "GHS") {
+          const completedIntent = (await convex.query(paymentFunctions.getByProviderReference, {
+            ...serviceArgs(),
+            providerReference: reference
+          })) as PaymentIntentRecord | null;
           const completionResult = await convex.mutation(paymentFunctions.completeSucceededIntent, {
             ...serviceArgs(),
             providerReference: reference,
@@ -365,6 +385,29 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
               status: "succeeded"
             }
           });
+          if (completedIntent?.purpose === "agent_application_fee") {
+            capturePostHogEvent({
+              distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+              event: "agent_application_paid",
+              properties: {
+                payment_hash: hashAnalyticsId("payment", reference),
+                amount_ghs: verified.amountGhs,
+                payment_method: "paystack_momo",
+                status: "succeeded"
+              }
+            });
+          } else if (completedIntent?.purpose === "wallet_top_up") {
+            capturePostHogEvent({
+              distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+              event: "wallet_topup_succeeded",
+              properties: {
+                payment_hash: hashAnalyticsId("payment", reference),
+                amount_ghs: verified.amountGhs,
+                payment_method: "paystack_momo",
+                status: "succeeded"
+              }
+            });
+          }
         } else {
           await convex.mutation(paymentFunctions.markFailed, {
             ...serviceArgs(),
