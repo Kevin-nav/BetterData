@@ -12,6 +12,14 @@ export function hashForTelemetry(value: string | undefined) {
     .digest("hex");
 }
 
+export function hashAnalyticsId(namespace: string, value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  return hashForTelemetry(`${namespace}:${value}`);
+}
+
 function normalizeTelemetryValue(value: string) {
   return value.trim().toLowerCase();
 }
