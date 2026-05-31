@@ -1,9 +1,11 @@
 import type { OrderStore } from "../orders/orderStore";
+import { capturePostHogEvent } from "../analytics/posthog";
 import type { OpsAlertInput } from "../ops/opsAlerts";
 import { incrementMetric } from "../observability/metrics";
 import { sendFirstPurchaseEmail } from "../integrations/resend/client";
 import { QUEUE_NAMES, type PurchaseJob, type QueueMessage, type QueueProvider } from "../queue";
 import { emitAppTelemetry } from "../telemetry/appTelemetry";
+import { hashAnalyticsId } from "../telemetry/hash";
 import type { DataVendor } from "../vendors/types";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
 import { isLowVendorBalanceError, vendorPayloadIndicatesLowBalance } from "../vendors/errors";
@@ -99,6 +101,18 @@ export async function processPurchaseMessage(
     }
 
     if (result.status === "completed") {
+      capturePostHogEvent({
+        distinctId: hashAnalyticsId("order", job.orderReference) ?? "anonymous",
+        event: "order_completed",
+        properties: {
+          order_hash: hashAnalyticsId("order", job.orderReference),
+          recipient_hash: hashAnalyticsId("recipient", job.recipientPhone),
+          network: job.network,
+          package_id: job.packageId,
+          payment_method: job.paymentMethod,
+          vendor_id: job.vendorId
+        }
+      });
       await incrementMetric("purchase.success");
     } else if (result.status === "failed") {
       await incrementMetric("purchase.failure");
@@ -397,6 +411,19 @@ async function reportFulfillmentTerminalStatus(input: {
       "network": input.job.network
     },
     recipientPhone: input.job.recipientPhone
+  });
+  capturePostHogEvent({
+    distinctId: hashAnalyticsId("order", input.job.orderReference) ?? "anonymous",
+    event: input.status === "failed" ? "order_failed" : "order_refunded",
+    properties: {
+      order_hash: hashAnalyticsId("order", input.job.orderReference),
+      recipient_hash: hashAnalyticsId("recipient", input.job.recipientPhone),
+      network: input.job.network,
+      package_id: input.job.packageId,
+      payment_method: input.job.paymentMethod,
+      vendor_id: input.job.vendorId,
+      status: input.status
+    }
   });
 
   await input.options.createOpsAlert?.({

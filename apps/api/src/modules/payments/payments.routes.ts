@@ -14,6 +14,7 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
+import { capturePostHogEvent } from "../../analytics/posthog";
 import { createConvexHttpClient } from "../../convexClient";
 import { sendOpsAlertEmailSafely } from "../../ops/opsAlerts";
 import { sendWalletTopUpEmail, sendAgentApplicationReceivedEmail } from "../../integrations/resend/client";
@@ -38,6 +39,7 @@ import {
   resolvePaystackEmail,
   type ResolvedRequestUser
 } from "../auth/requestUser";
+import { hashAnalyticsId } from "../../telemetry/hash";
 import { normalizeGhanaPhoneNumber } from "../orders/orderValidation";
 import {
   getPricingContextForApi,
@@ -134,6 +136,29 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           ...(request.body.purpose === "data_purchase"
             ? { recipientPhone: request.body.recipientPhone }
             : {})
+        });
+        capturePostHogEvent({
+          distinctId:
+            hashAnalyticsId("user", user?.id) ??
+            hashAnalyticsId("payment", prepared.reference) ??
+            "anonymous",
+          event: "payment_intent_created",
+          properties: {
+            platform: "web",
+            role: user?.role ?? "guest",
+            is_authenticated: user !== null,
+            is_agent: user?.role === "agent",
+            payment_hash: hashAnalyticsId("payment", prepared.reference),
+            purpose: prepared.purpose,
+            amount_ghs: prepared.amountGhs,
+            payment_method: "paystack_momo",
+            ...(request.body.purpose === "data_purchase"
+              ? {
+                  purchase_mode: "single",
+                  recipient_hash: hashAnalyticsId("recipient", request.body.recipientPhone)
+                }
+              : {})
+          }
         });
 
         await convex.mutation(paymentFunctions.markInitialized, {
@@ -330,6 +355,16 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
               ? { payerPhone: verified.customer.phone }
               : {})
           });
+          capturePostHogEvent({
+            distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+            event: "payment_succeeded",
+            properties: {
+              payment_hash: hashAnalyticsId("payment", reference),
+              amount_ghs: verified.amountGhs,
+              payment_method: "paystack_momo",
+              status: "succeeded"
+            }
+          });
         } else {
           await convex.mutation(paymentFunctions.markFailed, {
             ...serviceArgs(),
@@ -342,6 +377,15 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             paymentReference: reference,
             status: verified.status,
             errorCode: "paystack_status_not_success"
+          });
+          capturePostHogEvent({
+            distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+            event: "payment_failed",
+            properties: {
+              payment_hash: hashAnalyticsId("payment", reference),
+              status: verified.status,
+              error_code: "paystack_status_not_success"
+            }
           });
         }
 
