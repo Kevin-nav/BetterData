@@ -8,6 +8,7 @@ import {
   verifyFirebaseToken
 } from "../../integrations/firebase/auth";
 import { resolveAdminScope } from "../../auth/adminAuth";
+import { hashAnalyticsId } from "../../telemetry/hash";
 import { normalizeGhanaPhoneNumber } from "../orders/orderValidation";
 
 export async function registerAuthRoutes(server: FastifyInstance) {
@@ -69,6 +70,7 @@ export async function registerAuthRoutes(server: FastifyInstance) {
         phone: user.phone ?? firebaseUser.phone,
         displayName: user.displayName ?? firebaseUser.displayName,
         role: user.role ?? "user",
+        analyticsUserHash: hashAnalyticsId("user", user.id),
         adminScope: resolveAdminScope(firebaseUser, user.role, process.env)
       };
     } catch (error) {
@@ -118,6 +120,7 @@ export async function registerAuthRoutes(server: FastifyInstance) {
         phone: user.phone,
         displayName: user.displayName,
         role: user.role,
+        analyticsUserHash: hashAnalyticsId("user", user._id),
         adminScope: resolveAdminScope(firebaseUser, user.role, process.env),
         walletBalanceGhs: user.walletBalanceGhs,
         firstPurchaseDiscountUsed: user.firstPurchaseDiscountUsed,

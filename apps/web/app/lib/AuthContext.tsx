@@ -23,6 +23,7 @@ import {
   resendVerificationEmail,
   updateUserDisplayName,
 } from "./firebase";
+import { identifyWebUser, resetWebAnalytics } from "./analytics";
 
 /* ── Types ── */
 type AuthState = {
@@ -80,6 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // createSession returns SessionUser — fetch full profile via getMe
           const fullProfile = await apiClient.getMe(token);
           setUserProfile(fullProfile);
+          if (fullProfile.analyticsUserHash) {
+            identifyWebUser(fullProfile.analyticsUserHash, {
+              role: fullProfile.role,
+              is_authenticated: true,
+              is_agent: fullProfile.role === "agent",
+              has_wallet: typeof fullProfile.walletBalanceGhs === "number"
+            });
+          }
         }
       } catch (error) {
         console.error("Failed to sync user session:", error);
@@ -96,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await firebaseSignOut();
     setFirebaseUser(null);
     setUserProfile(null);
+    resetWebAnalytics();
   }, []);
 
   const resendVerification = useCallback(async () => {

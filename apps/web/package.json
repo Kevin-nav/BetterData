@@ -8,7 +8,7 @@
     "start": "next start --port 3000",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"No tests yet for web\""
+    "test": "tsx app/lib/analytics.check.ts"
   },
   "dependencies": {
     "@betterdata/api-client": "workspace:*",
@@ -27,6 +27,7 @@
     "@next/env": "15.5.16",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
 }

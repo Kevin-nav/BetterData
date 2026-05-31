@@ -137,6 +137,7 @@ export type SessionUser = {
   phone?: string;
   displayName?: string;
   role: string;
+  analyticsUserHash?: string;
   adminScope?: "admin" | "superadmin" | null;
 };
 

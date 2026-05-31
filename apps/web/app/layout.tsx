@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./lib/AuthContext";
+import { PostHogProvider } from "./lib/PostHogProvider";
 
 const siteUrl = new URL("https://betterdatagh.com");
 const siteTitle = "Better Data - Better Data Bundle Offers in Ghana";
@@ -91,7 +92,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         />
       </head>
       <body className={`${dmSans.variable} ${spaceGrotesk.variable}`}>
-        <AuthProvider>{children}</AuthProvider>
+        <PostHogProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </PostHogProvider>
       </body>
     </html>
   );
