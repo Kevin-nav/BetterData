@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 
-import { buildWebAnalyticsProperties, shouldEnableSessionReplay } from "./analytics";
+import {
+  buildWebAnalyticsProperties,
+  getPostHogProjectToken,
+  shouldEnableSessionReplay
+} from "./analytics";
 
 assert.equal(shouldEnableSessionReplay(0.1, 0.05), true);
 assert.equal(shouldEnableSessionReplay(0.1, 0.5), false);
+process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN = "phc_project_token";
+assert.equal(getPostHogProjectToken(), "phc_project_token");
 
 assert.deepEqual(
   buildWebAnalyticsProperties({

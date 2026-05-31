@@ -46,5 +46,12 @@ export function resetWebAnalytics() {
 }
 
 export function isPostHogConfigured() {
-  return Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim());
+  return Boolean(getPostHogProjectToken()?.trim());
+}
+
+export function getPostHogProjectToken() {
+  return (
+    process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ??
+    process.env.NEXT_PUBLIC_POSTHOG_KEY
+  );
 }

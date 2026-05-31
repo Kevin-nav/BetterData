@@ -4,11 +4,11 @@ import posthog from "posthog-js";
 import { PostHogProvider as Provider } from "posthog-js/react";
 import { useEffect, type ReactNode } from "react";
 
-import { shouldEnableSessionReplay } from "./analytics";
+import { getPostHogProjectToken, shouldEnableSessionReplay } from "./analytics";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    const key = getPostHogProjectToken();
 
     if (!key || posthog.__loaded) {
       return;

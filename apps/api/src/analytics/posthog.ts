@@ -16,7 +16,7 @@ type CaptureInput = {
 let client: PostHog | null | undefined;
 
 export function isPostHogEnabled(env: Env = process.env) {
-  return env.POSTHOG_DISABLED !== "true" && Boolean(env.POSTHOG_PROJECT_API_KEY?.trim());
+  return env.POSTHOG_DISABLED !== "true" && Boolean(readPostHogProjectToken(env)?.trim());
 }
 
 export function buildPostHogEvent(input: CaptureInput) {
@@ -40,7 +40,7 @@ export function getPostHogClient(env: Env = process.env) {
     return client;
   }
 
-  client = new PostHog(env.POSTHOG_PROJECT_API_KEY!, {
+  client = new PostHog(readPostHogProjectToken(env)!, {
     host: env.POSTHOG_HOST || "https://us.i.posthog.com"
   });
 
@@ -68,4 +68,8 @@ export async function shutdownPostHog() {
   }
 
   client = undefined;
+}
+
+function readPostHogProjectToken(env: Env) {
+  return env.POSTHOG_PROJECT_TOKEN ?? env.POSTHOG_PROJECT_API_KEY;
 }
