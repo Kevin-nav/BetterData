@@ -15,6 +15,7 @@ import {
   updateGuestPurchase,
   type GuestPurchaseRecord
 } from "../guestPurchases";
+import { formatReceiptDate } from "./receiptFormatting";
 
 let _apiClient: ReturnType<typeof createBetterDataApiClient> | null = null;
 function getApi() {
@@ -322,35 +323,6 @@ function isTerminal(receipt: ReceiptState) {
     receipt.deliveryStatus === "failed" ||
     receipt.deliveryStatus === "refunded"
   );
-}
-
-function formatReceiptDate(
-  receiptCreatedAt: number | undefined,
-  localRecordCreatedAt: string | undefined,
-  fallbackToCurrent: boolean
-): string {
-  if (typeof receiptCreatedAt === "number" && !isNaN(receiptCreatedAt)) {
-    return new Date(receiptCreatedAt).toLocaleDateString("en-GH", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  }
-  if (localRecordCreatedAt) {
-    const parsed = Date.parse(localRecordCreatedAt);
-    if (!isNaN(parsed)) {
-      return new Date(parsed).toLocaleDateString("en-GH", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-    }
-  }
-  if (fallbackToCurrent) {
-    return new Date().toLocaleDateString("en-GH", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  }
-  return "";
 }
 
 function formatPackageSize(sizeMb: number | undefined) {
