@@ -67,12 +67,11 @@ Add under `.env.example` telemetry section:
 
 ```dotenv
 # PostHog product analytics
-NEXT_PUBLIC_POSTHOG_KEY=
+NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=
 NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 NEXT_PUBLIC_POSTHOG_ENVIRONMENT=development
 NEXT_PUBLIC_POSTHOG_REPLAY_SAMPLE_RATE=0.1
-POSTHOG_PERSONAL_API_KEY=
-POSTHOG_PROJECT_API_KEY=
+POSTHOG_PROJECT_TOKEN=
 POSTHOG_HOST=https://us.i.posthog.com
 POSTHOG_ENVIRONMENT=development
 POSTHOG_DISABLED=false
@@ -293,9 +292,9 @@ import assert from "node:assert/strict";
 
 import { buildPostHogEvent, isPostHogEnabled } from "./posthog";
 
-assert.equal(isPostHogEnabled({ POSTHOG_PROJECT_API_KEY: "" }), false);
-assert.equal(isPostHogEnabled({ POSTHOG_PROJECT_API_KEY: "phc_test", POSTHOG_DISABLED: "true" }), false);
-assert.equal(isPostHogEnabled({ POSTHOG_PROJECT_API_KEY: "phc_test" }), true);
+assert.equal(isPostHogEnabled({ POSTHOG_PROJECT_TOKEN: "" }), false);
+assert.equal(isPostHogEnabled({ POSTHOG_PROJECT_TOKEN: "phc_test", POSTHOG_DISABLED: "true" }), false);
+assert.equal(isPostHogEnabled({ POSTHOG_PROJECT_TOKEN: "phc_test" }), true);
 
 const event = buildPostHogEvent({
   distinctId: "user_hash",
@@ -356,7 +355,7 @@ type CaptureInput = {
 let client: PostHog | null | undefined;
 
 export function isPostHogEnabled(env: Env = process.env) {
-  return env.POSTHOG_DISABLED !== "true" && Boolean(env.POSTHOG_PROJECT_API_KEY?.trim());
+  return env.POSTHOG_DISABLED !== "true" && Boolean(env.POSTHOG_PROJECT_TOKEN?.trim());
 }
 
 export function buildPostHogEvent(input: CaptureInput) {
@@ -380,7 +379,7 @@ export function getPostHogClient(env: Env = process.env) {
     return client;
   }
 
-  client = new PostHog(env.POSTHOG_PROJECT_API_KEY!, {
+  client = new PostHog(env.POSTHOG_PROJECT_TOKEN!, {
     host: env.POSTHOG_HOST || "https://us.i.posthog.com"
   });
 
@@ -802,7 +801,7 @@ export function resetWebAnalytics() {
 }
 
 export function isPostHogConfigured() {
-  return Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim());
+  return Boolean(process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN?.trim());
 }
 ```
 
@@ -821,7 +820,7 @@ import { shouldEnableSessionReplay } from "./analytics";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    const key = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
     if (!key) {
       return;

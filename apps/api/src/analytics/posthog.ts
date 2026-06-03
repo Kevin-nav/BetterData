@@ -71,5 +71,5 @@ export async function shutdownPostHog() {
 }
 
 function readPostHogProjectToken(env: Env) {
-  return env.POSTHOG_PROJECT_TOKEN ?? env.POSTHOG_PROJECT_API_KEY;
+  return env.POSTHOG_PROJECT_TOKEN;
 }

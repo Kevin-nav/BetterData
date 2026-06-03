@@ -50,8 +50,5 @@ export function isPostHogConfigured() {
 }
 
 export function getPostHogProjectToken() {
-  return (
-    process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ??
-    process.env.NEXT_PUBLIC_POSTHOG_KEY
-  );
+  return process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 }

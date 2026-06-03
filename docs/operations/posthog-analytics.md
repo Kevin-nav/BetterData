@@ -4,6 +4,21 @@
 
 All production dashboards must filter `environment = production`.
 
+## Required Secrets
+
+GitHub Actions needs these public web build secrets because Next.js inlines public variables during `next build`:
+
+- `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`
+- `NEXT_PUBLIC_POSTHOG_HOST`
+- `NEXT_PUBLIC_POSTHOG_ENVIRONMENT`
+- `NEXT_PUBLIC_POSTHOG_REPLAY_SAMPLE_RATE`
+
+Infisical needs this API runtime secret for backend capture:
+
+- `POSTHOG_PROJECT_TOKEN`
+
+The default managed PostHog US host is `https://us.i.posthog.com`.
+
 ## Required Dashboards
 
 - Customer purchase funnel
