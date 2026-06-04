@@ -31,7 +31,8 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
           password: true,
           email: true,
           tel: true,
-          text: true
+          text: true,
+          textarea: true
         }
       },
       loaded: (client) => {

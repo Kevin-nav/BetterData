@@ -19,14 +19,14 @@ export function isPostHogEnabled(env: Env = process.env) {
   return env.POSTHOG_DISABLED !== "true" && Boolean(readPostHogProjectToken(env)?.trim());
 }
 
-export function buildPostHogEvent(input: CaptureInput) {
+export function buildPostHogEvent(input: CaptureInput, env: Env = process.env) {
   return {
     distinctId: input.distinctId,
     event: input.event,
     properties: normalizeAnalyticsProperties({
-      environment: process.env.POSTHOG_ENVIRONMENT ?? process.env.NODE_ENV ?? "development",
-      platform: "api",
-      ...input.properties
+      ...input.properties,
+      environment: env.POSTHOG_ENVIRONMENT ?? env.NODE_ENV ?? "development",
+      platform: "api"
     })
   };
 }
@@ -47,15 +47,15 @@ export function getPostHogClient(env: Env = process.env) {
   return client;
 }
 
-export function capturePostHogEvent(input: CaptureInput) {
+export function capturePostHogEvent(input: CaptureInput, env: Env = process.env) {
   try {
-    const posthog = getPostHogClient();
+    const posthog = getPostHogClient(env);
 
     if (posthog === null) {
       return;
     }
 
-    const event = buildPostHogEvent(input);
+    const event = buildPostHogEvent(input, env);
     posthog.capture(event);
   } catch {
     // Product analytics must never interrupt payment, wallet, or fulfillment flows.

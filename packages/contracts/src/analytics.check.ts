@@ -16,8 +16,11 @@ const normalized = normalizeAnalyticsProperties({
   platform: "web",
   role: "agent",
   amount_ghs: 12,
+  package_name: "Daily Bundle",
+  network_name: "MTN",
   empty: "",
   missing: undefined,
+  raw_optional: null,
   raw_phone_number: "0241234567"
 });
 
@@ -25,7 +28,9 @@ assert.deepEqual(normalized, {
   environment: "production",
   platform: "web",
   role: "agent",
-  amount_ghs: 12
+  amount_ghs: 12,
+  package_name: "Daily Bundle",
+  network_name: "MTN"
 });
 
 console.log("analytics contract checks passed");

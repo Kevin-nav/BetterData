@@ -19,6 +19,10 @@ export function buildWebAnalyticsProperties(properties: AnalyticsProperties = {}
   });
 }
 
+/**
+ * Returns true when sampleRate is greater than 0 and the random draw is below it.
+ * sampleRate must be a number from 0 to 1; randomValue is optional and defaults to Math.random().
+ */
 export function shouldEnableSessionReplay(sampleRate: number, randomValue = Math.random()) {
   return sampleRate > 0 && randomValue < sampleRate;
 }

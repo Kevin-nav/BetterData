@@ -469,17 +469,6 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       payment_method: nextMethod
     });
 
-    if (
-      nextMethod === "wallet" &&
-      ((mode === "single" && selectedPkg !== null && walletBalance < selectedPkg.customerPriceGhs) ||
-        (mode === "bulk" && totalCostGhs > 0 && walletBalance < totalCostGhs))
-    ) {
-      captureWebEvent("wallet_insufficient_balance_shown", {
-        ...commonAnalyticsProperties(),
-        network,
-        amount_ghs: mode === "single" ? selectedPkg?.customerPriceGhs : totalCostGhs
-      });
-    }
   };
 
   const confirmRecipient = (confirmed: boolean) => {

@@ -293,12 +293,12 @@ jobs:
           PAYSTACK_SECRET_KEY
           PAYSTACK_PUBLIC_KEY
           RESEND_API_KEY
+          RESEND_SENDER_EMAIL
           SUPPORT_EMAIL
           HONEYCOMB_API_KEY
           HONEYCOMB_CONFIG_API_KEY
           HONEYCOMB_ALERT_EMAIL
           TELEMETRY_HASH_SECRET
-          POSTHOG_PROJECT_TOKEN
           DATAMART_API_KEY
           "
           missing_keys=""

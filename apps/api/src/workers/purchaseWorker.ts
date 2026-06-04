@@ -80,6 +80,7 @@ export async function processPurchaseMessage(
       vendorRaw: result.raw,
       status: result.status
     });
+    const analyticsUserId = recordResult?.userId ?? existing?.userId;
 
     if (recordResult?.isFirstPurchase && recordResult?.email) {
       try {
@@ -102,7 +103,7 @@ export async function processPurchaseMessage(
 
     if (result.status === "completed") {
       capturePostHogEvent({
-        distinctId: hashAnalyticsId("order", job.orderReference) ?? "anonymous",
+        distinctId: getPurchaseAnalyticsDistinctId(job, analyticsUserId),
         event: "order_completed",
         properties: {
           order_hash: hashAnalyticsId("order", job.orderReference),
@@ -118,20 +119,22 @@ export async function processPurchaseMessage(
       await incrementMetric("purchase.failure");
       await reportFulfillmentTerminalStatus({
         options,
-        job,
-        status: result.status,
-        vendorOrderReference: result.vendorOrderReference,
-        vendorRaw: result.raw
-      });
+          job,
+          status: result.status,
+          vendorOrderReference: result.vendorOrderReference,
+          vendorRaw: result.raw,
+          ...(analyticsUserId !== undefined ? { userId: analyticsUserId } : {})
+        });
     } else if (result.status === "refunded") {
       await incrementMetric("purchase.refunded");
       await reportFulfillmentTerminalStatus({
         options,
-        job,
-        status: result.status,
-        vendorOrderReference: result.vendorOrderReference,
-        vendorRaw: result.raw
-      });
+          job,
+          status: result.status,
+          vendorOrderReference: result.vendorOrderReference,
+          vendorRaw: result.raw,
+          ...(analyticsUserId !== undefined ? { userId: analyticsUserId } : {})
+        });
     } else {
       await incrementMetric("purchase.processing");
       await options.queue.enqueue(QUEUE_NAMES.statusRefresh, {
@@ -389,6 +392,7 @@ async function reportFulfillmentTerminalStatus(input: {
   status: "failed" | "refunded";
   vendorOrderReference: string;
   vendorRaw?: unknown;
+  userId?: string;
 }) {
   input.options.logger?.error(
     {
@@ -413,7 +417,7 @@ async function reportFulfillmentTerminalStatus(input: {
     recipientPhone: input.job.recipientPhone
   });
   capturePostHogEvent({
-    distinctId: hashAnalyticsId("order", input.job.orderReference) ?? "anonymous",
+    distinctId: getPurchaseAnalyticsDistinctId(input.job, input.userId),
     event: input.status === "failed" ? "order_failed" : "order_refunded",
     properties: {
       order_hash: hashAnalyticsId("order", input.job.orderReference),
@@ -444,4 +448,15 @@ async function reportFulfillmentTerminalStatus(input: {
     retryable: input.status === "failed",
     ...(input.status === "failed" ? { retryAction: "fulfill_order" as const } : {})
   });
+}
+
+function getPurchaseAnalyticsDistinctId(job: PurchaseJob, userId?: string) {
+  return (
+    hashAnalyticsId("user", userId) ??
+    (job.paymentMethod === "paystack_momo"
+      ? hashAnalyticsId("payment", job.orderReference)
+      : undefined) ??
+    hashAnalyticsId("order", job.orderReference) ??
+    "anonymous"
+  );
 }

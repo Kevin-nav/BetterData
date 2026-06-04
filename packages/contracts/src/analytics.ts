@@ -45,7 +45,11 @@ export type AnalyticsProperties = Record<string, AnalyticsPrimitive | null | und
 
 const FORBIDDEN_PROPERTY_PATTERNS = [
   /email/i,
-  /name/i,
+  /\bname\b/i,
+  /user.*name/i,
+  /username/i,
+  /customer.*name/i,
+  /display.*name/i,
   /phone/i,
   /token/i,
   /authorization/i,

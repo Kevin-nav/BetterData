@@ -77,6 +77,7 @@ type PaymentIntentRecord = {
   purpose: PaymentPurpose;
   providerReference: string;
   purposeMetadata: unknown;
+  userId?: string;
 };
 
 type RetryableOpsAlert = {
@@ -349,6 +350,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             ...serviceArgs(),
             providerReference: reference
           })) as PaymentIntentRecord | null;
+          const distinctId = getPaymentIntentAnalyticsDistinctId(completedIntent, reference);
           const completionResult = await convex.mutation(paymentFunctions.completeSucceededIntent, {
             ...serviceArgs(),
             providerReference: reference,
@@ -376,7 +378,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
               : {})
           });
           capturePostHogEvent({
-            distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+            distinctId,
             event: "payment_succeeded",
             properties: {
               payment_hash: hashAnalyticsId("payment", reference),
@@ -387,7 +389,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
           });
           if (completedIntent?.purpose === "agent_application_fee") {
             capturePostHogEvent({
-              distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+              distinctId,
               event: "agent_application_paid",
               properties: {
                 payment_hash: hashAnalyticsId("payment", reference),
@@ -398,7 +400,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             });
           } else if (completedIntent?.purpose === "wallet_top_up") {
             capturePostHogEvent({
-              distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+              distinctId,
               event: "wallet_topup_succeeded",
               properties: {
                 payment_hash: hashAnalyticsId("payment", reference),
@@ -750,6 +752,26 @@ function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
   if (body.purpose === "wallet_top_up" && body.amountGhs <= 0) {
     throw new Error("Wallet top-up amount must be greater than zero.");
   }
+}
+
+function getPaymentIntentAnalyticsDistinctId(
+  intent: PaymentIntentRecord | null,
+  providerReference: string
+) {
+  return (
+    hashAnalyticsId("user", getPaymentIntentUserId(intent)) ??
+    hashAnalyticsId("payment", providerReference) ??
+    "anonymous"
+  );
+}
+
+function getPaymentIntentUserId(intent: PaymentIntentRecord | null) {
+  if (typeof intent?.userId === "string") {
+    return intent.userId;
+  }
+
+  const metadata = asRecord(intent?.purposeMetadata);
+  return typeof metadata.userId === "string" ? metadata.userId : undefined;
 }
 
 async function buildConvexPaymentIntentRequest(

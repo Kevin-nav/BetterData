@@ -3,6 +3,13 @@ import { getRequiredEnv } from "@betterdata/config";
 import { emailsFunctions } from "@betterdata/app-api";
 import { getEmailHtml, type EmailType, type EmailData } from "./templates";
 
+export type EmailSendResult = {
+  status: "sent" | "failed";
+  errorMessage?: string;
+};
+
+const DEFAULT_RESEND_SENDER = "Better Data <noreply@betterdatagh.com>";
+
 export async function sendReceiptEmail(): Promise<void> {
   // Kept for compatibility / future use
   throw new Error("Resend receipt email integration is not implemented yet.");
@@ -13,10 +20,11 @@ async function sendEmailAndLog(input: {
   email: string;
   type: EmailType;
   data: EmailData;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("RESEND_API_KEY environment variable is not defined. Email send skipped.");
+    const errorMessage = "Skipped: RESEND_API_KEY environment variable is not defined.";
+    console.warn(errorMessage);
     try {
       const { subject } = getEmailHtml(input.type, input.data);
       const convex = createConvexHttpClient();
@@ -26,7 +34,7 @@ async function sendEmailAndLog(input: {
         subject,
         type: input.type,
         status: "failed",
-        errorMessage: "Skipped: RESEND_API_KEY environment variable is not defined."
+        errorMessage
       };
       if (input.userId !== undefined) {
         payload.userId = input.userId;
@@ -35,11 +43,11 @@ async function sendEmailAndLog(input: {
     } catch (convexErr) {
       console.error("Failed to log skipped email to Convex:", convexErr);
     }
-    return;
+    return { status: "failed", errorMessage };
   }
 
   const { subject, html } = getEmailHtml(input.type, input.data);
-  const sender = process.env.RESEND_SENDER_EMAIL ?? "Better Data <noreply@betterdatagh.com>";
+  const sender = readResendSender();
   let status: "sent" | "failed" = "sent";
   let errorMessage: string | undefined = undefined;
 
@@ -100,9 +108,11 @@ async function sendEmailAndLog(input: {
   } catch (convexErr) {
     console.error("Failed to log sent email to Convex:", convexErr);
   }
+
+  return errorMessage === undefined ? { status } : { status, errorMessage };
 }
 
-export async function sendWelcomeEmail(input: { userId?: string | undefined; email: string; displayName?: string | undefined }): Promise<void> {
+export async function sendWelcomeEmail(input: { userId?: string | undefined; email: string; displayName?: string | undefined }): Promise<EmailSendResult> {
   return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
@@ -122,7 +132,7 @@ export async function sendFirstPurchaseEmail(input: {
   amountGhs: number;
   recipientPhone: string;
   network: string;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
@@ -146,7 +156,7 @@ export async function sendWalletTopUpEmail(input: {
   displayName?: string | undefined;
   amountGhs: number;
   reference: string;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
@@ -168,7 +178,7 @@ export async function sendAgentApplicationReceivedEmail(input: {
   displayName?: string | undefined;
   amountGhs: number;
   reference: string;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
@@ -188,7 +198,7 @@ export async function sendAgentApplicationApprovedEmail(input: {
   userId?: string | undefined;
   email: string;
   displayName?: string | undefined;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
@@ -204,7 +214,7 @@ export async function sendReengagementEmail(input: {
   userId?: string | undefined;
   email: string;
   displayName?: string | undefined;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   return sendEmailAndLog({
     userId: input.userId,
     email: input.email,
@@ -226,7 +236,7 @@ export async function sendBroadcastEmail(
     throw new Error("RESEND_API_KEY environment variable is not defined.");
   }
 
-  const sender = process.env.RESEND_SENDER_EMAIL ?? "Better Data <noreply@betterdatagh.com>";
+  const sender = readResendSender();
   let successCount = 0;
   let failureCount = 0;
 
@@ -318,4 +328,8 @@ export async function sendBroadcastEmail(
   await Promise.all(sendPromises);
 
   return { successCount, failureCount };
+}
+
+export function readResendSender(env: NodeJS.ProcessEnv = process.env) {
+  return env.RESEND_SENDER_EMAIL?.trim() || DEFAULT_RESEND_SENDER;
 }

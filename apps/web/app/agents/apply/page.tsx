@@ -102,7 +102,7 @@ export default function AgentsApplyPage() {
     }
 
     return () => { active = false; };
-  }, [application?.status, authLoading, getAuthHeaders, isAuthenticated, userProfile?.role]);
+  }, [application, authLoading, getAuthHeaders, isAuthenticated, userProfile?.role]);
 
   // Pre-fill phone from profile
   useEffect(() => {

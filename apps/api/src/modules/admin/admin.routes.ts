@@ -210,11 +210,22 @@ export async function registerAdminRoutes(server: FastifyInstance) {
         return reply.code(404).send({ message: "User email not found." });
       }
 
-      await sendAgentApplicationApprovedEmail({
+      const emailResult = await sendAgentApplicationApprovedEmail({
         userId: user._id,
         email: user.email,
         displayName: user.displayName
       });
+
+      if (emailResult.status === "failed") {
+        request.log.error(
+          { userId: user._id, errorMessage: emailResult.errorMessage },
+          "Agent approval email failed"
+        );
+        return reply.code(502).send({
+          message: "Agent approval email failed to send.",
+          error: emailResult.errorMessage
+        });
+      }
 
       return { sent: true };
     }
