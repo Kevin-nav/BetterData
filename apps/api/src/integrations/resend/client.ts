@@ -9,6 +9,8 @@ export type EmailSendResult = {
 };
 
 const DEFAULT_RESEND_SENDER = "Better Data <noreply@betterdatagh.com>";
+const DEFAULT_RESEND_TIMEOUT_MS = 10000;
+const MIN_RESEND_TIMEOUT_MS = 1000;
 
 export async function sendReceiptEmail(): Promise<void> {
   // Kept for compatibility / future use
@@ -52,7 +54,7 @@ async function sendEmailAndLog(input: {
   let errorMessage: string | undefined = undefined;
 
   const controller = new AbortController();
-  const timeoutMs = process.env.RESEND_TIMEOUT_MS ? parseInt(process.env.RESEND_TIMEOUT_MS, 10) : 10000;
+  const timeoutMs = resolveResendTimeoutMs(process.env);
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -243,7 +245,7 @@ export async function sendBroadcastEmail(
   // Send individually for privacy (so users don't see other recipients)
   const sendPromises = emails.map(async (email) => {
     const controller = new AbortController();
-    const timeoutMs = process.env.RESEND_TIMEOUT_MS ? parseInt(process.env.RESEND_TIMEOUT_MS, 10) : 10000;
+    const timeoutMs = resolveResendTimeoutMs(process.env);
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
@@ -330,6 +332,22 @@ export async function sendBroadcastEmail(
   return { successCount, failureCount };
 }
 
-export function readResendSender(env: NodeJS.ProcessEnv = process.env) {
+export function readResendSender(env: { RESEND_SENDER_EMAIL?: string } = process.env) {
   return env.RESEND_SENDER_EMAIL?.trim() || DEFAULT_RESEND_SENDER;
+}
+
+export function resolveResendTimeoutMs(env: { RESEND_TIMEOUT_MS?: string }) {
+  const rawValue = env.RESEND_TIMEOUT_MS;
+
+  if (rawValue === undefined || rawValue.trim() === "") {
+    return DEFAULT_RESEND_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+
+  if (!Number.isFinite(parsed) || parsed < MIN_RESEND_TIMEOUT_MS) {
+    return DEFAULT_RESEND_TIMEOUT_MS;
+  }
+
+  return parsed;
 }
