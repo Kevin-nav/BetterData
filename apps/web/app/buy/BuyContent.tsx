@@ -7,6 +7,7 @@ import type { DataPackage, NetworkCode, SavedNumber } from "@betterdata/contract
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/AuthContext";
+import { captureWebEvent } from "../lib/analytics";
 import {
   readGuestPurchases,
   upsertGuestPurchase,
@@ -152,6 +153,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   const [suggestedSizesState, setSuggestedSizesState] = useState<{ lower: number | null; higher: number | null }>({ lower: null, higher: null });
   const [showSuggestions, setShowSuggestions] = useState(false);
   const bulkInputRef = useRef<HTMLInputElement>(null);
+  const lastRecipientEventRef = useRef("");
 
   /* Derived */
   const networkPkgs = packages
@@ -185,6 +187,14 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     !recipientConfirmed ||
     (payMethod === "wallet" &&
       (!isAuthenticated || (totalCostGhs > 0 && walletBalance < totalCostGhs)));
+
+  const analyticsRole = userProfile?.role ?? "guest";
+  const commonAnalyticsProperties = () => ({
+    role: analyticsRole,
+    is_authenticated: isAuthenticated,
+    is_agent: isAgent,
+    purchase_mode: mode
+  });
 
   // Bulk helper to find package ID by network & size in GB.
   const findPackageByGb = (net: NetworkCode, gb: number): DataPackage | null => {
@@ -273,6 +283,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     }
 
     if (rawValue.trim() !== "") {
+      captureWebEvent("bulk_entry_error_shown", {
+        ...commonAnalyticsProperties(),
+        error_code: !detected ? "unknown_network_prefix" : "invalid_phone_length"
+      });
       const newPill: BulkPill = {
         id: Math.random().toString(36).substring(2, 9),
         phone: rawValue,
@@ -290,6 +304,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   };
 
   const beginBulkGbEntry = (phoneNumber: string, detected: NetworkCode) => {
+    captureWebEvent("bulk_recipient_added", {
+      ...commonAnalyticsProperties(),
+      detected_network: detected
+    });
     const pId = Math.random().toString(36).substring(2, 9);
     const newPill: BulkPill = {
       id: pId,
@@ -385,7 +403,14 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         setPackageError("");
         const token = await readAuthToken(getAuthHeaders);
         const data = await getApi().listDataPackages(token ?? undefined);
-        if (!controller.signal.aborted) setPackages(data.packages);
+        if (!controller.signal.aborted) {
+          setPackages(data.packages);
+          captureWebEvent("package_list_viewed", {
+            ...commonAnalyticsProperties(),
+            network,
+            package_count: data.packages.length
+          });
+        }
       } catch (err) {
         if (!controller.signal.aborted) setPackageError(readApiError(err, "Unable to load packages."));
       } finally {
@@ -417,6 +442,62 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     }
   }, []);
 
+  const selectNetwork = (nextNetwork: NetworkCode) => {
+    setNetwork(nextNetwork);
+    captureWebEvent("network_selected", {
+      ...commonAnalyticsProperties(),
+      selected_network: nextNetwork
+    });
+  };
+
+  const selectPackage = (pkg: DataPackage) => {
+    setSelectedPkgId(pkg.id);
+    captureWebEvent("package_selected", {
+      ...commonAnalyticsProperties(),
+      network,
+      package_id: pkg.id,
+      package_size_mb: pkg.sizeMb,
+      amount_ghs: pkg.customerPriceGhs
+    });
+  };
+
+  const selectPaymentMethod = (nextMethod: PayMethod) => {
+    setPayMethod(nextMethod);
+    captureWebEvent("payment_method_selected", {
+      ...commonAnalyticsProperties(),
+      network,
+      payment_method: nextMethod
+    });
+
+  };
+
+  const confirmRecipient = (confirmed: boolean) => {
+    setRecipientConfirmed(confirmed);
+    if (confirmed) {
+      captureWebEvent("recipient_confirmed", {
+        ...commonAnalyticsProperties(),
+        network,
+        payment_method: payMethod
+      });
+    }
+  };
+
+  const handlePhoneChange = (value: string) => {
+    setPhone(value);
+    const cleaned = value.replace(/\D/g, "");
+    const detected = cleaned.length >= 3 ? detectNetwork(cleaned) : null;
+
+    if (cleaned.length === 10 && lastRecipientEventRef.current !== cleaned) {
+      lastRecipientEventRef.current = cleaned;
+      captureWebEvent("recipient_entered", {
+        ...commonAnalyticsProperties(),
+        selected_network: network,
+        detected_network: detected ?? undefined,
+        network_mismatch: detected !== null && detected !== network
+      });
+    }
+  };
+
   const handleSinglePay = async () => {
     if (!selectedPkg || !phone.trim() || !recipientConfirmed) return;
     if (payMethod === "wallet") {
@@ -426,12 +507,26 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       }
 
       if (walletBalance < selectedPkg.customerPriceGhs) {
+        captureWebEvent("wallet_insufficient_balance_shown", {
+          ...commonAnalyticsProperties(),
+          network,
+          amount_ghs: selectedPkg.customerPriceGhs
+        });
         setOrderError(
           `Your wallet balance is GHS ${walletBalance.toFixed(2)}. Top up at least GHS ${(selectedPkg.customerPriceGhs - walletBalance).toFixed(2)} or choose Mobile Money.`
         );
         return;
       }
     }
+    captureWebEvent("payment_started", {
+      ...commonAnalyticsProperties(),
+      purchase_mode: "single",
+      network,
+      package_id: selectedPkg.id,
+      package_size_mb: selectedPkg.sizeMb,
+      amount_ghs: selectedPkg.customerPriceGhs,
+      payment_method: payMethod
+    });
     setSubmitting(true);
     setOrderError("");
 
@@ -449,6 +544,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         await refreshProfile();
         const redirectUrl = `/buy/confirmation?ref=${res.reference}`;
         if (shouldSuggestSaveNumber(phone, savedNumbers, isAgent, token)) {
+          captureWebEvent("saved_number_prompt_shown", {
+            ...commonAnalyticsProperties(),
+            network
+          });
           setSaveSuggestion({
             phone: phone.trim(),
             network,
@@ -486,6 +585,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         }
 
         if (shouldSuggestSaveNumber(phone, savedNumbers, isAgent, token)) {
+          captureWebEvent("saved_number_prompt_shown", {
+            ...commonAnalyticsProperties(),
+            network
+          });
           setSaveSuggestion({
             phone: phone.trim(),
             network,
@@ -498,6 +601,12 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         window.location.href = res.authorizationUrl;
       }
     } catch (err) {
+      captureWebEvent("purchase_error_shown", {
+        ...commonAnalyticsProperties(),
+        network,
+        payment_method: payMethod,
+        error_code: "single_purchase_submission_failed"
+      });
       setOrderError(readApiError(err, "Payment submission failed"));
     } finally {
       setSubmitting(false);
@@ -509,6 +618,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     const savedNetwork = savedNumber.network ?? detectNetwork(savedNumber.phone);
     if (savedNetwork) setNetwork(savedNetwork);
     setRecipientConfirmed(false);
+    captureWebEvent("saved_number_selected", {
+      ...commonAnalyticsProperties(),
+      selected_network: savedNetwork ?? undefined
+    });
   };
 
   const saveSuggestedNumber = async () => {
@@ -529,6 +642,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         network: saveSuggestion.network
       }, token);
 
+      captureWebEvent("saved_number_prompt_saved", {
+        ...commonAnalyticsProperties(),
+        network: saveSuggestion.network
+      });
       setSavedNumbers((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       window.location.href = saveSuggestion.redirectUrl;
     } catch (err) {
@@ -540,6 +657,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
   const skipSaveSuggestedNumber = () => {
     if (saveSuggestion !== null) {
+      captureWebEvent("saved_number_prompt_skipped", {
+        ...commonAnalyticsProperties(),
+        network: saveSuggestion.network
+      });
       window.location.href = saveSuggestion.redirectUrl;
     }
   };
@@ -599,6 +720,11 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       setShowSuggestions(false);
       setSheetOpen(true);
     } else {
+      captureWebEvent("bulk_entry_error_shown", {
+        ...commonAnalyticsProperties(),
+        detected_network: targetNetwork,
+        error_code: "package_size_unavailable"
+      });
       const { lower, higher } = suggestSizesForNetwork(targetNetwork, gb);
       setSuggestedSizesState({ lower, higher });
           setShowSuggestions(true);
@@ -761,6 +887,9 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   };
 
   const removePill = (id: string) => {
+    captureWebEvent("bulk_recipient_removed", {
+      ...commonAnalyticsProperties()
+    });
     setBulkPills((prev) => prev.filter((p) => p.id !== id));
     if (id === pendingPillId) {
       setPendingPillId(null);
@@ -779,6 +908,9 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    captureWebEvent("bulk_file_upload_started", {
+      ...commonAnalyticsProperties()
+    });
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -831,6 +963,13 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       }
 
       if (newPills.length > 0) {
+        const validCount = newPills.filter((pill) => pill.isValid).length;
+        captureWebEvent("bulk_file_upload_parsed", {
+          ...commonAnalyticsProperties(),
+          recipient_count: newPills.length,
+          valid_count: validCount,
+          invalid_count: newPills.length - validCount
+        });
         setBulkPills((prev) => [...prev, ...newPills]);
         setSheetOpen(true);
       }
@@ -843,6 +982,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     if (bulkPills.length === 0) return;
     const hasErrors = bulkPills.some((p) => !p.isValid);
     if (hasErrors) {
+      captureWebEvent("bulk_entry_error_shown", {
+        ...commonAnalyticsProperties(),
+        error_code: "bulk_entries_invalid"
+      });
       setOrderError("Please remove or correct the entries with errors before paying.");
       return;
     }
@@ -854,6 +997,10 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       }
 
       if (walletBalance < totalCostGhs) {
+        captureWebEvent("wallet_insufficient_balance_shown", {
+          ...commonAnalyticsProperties(),
+          amount_ghs: totalCostGhs
+        });
         setOrderError(
           `Your wallet balance is GHS ${walletBalance.toFixed(2)}. Top up at least GHS ${(totalCostGhs - walletBalance).toFixed(2)} or choose Mobile Money.`
         );
@@ -861,6 +1008,13 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       }
     }
 
+    captureWebEvent("payment_started", {
+      ...commonAnalyticsProperties(),
+      purchase_mode: "bulk",
+      recipient_count: bulkPills.length,
+      amount_ghs: totalCostGhs,
+      payment_method: payMethod
+    });
     setSubmitting(true);
     setOrderError("");
 
@@ -881,9 +1035,21 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         const refs = results.map((r) => r.reference).join(",");
         window.location.href = `/buy/confirmation?ref=${refs}`;
       } else {
+        captureWebEvent("purchase_error_shown", {
+          ...commonAnalyticsProperties(),
+          purchase_mode: "bulk",
+          payment_method: payMethod,
+          error_code: "bulk_momo_not_supported"
+        });
         setOrderError("Bulk checkout via Mobile Money is only supported for authenticated agents. Please Log In or Sign Up, or use Wallet payment.");
       }
     } catch (err) {
+      captureWebEvent("purchase_error_shown", {
+        ...commonAnalyticsProperties(),
+        purchase_mode: "bulk",
+        payment_method: payMethod,
+        error_code: "bulk_purchase_submission_failed"
+      });
       setOrderError(readApiError(err, "Bulk payment submission failed"));
     } finally {
       setSubmitting(false);
@@ -976,7 +1142,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 className="network-tab"
                 data-network={net}
                 data-active={network === net}
-                onClick={() => setNetwork(net)}
+                onClick={() => selectNetwork(net)}
               >
                 <span className="tab-dot" />
                 {NETWORK_NAMES[net]}
@@ -1049,7 +1215,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                         className="pkg-card"
                         data-selected={selectedPkgId === pkg.id}
                         onClick={() => {
-                          setSelectedPkgId(pkg.id);
+                          selectPackage(pkg);
                           setSheetOpen(true);
                         }}
                       >
@@ -1283,7 +1449,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                     className="text-input"
                     placeholder="e.g. 054 123 4567"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
                   />
                   {detectedNet && (
                     <div style={{ marginTop: 6 }}>
@@ -1296,7 +1462,18 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                   {detectedNet && detectedNet !== network && (
                     <div className="network-mismatch">
                       <span>This looks like a {NETWORK_NAMES[detectedNet]} number</span>
-                      <button onClick={() => setNetwork(detectedNet)}>Switch</button>
+                      <button
+                        onClick={() => {
+                          captureWebEvent("network_mismatch_switch_clicked", {
+                            ...commonAnalyticsProperties(),
+                            selected_network: network,
+                            detected_network: detectedNet
+                          });
+                          selectNetwork(detectedNet);
+                        }}
+                      >
+                        Switch
+                      </button>
                     </div>
                   )}
                   {isAgent && savedNumbers.length > 0 && (
@@ -1323,11 +1500,11 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <div className="checkout-section">
                   <div className="checkout-section-label">Payment Method</div>
                   <div className="pay-method-row">
-                    <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>
+                    <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => selectPaymentMethod("momo")}>
                       Mobile Money
                       <small>via Paystack</small>
                     </div>
-                    <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
+                    <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => selectPaymentMethod("wallet")}>
                       Wallet
                       <small>{walletBalanceLabel}</small>
                     </div>
@@ -1336,7 +1513,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
                 {/* Confirm */}
                 <label className="buy-confirm-row">
-                  <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                  <input type="checkbox" checked={recipientConfirmed} onChange={(e) => confirmRecipient(e.target.checked)} />
                   <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
                 </label>
 
@@ -1389,11 +1566,11 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 <div className="checkout-section">
                   <div className="checkout-section-label">Payment Method</div>
                   <div className="pay-method-row">
-                    <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>
+                    <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => selectPaymentMethod("momo")}>
                       Mobile Money
                       <small>via Paystack</small>
                     </div>
-                    <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>
+                    <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => selectPaymentMethod("wallet")}>
                       Wallet
                       <small>{walletBalanceLabel}</small>
                     </div>
@@ -1402,7 +1579,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
 
                 {/* Confirm */}
                 <label className="buy-confirm-row">
-                  <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                  <input type="checkbox" checked={recipientConfirmed} onChange={(e) => confirmRecipient(e.target.checked)} />
                   <span>I have checked the recipient numbers and accept responsibility for wrong-number purchases.</span>
                 </label>
 
@@ -1462,7 +1639,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
               </div>
               <div className="checkout-section">
                 <div className="checkout-section-label">Recipient Phone</div>
-                <input type="tel" className="text-input" placeholder="e.g. 054 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <input type="tel" className="text-input" placeholder="e.g. 054 123 4567" value={phone} onChange={(e) => handlePhoneChange(e.target.value)} />
                 {detectedNet && (
                   <div style={{ marginTop: 6 }}>
                     <span className={`network-badge network-badge--${detectedNet}`}><span className="badge-dot" />{NETWORK_NAMES[detectedNet]}</span>
@@ -1471,7 +1648,18 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                 {detectedNet && detectedNet !== network && (
                   <div className="network-mismatch">
                     <span>This looks like a {NETWORK_NAMES[detectedNet]} number</span>
-                    <button onClick={() => setNetwork(detectedNet)}>Switch</button>
+                    <button
+                      onClick={() => {
+                        captureWebEvent("network_mismatch_switch_clicked", {
+                          ...commonAnalyticsProperties(),
+                          selected_network: network,
+                          detected_network: detectedNet
+                        });
+                        selectNetwork(detectedNet);
+                      }}
+                    >
+                      Switch
+                    </button>
                   </div>
                 )}
                 {isAgent && savedNumbers.length > 0 && (
@@ -1496,12 +1684,12 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
               <div className="checkout-section">
                 <div className="checkout-section-label">Payment Method</div>
                 <div className="pay-method-row">
-                  <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
-                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>{walletBalanceLabel}</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => selectPaymentMethod("momo")}>Mobile Money<small>via Paystack</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => selectPaymentMethod("wallet")}>Wallet<small>{walletBalanceLabel}</small></div>
                 </div>
               </div>
               <label className="buy-confirm-row">
-                <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                <input type="checkbox" checked={recipientConfirmed} onChange={(e) => confirmRecipient(e.target.checked)} />
                 <span>I have checked the recipient number and accept responsibility for wrong-number purchases.</span>
               </label>
               <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={singleSubmitDisabled} onClick={handleSinglePay}>
@@ -1543,12 +1731,12 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
               <div className="checkout-section">
                 <div className="checkout-section-label">Payment Method</div>
                 <div className="pay-method-row">
-                  <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => setPayMethod("momo")}>Mobile Money<small>via Paystack</small></div>
-                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => setPayMethod("wallet")}>Wallet<small>{walletBalanceLabel}</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "momo"} onClick={() => selectPaymentMethod("momo")}>Mobile Money<small>via Paystack</small></div>
+                  <div className="pay-method-opt" data-active={payMethod === "wallet"} onClick={() => selectPaymentMethod("wallet")}>Wallet<small>{walletBalanceLabel}</small></div>
                 </div>
               </div>
               <label className="buy-confirm-row">
-                <input type="checkbox" checked={recipientConfirmed} onChange={(e) => setRecipientConfirmed(e.target.checked)} />
+                <input type="checkbox" checked={recipientConfirmed} onChange={(e) => confirmRecipient(e.target.checked)} />
                 <span>I have checked the recipient numbers and accept responsibility for wrong-number purchases.</span>
               </label>
               <button className="btn btn-primary btn-lg btn-full" style={{ marginTop: 18 }} disabled={bulkSubmitDisabled} onClick={handleBulkPay}>

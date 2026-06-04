@@ -1,9 +1,11 @@
 import type { OrderStore } from "../orders/orderStore";
+import { capturePostHogEvent } from "../analytics/posthog";
 import type { OpsAlertInput } from "../ops/opsAlerts";
 import { incrementMetric } from "../observability/metrics";
 import { sendFirstPurchaseEmail } from "../integrations/resend/client";
 import { QUEUE_NAMES, type PurchaseJob, type QueueMessage, type QueueProvider } from "../queue";
 import { emitAppTelemetry } from "../telemetry/appTelemetry";
+import { hashAnalyticsId } from "../telemetry/hash";
 import type { DataVendor } from "../vendors/types";
 import { DataMartHttpError, DataMartNetworkError } from "../vendors/datamart/transport";
 import { isLowVendorBalanceError, vendorPayloadIndicatesLowBalance } from "../vendors/errors";
@@ -78,6 +80,7 @@ export async function processPurchaseMessage(
       vendorRaw: result.raw,
       status: result.status
     });
+    const analyticsUserId = recordResult?.userId ?? existing?.userId;
 
     if (recordResult?.isFirstPurchase && recordResult?.email) {
       try {
@@ -99,25 +102,39 @@ export async function processPurchaseMessage(
     }
 
     if (result.status === "completed") {
+      capturePostHogEvent({
+        distinctId: getPurchaseAnalyticsDistinctId(job, analyticsUserId),
+        event: "order_completed",
+        properties: {
+          order_hash: hashAnalyticsId("order", job.orderReference),
+          recipient_hash: hashAnalyticsId("recipient", job.recipientPhone),
+          network: job.network,
+          package_id: job.packageId,
+          payment_method: job.paymentMethod,
+          vendor_id: job.vendorId
+        }
+      });
       await incrementMetric("purchase.success");
     } else if (result.status === "failed") {
       await incrementMetric("purchase.failure");
       await reportFulfillmentTerminalStatus({
         options,
-        job,
-        status: result.status,
-        vendorOrderReference: result.vendorOrderReference,
-        vendorRaw: result.raw
-      });
+          job,
+          status: result.status,
+          vendorOrderReference: result.vendorOrderReference,
+          vendorRaw: result.raw,
+          ...(analyticsUserId !== undefined ? { userId: analyticsUserId } : {})
+        });
     } else if (result.status === "refunded") {
       await incrementMetric("purchase.refunded");
       await reportFulfillmentTerminalStatus({
         options,
-        job,
-        status: result.status,
-        vendorOrderReference: result.vendorOrderReference,
-        vendorRaw: result.raw
-      });
+          job,
+          status: result.status,
+          vendorOrderReference: result.vendorOrderReference,
+          vendorRaw: result.raw,
+          ...(analyticsUserId !== undefined ? { userId: analyticsUserId } : {})
+        });
     } else {
       await incrementMetric("purchase.processing");
       await options.queue.enqueue(QUEUE_NAMES.statusRefresh, {
@@ -375,6 +392,7 @@ async function reportFulfillmentTerminalStatus(input: {
   status: "failed" | "refunded";
   vendorOrderReference: string;
   vendorRaw?: unknown;
+  userId?: string;
 }) {
   input.options.logger?.error(
     {
@@ -398,6 +416,19 @@ async function reportFulfillmentTerminalStatus(input: {
     },
     recipientPhone: input.job.recipientPhone
   });
+  capturePostHogEvent({
+    distinctId: getPurchaseAnalyticsDistinctId(input.job, input.userId),
+    event: input.status === "failed" ? "order_failed" : "order_refunded",
+    properties: {
+      order_hash: hashAnalyticsId("order", input.job.orderReference),
+      recipient_hash: hashAnalyticsId("recipient", input.job.recipientPhone),
+      network: input.job.network,
+      package_id: input.job.packageId,
+      payment_method: input.job.paymentMethod,
+      vendor_id: input.job.vendorId,
+      status: input.status
+    }
+  });
 
   await input.options.createOpsAlert?.({
     severity: input.status === "failed" ? "critical" : "warning",
@@ -417,4 +448,15 @@ async function reportFulfillmentTerminalStatus(input: {
     retryable: input.status === "failed",
     ...(input.status === "failed" ? { retryAction: "fulfill_order" as const } : {})
   });
+}
+
+function getPurchaseAnalyticsDistinctId(job: PurchaseJob, userId?: string) {
+  return (
+    hashAnalyticsId("user", userId) ??
+    (job.paymentMethod === "paystack_momo"
+      ? hashAnalyticsId("payment", job.orderReference)
+      : undefined) ??
+    hashAnalyticsId("order", job.orderReference) ??
+    "anonymous"
+  );
 }

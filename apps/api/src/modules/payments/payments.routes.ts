@@ -14,6 +14,7 @@ import type { ConvexHttpClient } from "convex/browser";
 import type { FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 
+import { capturePostHogEvent } from "../../analytics/posthog";
 import { createConvexHttpClient } from "../../convexClient";
 import { sendOpsAlertEmailSafely } from "../../ops/opsAlerts";
 import { sendWalletTopUpEmail, sendAgentApplicationReceivedEmail } from "../../integrations/resend/client";
@@ -38,6 +39,7 @@ import {
   resolvePaystackEmail,
   type ResolvedRequestUser
 } from "../auth/requestUser";
+import { hashAnalyticsId } from "../../telemetry/hash";
 import { normalizeGhanaPhoneNumber } from "../orders/orderValidation";
 import {
   getPricingContextForApi,
@@ -75,6 +77,7 @@ type PaymentIntentRecord = {
   purpose: PaymentPurpose;
   providerReference: string;
   purposeMetadata: unknown;
+  userId?: string;
 };
 
 type RetryableOpsAlert = {
@@ -135,6 +138,45 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             ? { recipientPhone: request.body.recipientPhone }
             : {})
         });
+        capturePostHogEvent({
+          distinctId:
+            hashAnalyticsId("user", user?.id) ??
+            hashAnalyticsId("payment", prepared.reference) ??
+            "anonymous",
+          event: "payment_intent_created",
+          properties: {
+            platform: "web",
+            role: user?.role ?? "guest",
+            is_authenticated: user !== null,
+            is_agent: user?.role === "agent",
+            payment_hash: hashAnalyticsId("payment", prepared.reference),
+            purpose: prepared.purpose,
+            amount_ghs: prepared.amountGhs,
+            payment_method: "paystack_momo",
+            ...(request.body.purpose === "data_purchase"
+              ? {
+                  purchase_mode: "single",
+                  recipient_hash: hashAnalyticsId("recipient", request.body.recipientPhone)
+                }
+              : {})
+          }
+        });
+        if (prepared.purpose === "agent_application_fee") {
+          capturePostHogEvent({
+            distinctId:
+              hashAnalyticsId("user", user?.id) ??
+              hashAnalyticsId("payment", prepared.reference) ??
+              "anonymous",
+            event: "agent_application_started",
+            properties: {
+              platform: "web",
+              role: user?.role ?? "user",
+              is_authenticated: user !== null,
+              payment_hash: hashAnalyticsId("payment", prepared.reference),
+              amount_ghs: prepared.amountGhs
+            }
+          });
+        }
 
         await convex.mutation(paymentFunctions.markInitialized, {
           ...serviceArgs(),
@@ -304,6 +346,11 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
         }
 
         if (verified.status === "success" && verified.currency === "GHS") {
+          const completedIntent = (await convex.query(paymentFunctions.getByProviderReference, {
+            ...serviceArgs(),
+            providerReference: reference
+          })) as PaymentIntentRecord | null;
+          const distinctId = getPaymentIntentAnalyticsDistinctId(completedIntent, reference);
           const completionResult = await convex.mutation(paymentFunctions.completeSucceededIntent, {
             ...serviceArgs(),
             providerReference: reference,
@@ -330,6 +377,39 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
               ? { payerPhone: verified.customer.phone }
               : {})
           });
+          capturePostHogEvent({
+            distinctId,
+            event: "payment_succeeded",
+            properties: {
+              payment_hash: hashAnalyticsId("payment", reference),
+              amount_ghs: verified.amountGhs,
+              payment_method: "paystack_momo",
+              status: "succeeded"
+            }
+          });
+          if (completedIntent?.purpose === "agent_application_fee") {
+            capturePostHogEvent({
+              distinctId,
+              event: "agent_application_paid",
+              properties: {
+                payment_hash: hashAnalyticsId("payment", reference),
+                amount_ghs: verified.amountGhs,
+                payment_method: "paystack_momo",
+                status: "succeeded"
+              }
+            });
+          } else if (completedIntent?.purpose === "wallet_top_up") {
+            capturePostHogEvent({
+              distinctId,
+              event: "wallet_topup_succeeded",
+              properties: {
+                payment_hash: hashAnalyticsId("payment", reference),
+                amount_ghs: verified.amountGhs,
+                payment_method: "paystack_momo",
+                status: "succeeded"
+              }
+            });
+          }
         } else {
           await convex.mutation(paymentFunctions.markFailed, {
             ...serviceArgs(),
@@ -342,6 +422,15 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
             paymentReference: reference,
             status: verified.status,
             errorCode: "paystack_status_not_success"
+          });
+          capturePostHogEvent({
+            distinctId: hashAnalyticsId("payment", reference) ?? "anonymous",
+            event: "payment_failed",
+            properties: {
+              payment_hash: hashAnalyticsId("payment", reference),
+              status: verified.status,
+              error_code: "paystack_status_not_success"
+            }
           });
         }
 
@@ -663,6 +752,26 @@ function validatePaymentIntentRequest(body: CreatePaymentIntentRequest) {
   if (body.purpose === "wallet_top_up" && body.amountGhs <= 0) {
     throw new Error("Wallet top-up amount must be greater than zero.");
   }
+}
+
+function getPaymentIntentAnalyticsDistinctId(
+  intent: PaymentIntentRecord | null,
+  providerReference: string
+) {
+  return (
+    hashAnalyticsId("user", getPaymentIntentUserId(intent)) ??
+    hashAnalyticsId("payment", providerReference) ??
+    "anonymous"
+  );
+}
+
+function getPaymentIntentUserId(intent: PaymentIntentRecord | null) {
+  if (typeof intent?.userId === "string") {
+    return intent.userId;
+  }
+
+  const metadata = asRecord(intent?.purposeMetadata);
+  return typeof metadata.userId === "string" ? metadata.userId : undefined;
 }
 
 async function buildConvexPaymentIntentRequest(

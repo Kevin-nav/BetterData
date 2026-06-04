@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createBetterDataApiClient } from "@betterdata/api-client";
 import type { AgentPricingConfig, AgentApplicationStatus } from "@betterdata/contracts";
 import { useAuth } from "../../lib/AuthContext";
+import { captureWebEvent } from "../../lib/analytics";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 const apiClient = createBetterDataApiClient({ baseUrl: API_BASE_URL });
@@ -86,6 +87,14 @@ export default function AgentsApplyPage() {
       }
 
       if (active) setLoadingData(false);
+      if (active) {
+        captureWebEvent("agent_apply_viewed", {
+          role: userProfile?.role ?? "guest",
+          is_authenticated: isAuthenticated,
+          is_agent: userProfile?.role === "agent",
+          agent_status: application?.status ?? "none"
+        });
+      }
     }
 
     if (!authLoading) {
@@ -93,7 +102,7 @@ export default function AgentsApplyPage() {
     }
 
     return () => { active = false; };
-  }, [authLoading, isAuthenticated, getAuthHeaders]);
+  }, [application, authLoading, getAuthHeaders, isAuthenticated, userProfile?.role]);
 
   // Pre-fill phone from profile
   useEffect(() => {
@@ -300,6 +309,12 @@ export default function AgentsApplyPage() {
         return;
       }
 
+      captureWebEvent("agent_application_payment_started", {
+        role: userProfile?.role ?? "user",
+        is_authenticated: true,
+        is_agent: false,
+        amount_ghs: pricing?.agentOnboardingFeeGhs
+      });
       const result = await apiClient.createPaymentIntent(
         { purpose: "agent_application_fee" },
         token

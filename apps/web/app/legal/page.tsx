@@ -307,7 +307,23 @@ export default function LegalPage() {
               <li>Monitor performance, debug issues, improve the service, and comply with legal obligations.</li>
             </ul>
 
-            <h3>3. Device Fingerprinting and Fraud Prevention</h3>
+            <h3>3. Product Analytics</h3>
+            <p>
+              We use privacy-focused product analytics to understand how
+              visitors use Better Data and where the purchase flow can be
+              improved. Analytics events do not include names, email addresses,
+              raw phone numbers, raw recipient numbers, raw payment references,
+              authentication tokens, or provider payloads. Where repeat behavior
+              needs to be measured, we use one-way hashed identifiers.
+            </p>
+            <p>
+              For a small sample of purchase sessions, we may use masked session
+              replay to understand interface issues. Form inputs and typed
+              values are masked, and sensitive network payloads are not
+              intentionally collected.
+            </p>
+
+            <h3>4. Device Fingerprinting and Fraud Prevention</h3>
             <p>
               We may use device fingerprinting, account signals, transaction
               patterns, IP information, and similar security measures to detect
@@ -315,7 +331,7 @@ export default function LegalPage() {
               discounts, and maintain platform integrity.
             </p>
 
-            <h3>4. How We Share Information</h3>
+            <h3>5. How We Share Information</h3>
             <p>
               We may share information with trusted service providers where
               needed to operate Better Data, including payment processors,
@@ -331,7 +347,7 @@ export default function LegalPage() {
               sale of assets.
             </p>
 
-            <h3>5. Data Retention</h3>
+            <h3>6. Data Retention</h3>
             <p>
               We keep personal information for as long as reasonably necessary
               to provide the service, maintain transaction records, resolve
@@ -340,7 +356,7 @@ export default function LegalPage() {
               and legal requirement.
             </p>
 
-            <h3>6. Security</h3>
+            <h3>7. Security</h3>
             <p>
               We use reasonable technical and organizational measures designed
               to protect personal information. No online service can guarantee
@@ -348,7 +364,7 @@ export default function LegalPage() {
               credentials and devices secure.
             </p>
 
-            <h3>7. Your Choices and Rights</h3>
+            <h3>8. Your Choices and Rights</h3>
             <p>
               Depending on applicable law, you may have rights to access,
               correct, delete, restrict, or object to certain processing of your
@@ -357,7 +373,7 @@ export default function LegalPage() {
               transaction, fraud prevention, legal, or accounting reasons.
             </p>
 
-            <h3>8. Children</h3>
+            <h3>9. Children</h3>
             <p>
               Better Data is not intended for children who cannot legally
               consent to use online services or make payments. If we learn that
@@ -365,7 +381,7 @@ export default function LegalPage() {
               consent, we will take appropriate steps to delete or restrict it.
             </p>
 
-            <h3>9. International Processing</h3>
+            <h3>10. International Processing</h3>
             <p>
               Our service providers may process information in Ghana or other
               countries. Where required, we will take appropriate steps to

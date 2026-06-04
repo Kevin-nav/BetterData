@@ -22,6 +22,8 @@ import {
   getPricingContextForApi,
   resolveVendorPackageCustomerPriceGhs
 } from "../packages/packages.routes";
+import { capturePostHogEvent } from "../../analytics/posthog";
+import { hashAnalyticsId } from "../../telemetry/hash";
 
 export async function registerOrderRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -62,6 +64,36 @@ export async function registerOrderRoutes(server: FastifyInstance) {
           vendor,
           user,
           log: request.log
+        });
+        capturePostHogEvent({
+          distinctId: hashAnalyticsId("user", user.id) ?? "anonymous",
+          event: "wallet_debited",
+          properties: {
+            role: user.role ?? "user",
+            is_authenticated: true,
+            is_agent: user.role === "agent",
+            order_hash: hashAnalyticsId("order", order.reference),
+            recipient_hash: hashAnalyticsId("recipient", order.recipientPhone),
+            network: order.network,
+            amount_ghs: order.amountGhs,
+            payment_method: "wallet",
+            purchase_mode: "single"
+          }
+        });
+        capturePostHogEvent({
+          distinctId: hashAnalyticsId("user", user.id) ?? "anonymous",
+          event: "order_created",
+          properties: {
+            role: user.role ?? "user",
+            is_authenticated: true,
+            is_agent: user.role === "agent",
+            order_hash: hashAnalyticsId("order", order.reference),
+            recipient_hash: hashAnalyticsId("recipient", order.recipientPhone),
+            network: order.network,
+            amount_ghs: order.amountGhs,
+            payment_method: "wallet",
+            purchase_mode: "single"
+          }
         });
 
         try {
@@ -433,6 +465,7 @@ async function createVerifiedWalletOrder(input: {
     paymentMethod: order.paymentMethod,
     vendorId: order.vendorId,
     idempotencyKey: order.idempotencyKey,
+    amountGhs: order.amountGhs,
     status: order.status
   };
 }
