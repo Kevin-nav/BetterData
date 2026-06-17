@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { retryQueueFor } from "./amqpQueue";
+import { isClosedAmqpError, retryQueueFor } from "./amqpQueue";
 import { createQueueProvider } from "./index";
 import { createLocalQueueProvider } from "./localQueue";
 import { QUEUE_NAMES, type PurchaseJob, type StatusRefreshJob } from "./types";
@@ -103,6 +103,10 @@ assert.equal(
 assert.equal(retryQueueFor(QUEUE_NAMES.purchaseRequested), QUEUE_NAMES.purchaseRetry);
 await queue.enqueue(QUEUE_NAMES.statusRefresh, statusJob);
 assert.equal(await queue.getDepth(QUEUE_NAMES.statusRefresh), 1);
+
+assert.equal(isClosedAmqpError(new Error("Channel closed")), true);
+assert.equal(isClosedAmqpError(new Error("Connection closed by broker")), true);
+assert.equal(isClosedAmqpError(new Error("ordinary publish failure")), false);
 
 const previousNodeEnv = process.env.NODE_ENV;
 const previousQueueProvider = process.env.QUEUE_PROVIDER;

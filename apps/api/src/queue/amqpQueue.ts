@@ -18,39 +18,193 @@ export async function createAmqpQueueProvider(options: {
   url: string;
   prefetch?: number;
 }): Promise<QueueProvider> {
-  const connection = await connect(options.url);
-  const channel = await connection.createConfirmChannel();
+  const state: AmqpState = {
+    url: options.url,
+    prefetch: options.prefetch ?? 5,
+    consumers: new Set()
+  };
 
-  await channel.prefetch(options.prefetch ?? 5);
-  await assertTopology(channel);
+  await ensureChannel(state);
 
   return {
     async enqueue(queue, job) {
-      const messageId = await publish(channel, queue, job);
+      const messageId = await withFreshChannel(state, (channel) =>
+        publish(channel, queue, job)
+      );
 
       return { messageId };
     },
 
     async consume(queue, consumer) {
-      const result = await channel.consume(queue, (message) => {
-        if (!message) {
-          return;
-        }
+      const record: ConsumerRecord = {
+        queue,
+        consumer: consumer as QueueConsumer,
+        stopped: false
+      };
 
-        void handleMessage(channel, message, queue, consumer as QueueConsumer);
-      });
-
+      state.consumers.add(record);
+      await startConsumer(state, record);
       return async () => {
-        await channel.cancel(result.consumerTag);
+        record.stopped = true;
+        state.consumers.delete(record);
+        if (record.reconnectTimer !== undefined) {
+          clearTimeout(record.reconnectTimer);
+        }
+        if (record.consumerTag !== undefined && state.channel !== undefined) {
+          await state.channel.cancel(record.consumerTag).catch(() => undefined);
+        }
       };
     },
 
     async getDepth(queue) {
-      const result = await channel.checkQueue(queue);
+      const result = await withFreshChannel(state, (channel) =>
+        channel.checkQueue(queue)
+      );
 
       return result.messageCount;
     }
   };
+}
+
+type AmqpState = {
+  url: string;
+  prefetch: number;
+  connection?: ChannelModel;
+  channel?: ConfirmChannel;
+  connecting?: Promise<ConfirmChannel>;
+  consumers: Set<ConsumerRecord>;
+};
+
+type ConsumerRecord = {
+  queue: QueueName;
+  consumer: QueueConsumer;
+  stopped: boolean;
+  consumerTag?: string;
+  starting?: Promise<void>;
+  reconnectTimer?: NodeJS.Timeout;
+};
+
+async function ensureChannel(state: AmqpState): Promise<ConfirmChannel> {
+  if (state.channel !== undefined) {
+    return state.channel;
+  }
+
+  if (state.connecting !== undefined) {
+    return await state.connecting;
+  }
+
+  state.connecting = connectChannel(state);
+
+  try {
+    return await state.connecting;
+  } finally {
+    delete state.connecting;
+  }
+}
+
+async function connectChannel(state: AmqpState) {
+  const connection = await connect(state.url);
+  const channel = await connection.createConfirmChannel();
+
+  connection.on("error", () => undefined);
+  channel.on("error", () => undefined);
+  connection.once("close", () => handleChannelClosed(state, connection, channel));
+  channel.once("close", () => handleChannelClosed(state, connection, channel));
+
+  await channel.prefetch(state.prefetch);
+  await assertTopology(channel);
+
+  state.connection = connection;
+  state.channel = channel;
+
+  return channel;
+}
+
+function handleChannelClosed(
+  state: AmqpState,
+  connection: ChannelModel,
+  channel: ConfirmChannel
+) {
+  if (state.connection === connection) {
+    delete state.connection;
+  }
+  if (state.channel === channel) {
+    delete state.channel;
+  }
+
+  for (const record of state.consumers) {
+    delete record.consumerTag;
+    scheduleConsumerReconnect(state, record);
+  }
+}
+
+async function withFreshChannel<T>(
+  state: AmqpState,
+  operation: (channel: ConfirmChannel) => Promise<T>
+) {
+  try {
+    return await operation(await ensureChannel(state));
+  } catch (error) {
+    if (!isClosedAmqpError(error)) {
+      throw error;
+    }
+
+    delete state.channel;
+    delete state.connection;
+    return await operation(await ensureChannel(state));
+  }
+}
+
+async function startConsumer(state: AmqpState, record: ConsumerRecord) {
+  if (record.stopped) {
+    return;
+  }
+
+  if (record.starting !== undefined) {
+    await record.starting;
+    return;
+  }
+
+  record.starting = (async () => {
+    try {
+      const channel = await ensureChannel(state);
+      if (record.stopped) {
+        return;
+      }
+
+      const result = await channel.consume(record.queue, (message) => {
+        if (!message) {
+          return;
+        }
+
+        void handleMessage(channel, message, record.queue, record.consumer);
+      });
+      record.consumerTag = result.consumerTag;
+    } catch (error) {
+      if (!record.stopped) {
+        scheduleConsumerReconnect(state, record);
+      }
+    } finally {
+      delete record.starting;
+    }
+  })();
+
+  await record.starting;
+}
+
+function scheduleConsumerReconnect(state: AmqpState, record: ConsumerRecord) {
+  if (
+    record.stopped ||
+    record.reconnectTimer !== undefined ||
+    record.starting !== undefined
+  ) {
+    return;
+  }
+
+  record.reconnectTimer = setTimeout(() => {
+    delete record.reconnectTimer;
+    void startConsumer(state, record);
+  }, 1_000);
 }
 
 async function assertTopology(channel: Channel) {
@@ -164,6 +318,23 @@ export function retryQueueFor(queue: QueueName): QueueName {
   };
 
   return retryQueues[queue] ?? (`${queue}.retry` as QueueName);
+}
+
+export function isClosedAmqpError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  const name = error.name.toLowerCase();
+
+  return (
+    name.includes("illegaloperation") ||
+    message.includes("channel closed") ||
+    message.includes("connection closed") ||
+    message.includes("channel ended") ||
+    message.includes("connection ended")
+  );
 }
 
 export async function closeAmqpConnection(connection: ChannelModel) {
