@@ -7,6 +7,7 @@ import { convexApi } from "@betterdata/app-api";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Modal } from "../../components/Modal";
+import { useAdminAuth } from "../../lib/auth";
 
 type AgentApplicationRow = {
   _id: string;
@@ -38,6 +39,7 @@ type ActiveAgentRow = {
 
 export default function AgentsPage() {
   const router = useRouter();
+  const { getAuthHeaders } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<"applications" | "agents">(
     "applications",
   );
@@ -76,6 +78,12 @@ export default function AgentsPage() {
     try {
       if (modalAction === "approve") {
         await approveApplication({ applicationId: selectedApp._id as any });
+        try {
+          await sendAgentApprovalEmail(selectedApp.userId, getAuthHeaders);
+        } catch (emailErr) {
+          console.error("Failed to trigger agent approval email:", emailErr);
+          setErrorMessage("Agent approved, but the approval email failed to send.");
+        }
         setSuccessMessage(
           `Application for ${selectedApp.user?.displayName || "user"} approved successfully.`,
         );
@@ -314,7 +322,7 @@ export default function AgentsPage() {
               isLoading={applications === undefined}
               emptyStateTitle="No applications found"
               emptyStateDescription="There are no pending or reviewed agent applications."
-              onRowClick={(row) => router.push(`/users/${row.userId}`)}
+              onRowClick={(row) => router.push(`/agents/${row.userId}`)}
               rowKey={(row) => row._id}
             />
           ) : (
@@ -324,7 +332,7 @@ export default function AgentsPage() {
               isLoading={agents === undefined}
               emptyStateTitle="No active agents"
               emptyStateDescription="No users have been promoted to agent status yet."
-              onRowClick={(row) => router.push(`/users/${row._id}`)}
+              onRowClick={(row) => router.push(`/agents/${row._id}`)}
               rowKey={(row) => row._id}
             />
           )}
@@ -435,4 +443,20 @@ export default function AgentsPage() {
       </Modal>
     </div>
   );
+}
+
+async function sendAgentApprovalEmail(
+  userId: string,
+  getAuthHeaders: () => Promise<HeadersInit>,
+) {
+  const headers = await getAuthHeaders();
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+  const response = await fetch(`${apiBaseUrl}/admin/agents/${userId}/email-approved`, {
+    method: "POST",
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Agent approval email failed with status ${response.status}.`);
+  }
 }

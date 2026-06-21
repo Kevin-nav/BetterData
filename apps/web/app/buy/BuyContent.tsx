@@ -72,6 +72,25 @@ function defaultSavedNumberLabel(value: string) {
   return `Saved ${formatPhone(value)}`;
 }
 
+function getAgentSavings(pkg: DataPackage) {
+  const basePrice = pkg.baseCustomerPriceGhs;
+
+  if (
+    typeof basePrice !== "number" ||
+    basePrice <= pkg.customerPriceGhs ||
+    typeof pkg.agentDiscountPercentage !== "number" ||
+    pkg.agentDiscountPercentage <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    basePrice,
+    savingsGhs: basePrice - pkg.customerPriceGhs,
+    discountPercentage: pkg.agentDiscountPercentage
+  };
+}
+
 function shouldSuggestSaveNumber(
   phone: string,
   savedNumbers: SavedNumber[],
@@ -195,6 +214,20 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     is_agent: isAgent,
     purchase_mode: mode
   });
+  const renderAgentSavings = (pkg: DataPackage, compact = false) => {
+    if (!isAgent) return null;
+    const savings = getAgentSavings(pkg);
+    if (savings === null) return null;
+
+    return (
+      <div className={`agent-price-line${compact ? " agent-price-line--compact" : ""}`}>
+        <span className="agent-price-original">GHS {savings.basePrice.toFixed(2)}</span>
+        <span className="agent-price-save">
+          Save GHS {savings.savingsGhs.toFixed(2)} ({savings.discountPercentage}%)
+        </span>
+      </div>
+    );
+  };
 
   // Bulk helper to find package ID by network & size in GB.
   const findPackageByGb = (net: NetworkCode, gb: number): DataPackage | null => {
@@ -1207,6 +1240,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                   networkPkgs.map((pkg) => {
                     const sizeGb = pkg.sizeMb / DATA_MB_PER_GB;
                     const perGb = pkg.customerPriceGhs / sizeGb;
+                    const agentSavings = isAgent ? getAgentSavings(pkg) : null;
                     const isPopular = pkg.sizeMb === 5000 || pkg.sizeMb === 10000;
                     const isBestValue = pkg.sizeMb === 10000 || pkg.sizeMb === 15000;
                     return (
@@ -1219,11 +1253,18 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                           setSheetOpen(true);
                         }}
                       >
-                        {isPopular && !isBestValue && <span className="pkg-badge pkg-badge--popular">Popular</span>}
-                        {isBestValue && <span className="pkg-badge pkg-badge--value">Best Value</span>}
+                        {agentSavings ? (
+                          <span className="pkg-badge pkg-badge--agent">Agent</span>
+                        ) : (
+                          <>
+                            {isPopular && !isBestValue && <span className="pkg-badge pkg-badge--popular">Popular</span>}
+                            {isBestValue && <span className="pkg-badge pkg-badge--value">Best Value</span>}
+                          </>
+                        )}
                         <div className="pkg-card-check"><CheckSmall /></div>
                         <div className="pkg-card-size">{formatPackageSize(pkg.sizeMb)}</div>
                         <div className="pkg-card-price">GHS {pkg.customerPriceGhs.toFixed(2)}</div>
+                        {renderAgentSavings(pkg)}
                         <div className="pkg-card-value">GHS {perGb.toFixed(2)}/GB</div>
                       </div>
                     );
@@ -1435,6 +1476,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                       </span>
                       <span className="pkg-size">{formatPackageSize(selectedPkg.sizeMb)}</span>
                       <span className="pkg-price">GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
+                      {renderAgentSavings(selectedPkg, true)}
                     </div>
                   ) : (
                     <div className="checkout-pkg-empty">Select a package to continue</div>
@@ -1635,6 +1677,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
                   </span>
                   <span className="pkg-size">{formatPackageSize(selectedPkg.sizeMb)}</span>
                   <span className="pkg-price">GHS {selectedPkg.customerPriceGhs.toFixed(2)}</span>
+                  {renderAgentSavings(selectedPkg, true)}
                 </div>
               </div>
               <div className="checkout-section">

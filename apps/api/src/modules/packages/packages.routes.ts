@@ -42,28 +42,40 @@ export type ApiPricingContext = {
 export async function registerPackageRoutes(server: FastifyInstance) {
   server.get("/data-packages", async (request, reply) => {
     const vendor = getActiveDataVendor();
+    const user = await getOptionalRequestUserSafely(request, request.log);
 
     try {
       const packages = await vendor.listPackages();
       const pricingContext = await getPricingContextForApi(request.log);
-      const user = await getOptionalRequestUserSafely(request, request.log);
+      const applyAgentDiscount = user?.role === "agent";
       const apiPackages = packages.map(
-        (item): DataPackage => ({
-          id: `${vendor.id}:${item.vendorPackageId}`,
-          vendorId: vendor.id,
-          vendorPackageId: item.vendorPackageId,
-          network: item.network,
-          name: item.name,
-          sizeMb: item.sizeMb,
-          costGhs: item.costGhs,
-          customerPriceGhs: resolveVendorPackageCustomerPriceGhs(
+        (item): DataPackage => {
+          const pricing = resolveVendorPackageCustomerPricing(
             vendor.id,
             item,
             pricingContext,
-            { applyAgentDiscount: user?.role === "agent" }
-          ),
-          isAvailable: item.isAvailable
-        })
+            { applyAgentDiscount }
+          );
+
+          return {
+            id: `${vendor.id}:${item.vendorPackageId}`,
+            vendorId: vendor.id,
+            vendorPackageId: item.vendorPackageId,
+            network: item.network,
+            name: item.name,
+            sizeMb: item.sizeMb,
+            costGhs: item.costGhs,
+            customerPriceGhs: pricing.customerPriceGhs,
+            ...(pricing.agentDiscountPercentage > 0
+              ? {
+                  baseCustomerPriceGhs: pricing.baseCustomerPriceGhs,
+                  agentPriceGhs: pricing.customerPriceGhs,
+                  agentDiscountPercentage: pricing.agentDiscountPercentage
+                }
+              : {}),
+            isAvailable: item.isAvailable
+          };
+        }
       ).sort(compareDataPackages);
 
       await syncVendorPackagesForFinancials(vendor.id, apiPackages, request.log);
@@ -77,7 +89,9 @@ export async function registerPackageRoutes(server: FastifyInstance) {
       };
     } catch (error) {
       request.log.error({ error, vendorId: vendor.id }, "Vendor package listing failed");
-      const fallback = await listConvexPackageFallback();
+      const fallback = await listConvexPackageFallback({
+        applyAgentDiscount: user?.role === "agent"
+      });
 
       if (fallback.length > 0) {
         return {
@@ -143,10 +157,29 @@ export function resolveVendorPackageCustomerPriceGhs(
   pricingContext: ApiPricingContext | null,
   options: { applyAgentDiscount?: boolean } = {}
 ) {
+  return resolveVendorPackageCustomerPricing(
+    vendorId,
+    item,
+    pricingContext,
+    options
+  ).customerPriceGhs;
+}
+
+export function resolveVendorPackageCustomerPricing(
+  vendorId: string,
+  item: Pick<VendorPackage, "vendorPackageId" | "costGhs">,
+  pricingContext: ApiPricingContext | null,
+  options: { applyAgentDiscount?: boolean } = {}
+) {
   const baseCost = item.costGhs;
 
   if (pricingContext === null) {
-    return roundGhs(baseCost);
+    const customerPriceGhs = roundGhs(baseCost);
+    return {
+      baseCustomerPriceGhs: customerPriceGhs,
+      customerPriceGhs,
+      agentDiscountPercentage: 0
+    };
   }
 
   const packageRecord = pricingContext.packages.find(
@@ -162,20 +195,30 @@ export function resolveVendorPackageCustomerPriceGhs(
   const rule = packageRule ?? globalRule;
 
   if (rule === undefined) {
-    return roundGhs(baseCost);
+    const customerPriceGhs = roundGhs(baseCost);
+    return {
+      baseCustomerPriceGhs: customerPriceGhs,
+      customerPriceGhs,
+      agentDiscountPercentage: 0
+    };
   }
 
   const computed =
     rule.mode === "percentage"
       ? baseCost * (1 + rule.value / 100)
       : baseCost + rule.value;
+  const baseCustomerPriceGhs = roundGhs(computed);
 
   const agentDiscountPercentage = options.applyAgentDiscount
     ? pricingContext.agentDiscountPercentage
     : 0;
   const discounted = computed * (1 - agentDiscountPercentage / 100);
 
-  return roundGhs(Math.max(discounted, 0));
+  return {
+    baseCustomerPriceGhs,
+    customerPriceGhs: roundGhs(Math.max(discounted, 0)),
+    agentDiscountPercentage
+  };
 }
 
 function compareDataPackages(a: DataPackage, b: DataPackage) {
@@ -190,32 +233,49 @@ function compareDataPackages(a: DataPackage, b: DataPackage) {
 
 export function mapConvexFallbackPackages(
   packages: ConvexPackageRecord[],
-  pricingContext: ApiPricingContext | null = null
+  pricingContext: ApiPricingContext | null = null,
+  options: { applyAgentDiscount?: boolean } = {}
 ): DataPackage[] {
-  return packages.map((item) => ({
-    id: item._id,
-    vendorId: item.vendorId,
-    vendorPackageId: item.vendorPackageId,
-    network: item.network,
-    name: item.name,
-    sizeMb: item.sizeMb,
-    costGhs: item.providerCostGhs,
-    customerPriceGhs:
+  return packages.map((item) => {
+    const pricing =
       pricingContext === null
-        ? item.customerPriceGhs
-        : resolveVendorPackageCustomerPriceGhs(
+        ? {
+            baseCustomerPriceGhs: item.customerPriceGhs,
+            customerPriceGhs: item.customerPriceGhs,
+            agentDiscountPercentage: 0
+          }
+        : resolveVendorPackageCustomerPricing(
             item.vendorId,
             {
               vendorPackageId: item.vendorPackageId,
               costGhs: item.providerCostGhs
             },
-            pricingContext
-          ),
-    isAvailable: item.isAvailable
-  })).sort(compareDataPackages);
+            pricingContext,
+            options
+          );
+
+    return {
+      id: item._id,
+      vendorId: item.vendorId,
+      vendorPackageId: item.vendorPackageId,
+      network: item.network,
+      name: item.name,
+      sizeMb: item.sizeMb,
+      costGhs: item.providerCostGhs,
+      customerPriceGhs: pricing.customerPriceGhs,
+      ...(pricing.agentDiscountPercentage > 0
+        ? {
+            baseCustomerPriceGhs: pricing.baseCustomerPriceGhs,
+            agentPriceGhs: pricing.customerPriceGhs,
+            agentDiscountPercentage: pricing.agentDiscountPercentage
+          }
+        : {}),
+      isAvailable: item.isAvailable
+    };
+  }).sort(compareDataPackages);
 }
 
-async function listConvexPackageFallback() {
+async function listConvexPackageFallback(options: { applyAgentDiscount?: boolean } = {}) {
   if (!process.env.CONVEX_URL || !process.env.BETTERDATA_SERVICE_SECRET) {
     return [];
   }
@@ -229,7 +289,7 @@ async function listConvexPackageFallback() {
   })) as ConvexPackageRecord[];
   const pricingContext = await getPricingContextForApi();
 
-  return mapConvexFallbackPackages(packages, pricingContext);
+  return mapConvexFallbackPackages(packages, pricingContext, options);
 }
 
 export async function getPricingContextForApi(log?: {

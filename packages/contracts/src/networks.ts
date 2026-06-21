@@ -16,5 +16,8 @@ export type DataPackage = {
   sizeMb: number;
   costGhs: number;
   customerPriceGhs: number;
+  baseCustomerPriceGhs?: number;
+  agentPriceGhs?: number;
+  agentDiscountPercentage?: number;
   isAvailable: boolean;
 };

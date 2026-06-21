@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/AuthContext";
 import { createBetterDataApiClient } from "@betterdata/api-client";
-import type { Order } from "@betterdata/contracts";
+import type { AgentPricingConfig, Order } from "@betterdata/contracts";
 
 /* ── Icons ── */
 const PlusIcon = () => (
@@ -71,6 +71,7 @@ export default function DashboardHomePage() {
   const router = useRouter();
   const { userProfile, getAuthHeaders } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [agentPricing, setAgentPricing] = useState<AgentPricingConfig | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(true);
 
   // Time-based greeting helper
@@ -82,24 +83,34 @@ export default function DashboardHomePage() {
   };
 
   useEffect(() => {
-    async function fetchRecentOrders() {
+    async function fetchDashboardData() {
       try {
         const headers = await getAuthHeaders();
         const token = (headers as Record<string, string>)["Authorization"]?.replace("Bearer ", "");
-        if (token) {
-          const res = await apiClient.listOrders(token);
-          // Sort by creation time desc (should be sorted by backend, but safe)
-          setOrders(res.orders.slice(0, 5));
+        const ordersPromise = token
+          ? apiClient.listOrders(token)
+          : Promise.resolve(null);
+        const pricingPromise = userProfile?.role === "agent"
+          ? apiClient.getAgentPricingConfig().catch(() => null)
+          : Promise.resolve(null);
+        const [ordersResult, pricingResult] = await Promise.all([
+          ordersPromise,
+          pricingPromise
+        ]);
+
+        if (ordersResult) {
+          setOrders(ordersResult.orders.slice(0, 5));
         }
+        setAgentPricing(pricingResult);
       } catch (err) {
-        console.error("Failed to load recent orders", err);
+        console.error("Failed to load dashboard data", err);
       } finally {
         setLoadingOrders(false);
       }
     }
 
-    fetchRecentOrders();
-  }, [getAuthHeaders]);
+    fetchDashboardData();
+  }, [getAuthHeaders, userProfile?.role]);
 
   const userDisplayName = userProfile?.displayName || userProfile?.email?.split("@")[0] || "User";
 
@@ -119,6 +130,19 @@ export default function DashboardHomePage() {
             You have a <strong>welcome discount</strong> waiting! Use it on your first data bundle purchase. <strong style={{ textDecoration: "underline" }}>Buy Data Now &rarr;</strong>
           </span>
         </Link>
+      )}
+
+      {userProfile?.role === "agent" && (
+        <div className="agent-home-discount-card">
+          <div>
+            <span className="agent-home-kicker">Agent pricing active</span>
+            <h3>{agentPricing?.agentDiscountPercentage ?? 0}% discount on data bundles</h3>
+            <p>Your approved agent rate is applied automatically at checkout.</p>
+          </div>
+          <Link href="/dashboard/buy" className="btn btn-primary">
+            Buy at Agent Rate
+          </Link>
+        </div>
       )}
 
       {/* Wallet Balance Card */}

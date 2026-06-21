@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   mapConvexFallbackPackages,
+  resolveVendorPackageCustomerPricing,
   resolveVendorPackageCustomerPriceGhs,
   type ApiPricingContext
 } from "./packages.routes";
@@ -85,6 +86,59 @@ assert.deepEqual(
   ]
 );
 
+assert.deepEqual(
+  mapConvexFallbackPackages(
+    [
+      {
+        _id: "pkg_mtn_agent_1gb",
+        vendorId: "datamart",
+        vendorPackageId: "dm_agent_1gb",
+        network: "mtn",
+        name: "1GB",
+        sizeMb: 1024,
+        providerCostGhs: 4,
+        customerPriceGhs: 5,
+        isAvailable: true
+      }
+    ],
+    {
+      packages: [
+        {
+          _id: "pkg_mtn_agent_1gb",
+          vendorId: "datamart",
+          vendorPackageId: "dm_agent_1gb"
+        }
+      ],
+      pricingRules: [
+        {
+          _id: "rule_global_agent",
+          mode: "percentage",
+          value: 25,
+          isGlobal: true
+        }
+      ],
+      agentDiscountPercentage: 20
+    },
+    { applyAgentDiscount: true }
+  ),
+  [
+    {
+      id: "pkg_mtn_agent_1gb",
+      vendorId: "datamart",
+      vendorPackageId: "dm_agent_1gb",
+      network: "mtn",
+      name: "1GB",
+      sizeMb: 1024,
+      costGhs: 4,
+      customerPriceGhs: 4,
+      baseCustomerPriceGhs: 5,
+      agentPriceGhs: 4,
+      agentDiscountPercentage: 20,
+      isAvailable: true
+    }
+  ]
+);
+
 const pricingContext: ApiPricingContext = {
   packages: [
     {
@@ -124,6 +178,33 @@ assert.equal(
     { applyAgentDiscount: true }
   ),
   4
+);
+
+assert.deepEqual(
+  resolveVendorPackageCustomerPricing(
+    "datamart",
+    { vendorPackageId: "dm_1gb", costGhs: 4 },
+    pricingContext,
+    { applyAgentDiscount: true }
+  ),
+  {
+    baseCustomerPriceGhs: 5,
+    customerPriceGhs: 4,
+    agentDiscountPercentage: 20
+  }
+);
+
+assert.deepEqual(
+  resolveVendorPackageCustomerPricing(
+    "datamart",
+    { vendorPackageId: "dm_1gb", costGhs: 4 },
+    pricingContext
+  ),
+  {
+    baseCustomerPriceGhs: 5,
+    customerPriceGhs: 5,
+    agentDiscountPercentage: 0
+  }
 );
 
 assert.equal(
