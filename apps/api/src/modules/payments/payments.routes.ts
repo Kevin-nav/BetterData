@@ -87,6 +87,11 @@ type RetryableOpsAlert = {
   retryCount: number;
 };
 
+type OpsAlertCreateResult = {
+  alertId: string;
+  created: boolean;
+};
+
 export async function registerPaymentRoutes(server: FastifyInstance) {
   const queue = await createQueueProvider();
 
@@ -970,16 +975,24 @@ async function createOpsAlertSafely(
   }
 ): Promise<boolean> {
   try {
-    await convex.mutation(opsAlertFunctions.create, {
+    const result = (await convex.mutation(opsAlertFunctions.create, {
       ...serviceArgs(),
       ...alert
-    });
-    await sendOpsAlertEmailSafely(alert);
+    })) as OpsAlertCreateResult | string;
+
+    if (shouldEmailOpsAlert(result)) {
+      await sendOpsAlertEmailSafely(alert);
+    }
+
     return true;
   } catch {
     // Avoid masking payment/webhook responses when alert persistence fails.
     return false;
   }
+}
+
+function shouldEmailOpsAlert(result: OpsAlertCreateResult | string) {
+  return typeof result === "string" || result.created;
 }
 
 function serviceArgs() {

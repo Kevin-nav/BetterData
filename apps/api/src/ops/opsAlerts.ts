@@ -20,18 +20,31 @@ export type OpsAlertInput = {
   nextRetryAt?: number;
 };
 
+type OpsAlertCreateResult = {
+  alertId: string;
+  created: boolean;
+};
+
 export async function createOpsAlertSafely(alert: OpsAlertInput) {
   try {
     const convex = createConvexHttpClient();
-    await convex.mutation(opsAlertFunctions.create, {
+    const result = (await convex.mutation(opsAlertFunctions.create, {
       serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET"),
       ...alert
-    });
-    await sendOpsAlertEmailSafely(alert);
+    })) as OpsAlertCreateResult | string;
+
+    if (shouldEmailOpsAlert(result)) {
+      await sendOpsAlertEmailSafely(alert);
+    }
+
     return true;
   } catch {
     return false;
   }
+}
+
+function shouldEmailOpsAlert(result: OpsAlertCreateResult | string) {
+  return typeof result === "string" || result.created;
 }
 
 export async function sendOpsAlertEmailSafely(alert: OpsAlertInput) {

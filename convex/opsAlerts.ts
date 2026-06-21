@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { requireServiceSecret } from "./serviceAuth";
 
@@ -54,13 +55,32 @@ export const create = mutation({
       nextRetryAt: args.nextRetryAt
     });
 
-    return await ctx.db.insert("opsAlerts", {
+    const sanitizedMetadata =
+      args.metadata !== undefined ? sanitizeMetadata(args.metadata) : undefined;
+    const existing = await findDuplicateOpenAlert(ctx, {
+      reference: args.reference,
+      category: args.category,
+      message: args.message,
+      retryAction: args.retryAction
+    });
+
+    if (existing !== null) {
+      await ctx.db.patch(existing._id, {
+        severity: mostSevere(existing.severity, args.severity),
+        ...(sanitizedMetadata !== undefined ? { metadata: sanitizedMetadata } : {}),
+        updatedAt: now
+      });
+
+      return { alertId: existing._id, created: false };
+    }
+
+    const alertId = await ctx.db.insert("opsAlerts", {
       severity: args.severity,
       status: "open",
       category: args.category,
       ...(args.reference !== undefined ? { reference: args.reference } : {}),
       message: args.message,
-      ...(args.metadata !== undefined ? { metadata: sanitizeMetadata(args.metadata) } : {}),
+      ...(sanitizedMetadata !== undefined ? { metadata: sanitizedMetadata } : {}),
       retryable,
       ...(args.retryAction !== undefined ? { retryAction: args.retryAction } : {}),
       retryStatus: retryable ? retryStatusValue : "not_started",
@@ -69,6 +89,8 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now
     });
+
+    return { alertId, created: true };
   }
 });
 
@@ -237,11 +259,59 @@ export const resolve = mutation({
     const now = Date.now();
     await ctx.db.patch(args.alertId, {
       status: "resolved",
+      retryStatus: "succeeded",
       resolvedAt: now,
       updatedAt: now
     });
   }
 });
+
+async function findDuplicateOpenAlert(
+  ctx: MutationCtx,
+  input: {
+    reference: string | undefined;
+    category: "payment" | "webhook" | "fulfillment" | "config" | "security";
+    message: string;
+    retryAction:
+      | "verify_payment"
+      | "fulfill_order"
+      | "credit_wallet"
+      | "complete_agent_application"
+      | undefined;
+  }
+) {
+  if (input.reference === undefined) {
+    return null;
+  }
+
+  const alerts = await ctx.db
+    .query("opsAlerts")
+    .withIndex("by_reference", (q) => q.eq("reference", input.reference))
+    .collect();
+
+  return (
+    alerts.find(
+      (alert) =>
+        alert.status !== "resolved" &&
+        alert.category === input.category &&
+        alert.message === input.message &&
+        alert.retryAction === input.retryAction
+    ) ?? null
+  );
+}
+
+function mostSevere(
+  current: "info" | "warning" | "critical",
+  next: "info" | "warning" | "critical"
+) {
+  const severityRank = {
+    info: 0,
+    warning: 1,
+    critical: 2
+  };
+
+  return severityRank[next] > severityRank[current] ? next : current;
+}
 
 export const escalate = mutation({
   args: {
