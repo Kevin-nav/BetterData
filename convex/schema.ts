@@ -222,6 +222,16 @@ export default defineSchema({
     value: v.union(v.string(), v.number(), v.boolean())
   }).index("by_key", ["key"]),
 
+  purchaseOutageSubscribers: defineTable({
+    email: v.string(),
+    normalizedEmail: v.string(),
+    notifiedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_normalized_email", ["normalizedEmail"])
+    .index("by_notified_at", ["notifiedAt"]),
+
   agentApplications: defineTable({
     userId: v.id("users"),
     paymentReference: v.optional(v.string()),
@@ -289,6 +299,7 @@ export default defineSchema({
       v.literal("agent_application_received"),
       v.literal("agent_application_approved"),
       v.literal("reengagement"),
+      v.literal("purchase_restored"),
       v.literal("broadcast"),
       v.literal("manual")
     ),

@@ -14,6 +14,7 @@ import { registerVendorSimulationRoutes } from "./modules/dev/vendor-simulation.
 import { registerOrderRoutes } from "./modules/orders/orders.routes";
 import { registerPackageRoutes } from "./modules/packages/packages.routes";
 import { registerPaymentRoutes } from "./modules/payments/payments.routes";
+import { registerPurchaseOutageRoutes } from "./modules/purchase-outage/purchaseOutage.routes";
 import { registerSavedNumberRoutes } from "./modules/saved-numbers/savedNumbers.routes";
 import { registerWalletRoutes } from "./modules/wallet/wallet.routes";
 import { registerNotificationRoutes } from "./modules/notifications/notifications.routes";
@@ -76,6 +77,7 @@ server.addHook("preParsing", async (request, _reply, payload) => {
 await registerHealthRoutes(server);
 await registerAuthRoutes(server);
 await registerPackageRoutes(server);
+await registerPurchaseOutageRoutes(server);
 await registerOrderRoutes(server);
 await registerPaymentRoutes(server);
 await registerSavedNumberRoutes(server);

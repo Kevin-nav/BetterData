@@ -16,6 +16,7 @@ export const logSentEmail = mutation({
       v.literal("agent_application_received"),
       v.literal("agent_application_approved"),
       v.literal("reengagement"),
+      v.literal("purchase_restored"),
       v.literal("broadcast"),
       v.literal("manual")
     ),
@@ -48,6 +49,7 @@ export const listSentEmails = query({
         v.literal("agent_application_received"),
         v.literal("agent_application_approved"),
         v.literal("reengagement"),
+        v.literal("purchase_restored"),
         v.literal("broadcast"),
         v.literal("manual")
       )

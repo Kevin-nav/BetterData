@@ -71,6 +71,18 @@ export type ListNotificationsResponse = {
   notifications: Notification[];
 };
 
+export type PurchaseOutageStatusResponse = {
+  isActive: boolean;
+  updatedAt: number | null;
+  message: string;
+};
+
+export type PurchaseOutageSubscribeResponse = {
+  id: string;
+  email: string;
+  alreadySubscribed: boolean;
+};
+
 
 
 export type CreateOrderResponse = {
@@ -177,6 +189,8 @@ export type BetterDataApiClient = {
   getAgentPricingConfig: () => Promise<AgentPricingConfig>;
   updatePhone: (phone: string, token: string) => Promise<{ phone: string }>;
   getMyAgentApplication: (token: string) => Promise<AgentApplicationStatus | null>;
+  getPurchaseOutageStatus: () => Promise<PurchaseOutageStatusResponse>;
+  subscribeToPurchaseOutage: (email: string) => Promise<PurchaseOutageSubscribeResponse>;
 };
 
 export class ApiClientError extends Error {
@@ -324,6 +338,13 @@ export function createBetterDataApiClient(
     getMyAgentApplication: (token) =>
       request<AgentApplicationStatus | null>("/auth/me/agent-application", {
         headers: { Authorization: `Bearer ${token}` }
+      }),
+    getPurchaseOutageStatus: () =>
+      request<PurchaseOutageStatusResponse>("/purchase-outage"),
+    subscribeToPurchaseOutage: (email) =>
+      request<PurchaseOutageSubscribeResponse>("/purchase-outage/subscribers", {
+        method: "POST",
+        body: JSON.stringify({ email })
       })
   };
 }

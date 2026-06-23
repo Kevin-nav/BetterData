@@ -228,6 +228,22 @@ export async function sendReengagementEmail(input: {
   });
 }
 
+export async function sendPurchaseRestoredEmail(input: {
+  userId?: string | undefined;
+  email: string;
+  displayName?: string | undefined;
+}): Promise<EmailSendResult> {
+  return sendEmailAndLog({
+    userId: input.userId,
+    email: input.email,
+    type: "purchase_restored",
+    data: { displayName: input.displayName }
+  }).catch(err => {
+    console.error("Error in sendPurchaseRestoredEmail:", err);
+    throw err;
+  });
+}
+
 export async function sendBroadcastEmail(
   emails: string[],
   subject: string,

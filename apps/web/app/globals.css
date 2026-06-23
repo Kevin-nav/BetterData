@@ -212,6 +212,16 @@ img{display:block;max-width:100%}
 .status-link{justify-self:start;border:0;background:transparent;color:var(--primary);cursor:pointer;font-weight:700;font-size:0.82rem}
 .widget-footer{margin-top:8px;text-align:center;font-size:0.75rem;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:6px}
 .widget-footer svg{color:var(--primary)}
+.purchase-outage-panel{max-width:760px;margin:32px auto 96px;padding:32px;background:var(--bg-surface);border:1px solid rgba(245,158,11,0.28);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);display:grid;gap:16px}
+.purchase-outage-status{justify-self:start;padding:6px 12px;border-radius:var(--radius-full);background:rgba(245,158,11,0.12);color:#b45309;font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em}
+.purchase-outage-panel h2{font-size:clamp(1.55rem,3vw,2.15rem);color:var(--text);letter-spacing:0}
+.purchase-outage-panel p{color:var(--text-secondary);font-size:1rem;line-height:1.7;margin:0}
+.purchase-outage-account-note{padding:16px 18px;border:1px solid rgba(13,148,136,0.18);border-radius:var(--radius-md);background:var(--primary-dim);color:var(--primary);font-size:0.95rem;font-weight:700;line-height:1.55}
+.purchase-outage-form{display:grid;gap:10px;margin-top:4px}
+.purchase-outage-form label{font-size:0.88rem;font-weight:800;color:var(--text)}
+.purchase-outage-input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+.purchase-outage-input-row .btn{height:50px;border-radius:var(--radius-md)}
+@media(max-width:640px){.purchase-outage-panel{margin:24px 0 72px;padding:22px}.purchase-outage-input-row{grid-template-columns:1fr}.purchase-outage-input-row .btn{width:100%}}
 /* ── Network Brand Cards ── */
 .network-cards{padding:80px 0 60px;background:var(--bg-root)}
 .network-cards-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}

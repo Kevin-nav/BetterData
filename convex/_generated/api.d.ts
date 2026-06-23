@@ -18,6 +18,7 @@ import type * as orders from "../orders.js";
 import type * as packages from "../packages.js";
 import type * as payments from "../payments.js";
 import type * as platformConfig from "../platformConfig.js";
+import type * as purchaseOutage from "../purchaseOutage.js";
 import type * as savedNumbers from "../savedNumbers.js";
 import type * as serviceAuth from "../serviceAuth.js";
 import type * as users from "../users.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   packages: typeof packages;
   payments: typeof payments;
   platformConfig: typeof platformConfig;
+  purchaseOutage: typeof purchaseOutage;
   savedNumbers: typeof savedNumbers;
   serviceAuth: typeof serviceAuth;
   users: typeof users;

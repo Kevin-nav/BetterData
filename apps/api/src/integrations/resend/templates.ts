@@ -4,7 +4,8 @@ export type EmailType =
   | "wallet_top_up"
   | "agent_application_received"
   | "agent_application_approved"
-  | "reengagement";
+  | "reengagement"
+  | "purchase_restored";
 
 export interface EmailData {
   displayName?: string | undefined;
@@ -163,6 +164,18 @@ export function getEmailHtml(type: EmailType, data: EmailData): { subject: strin
 
         <p style="text-align: center; margin: 32px 0;">
           <a href="https://betterdatagh.com/dashboard" class="btn">Claim My Data Offer</a>
+        </p>
+      `;
+      break;
+    case "purchase_restored":
+      subject = "BetterData purchases are back online";
+      bodyHtml = `
+        <h1>Data purchases are back online</h1>
+        <p>Hi ${name}, thank you for your patience while we resolved the temporary issue affecting data purchases.</p>
+        <p>You can now buy data bundles again on BetterData. Existing account holders and people who asked for an update are receiving this message.</p>
+
+        <p style="text-align: center; margin: 32px 0;">
+          <a href="https://betterdatagh.com/buy" class="btn">Buy Data</a>
         </p>
       `;
       break;

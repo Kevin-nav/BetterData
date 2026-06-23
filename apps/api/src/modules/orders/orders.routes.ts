@@ -22,6 +22,7 @@ import {
   getPricingContextForApi,
   resolveVendorPackageCustomerPriceGhs
 } from "../packages/packages.routes";
+import { assertDataPurchasesAvailable } from "../purchase-outage/purchaseOutage.routes";
 import { capturePostHogEvent } from "../../analytics/posthog";
 import { hashAnalyticsId } from "../../telemetry/hash";
 
@@ -47,6 +48,14 @@ export async function registerOrderRoutes(server: FastifyInstance) {
     }
 
     const body = validation.value;
+    try {
+      await assertDataPurchasesAvailable();
+    } catch (error) {
+      return reply.code(503).send({
+        message: error instanceof Error ? error.message : "Data purchases are temporarily unavailable."
+      });
+    }
+
     const vendor = getActiveDataVendor();
     const convex = createConvexHttpClient();
     const user = await getOptionalUserForOrder(request, convex);

@@ -4,6 +4,7 @@ import {
   createBetterDataApiClient,
 } from "@betterdata/api-client";
 import type { DataPackage, NetworkCode, SavedNumber } from "@betterdata/contracts";
+import type { FormEvent } from "react";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/AuthContext";
@@ -154,6 +155,17 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   const [navScrolled, setNavScrolled] = useState(false);
   const [recentGuestPurchases, setRecentGuestPurchases] = useState<GuestPurchaseRecord[]>([]);
   const [savedNumbers, setSavedNumbers] = useState<SavedNumber[]>([]);
+  const [purchaseOutage, setPurchaseOutage] = useState({
+    isActive: true,
+    updatedAt: null as number | null,
+    message:
+      "Data purchases are temporarily unavailable while we resolve a service issue. Purchases already made will still be delivered; only new purchases are paused."
+  });
+  const [purchaseOutageLoading, setPurchaseOutageLoading] = useState(true);
+  const [outageEmail, setOutageEmail] = useState("");
+  const [outageSubmitting, setOutageSubmitting] = useState(false);
+  const [outageMessage, setOutageMessage] = useState("");
+  const [outageError, setOutageError] = useState("");
   const [saveSuggestion, setSaveSuggestion] = useState<{
     phone: string;
     network: NetworkCode;
@@ -192,6 +204,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       : "Balance: --";
   const walletBalance = userProfile?.walletBalanceGhs ?? 0;
   const singleSubmitDisabled =
+    purchaseOutage.isActive ||
     submitting ||
     !selectedPkg ||
     !recipientConfirmed ||
@@ -200,12 +213,14 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       (!isAuthenticated ||
         (selectedPkg !== null && walletBalance < selectedPkg.customerPriceGhs)));
   const bulkSubmitDisabled =
+    purchaseOutage.isActive ||
     submitting ||
     bulkPills.length === 0 ||
     invalidCount > 0 ||
     !recipientConfirmed ||
     (payMethod === "wallet" &&
       (!isAuthenticated || (totalCostGhs > 0 && walletBalance < totalCostGhs)));
+  const purchasesDisabled = purchaseOutage.isActive;
 
   const analyticsRole = userProfile?.role ?? "guest";
   const commonAnalyticsProperties = () => ({
@@ -427,10 +442,44 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     };
   }, [getAuthHeaders, isAuthenticated, isAgent]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadPurchaseOutage() {
+      try {
+        setPurchaseOutageLoading(true);
+        const status = await getApi().getPurchaseOutageStatus();
+        if (active) setPurchaseOutage(status);
+      } catch {
+        if (active) {
+          setPurchaseOutage({
+            isActive: true,
+            updatedAt: null,
+            message:
+              "Data purchases are temporarily unavailable while we verify service status. Purchases already made will still be delivered; only new purchases are paused."
+          });
+        }
+      } finally {
+        if (active) setPurchaseOutageLoading(false);
+      }
+    }
+
+    void loadPurchaseOutage();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   /* Fetch packages */
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
+      if (purchaseOutage.isActive) {
+        setPackages([]);
+        setPackagesLoading(false);
+        return;
+      }
+
       try {
         setPackagesLoading(true);
         setPackageError("");
@@ -452,7 +501,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     }
     void load();
     return () => controller.abort();
-  }, [getAuthHeaders, loadKey]);
+  }, [getAuthHeaders, loadKey, purchaseOutage.isActive]);
 
   /* Auto-select first package when network changes */
   useEffect(() => {
@@ -532,6 +581,11 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   };
 
   const handleSinglePay = async () => {
+    if (purchasesDisabled) {
+      setOrderError("Data purchases are temporarily unavailable. We will be back up very soon.");
+      return;
+    }
+
     if (!selectedPkg || !phone.trim() || !recipientConfirmed) return;
     if (payMethod === "wallet") {
       if (!isAuthenticated) {
@@ -1012,6 +1066,11 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
   };
 
   const handleBulkPay = async () => {
+    if (purchasesDisabled) {
+      setOrderError("Data purchases are temporarily unavailable. We will be back up very soon.");
+      return;
+    }
+
     if (bulkPills.length === 0) return;
     const hasErrors = bulkPills.some((p) => !p.isValid);
     if (hasErrors) {
@@ -1089,6 +1148,33 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
     }
   };
 
+  const handleOutageSubscribe = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setOutageError("");
+    setOutageMessage("");
+
+    const email = outageEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setOutageError("Enter a valid email address.");
+      return;
+    }
+
+    setOutageSubmitting(true);
+    try {
+      const result = await getApi().subscribeToPurchaseOutage(email);
+      setOutageMessage(
+        result.alreadySubscribed
+          ? "You're already on the update list. We will email you when purchases are back."
+          : "You're on the update list. We will email you when purchases are back."
+      );
+      setOutageEmail("");
+    } catch (err) {
+      setOutageError(readApiError(err, "We could not save your email. Please try again."));
+    } finally {
+      setOutageSubmitting(false);
+    }
+  };
+
   const retryLoad = () => { setPackageError(""); setLoadKey((k) => k + 1); };
   const dismissPromo = () => { setPromoDismissed(true); localStorage.setItem("promo-dismissed", "1"); };
 
@@ -1162,12 +1248,18 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
               </>
             )}
           </div>
-          <h1 className="buy-title">Buy Data Bundles</h1>
-          <p className="buy-subtitle">Choose your network and package below</p>
+          <h1 className="buy-title">
+            {purchasesDisabled ? "Data Purchases Temporarily Paused" : "Buy Data Bundles"}
+          </h1>
+          <p className="buy-subtitle">
+            {purchasesDisabled
+              ? "Existing purchases will still be delivered. Only new purchases are paused."
+              : "Choose your network and package below"}
+          </p>
         </div>
 
         {/* ── Network Tabs ── */}
-        {mode === "single" && (
+        {!purchasesDisabled && mode === "single" && (
           <div className="network-tabs">
             {(["mtn", "telecel", "airteltigo"] as const).map((net) => (
               <button
@@ -1185,6 +1277,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
         )}
 
         {/* ── Mode Toggle ── */}
+        {!purchasesDisabled && (
         <div className="mode-toggle">
           <button className="mode-toggle-btn" data-active={mode === "single"} onClick={() => setMode("single")}>
             Single
@@ -1193,8 +1286,49 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
             Bulk
           </button>
         </div>
+        )}
 
         {/* ── Main Layout ── */}
+        {purchasesDisabled ? (
+          <section className="purchase-outage-panel" aria-live="polite">
+            <div className="purchase-outage-status">
+              {purchaseOutageLoading ? "Checking service status" : "Temporary service issue"}
+            </div>
+            <h2>Data purchases are temporarily paused</h2>
+            <p>{purchaseOutage.message}</p>
+            <p>
+              Thank you for your patience. We value you as our customer and will let you know as
+              soon as purchases are back online.
+            </p>
+            {isAuthenticated ? (
+              <div className="purchase-outage-account-note">
+                If your account has an email address, there is nothing else to do. We will send the
+                update to your account email automatically.
+              </div>
+            ) : (
+              <form className="purchase-outage-form" onSubmit={handleOutageSubscribe}>
+                <label htmlFor="purchase-outage-email">Get an email when purchases return</label>
+                <div className="purchase-outage-input-row">
+                  <input
+                    id="purchase-outage-email"
+                    type="email"
+                    className="text-input"
+                    placeholder="you@example.com"
+                    value={outageEmail}
+                    onChange={(event) => setOutageEmail(event.target.value)}
+                    disabled={outageSubmitting}
+                  />
+                  <button className="btn btn-primary" type="submit" disabled={outageSubmitting}>
+                    {outageSubmitting ? "Saving..." : "Notify me"}
+                  </button>
+                </div>
+                {outageMessage && <div className="order-message order-result">{outageMessage}</div>}
+                {outageError && <div className="order-message order-error">{outageError}</div>}
+              </form>
+            )}
+          </section>
+        ) : (
+          <>
         {standalone && recentGuestPurchases.length > 0 && (
           <section className="guest-tracker">
             <div className="guest-tracker-label">Recent purchases on this device</div>
@@ -1649,17 +1783,19 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
             </div>
           </aside>
         </div>
+          </>
+        )}
       </div>
 
       {/* ── Mobile Bottom Sheet ── */}
       <div
         className="bottom-sheet-overlay"
-        data-open={sheetOpen && (mode === "single" ? selectedPkg !== null : bulkPills.length > 0)}
+        data-open={!purchasesDisabled && sheetOpen && (mode === "single" ? selectedPkg !== null : bulkPills.length > 0)}
         onClick={() => setSheetOpen(false)}
       />
       <div
         className="bottom-sheet"
-        data-open={sheetOpen && (mode === "single" ? selectedPkg !== null : bulkPills.length > 0)}
+        data-open={!purchasesDisabled && sheetOpen && (mode === "single" ? selectedPkg !== null : bulkPills.length > 0)}
       >
         <div className="sheet-handle" />
         {mode === "single" ? (
@@ -1843,7 +1979,7 @@ export default function BuyContent({ standalone = false }: { standalone?: boolea
       )}
 
       {/* Floating Bulk Cart Button for Mobile */}
-      {mode === "bulk" && bulkPills.length > 0 && !sheetOpen && (
+      {!purchasesDisabled && mode === "bulk" && bulkPills.length > 0 && !sheetOpen && (
         <button
           className="btn btn-primary"
           style={{

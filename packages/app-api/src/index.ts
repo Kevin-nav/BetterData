@@ -16,3 +16,4 @@ export const userFunctions = api.users;
 export const savedNumberFunctions = api.savedNumbers;
 export const notificationFunctions = api.notifications;
 export const emailsFunctions = api.emails;
+export const purchaseOutageFunctions = api.purchaseOutage;

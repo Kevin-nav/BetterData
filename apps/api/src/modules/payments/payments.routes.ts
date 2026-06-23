@@ -45,6 +45,7 @@ import {
   getPricingContextForApi,
   resolveVendorPackageCustomerPriceGhs
 } from "../packages/packages.routes";
+import { assertDataPurchasesAvailable } from "../purchase-outage/purchaseOutage.routes";
 import { getNextRetryAt, isFinalRetryFailure } from "./retryPolicy";
 
 declare module "fastify" {
@@ -100,6 +101,9 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
     async (request, reply) => {
       try {
         validatePaymentIntentRequest(request.body);
+        if (request.body.purpose === "data_purchase") {
+          await assertDataPurchasesAvailable();
+        }
 
         const reference = buildPaystackReference(request.body.purpose);
         const convex = createConvexClient();
@@ -203,7 +207,7 @@ export async function registerPaymentRoutes(server: FastifyInstance) {
       } catch (error) {
         request.log.warn({ error }, "Payment intent creation failed");
 
-        return reply.code(400).send({
+        return reply.code(isPurchaseOutageError(error) ? 503 : 400).send({
           message: readErrorMessage(error, "Payment intent creation failed.")
         });
       }
@@ -954,6 +958,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function isNetworkCode(value: unknown): value is "mtn" | "telecel" | "airteltigo" {
   return value === "mtn" || value === "telecel" || value === "airteltigo";
+}
+
+function isPurchaseOutageError(error: unknown) {
+  return error instanceof Error && error.name === "PurchaseOutageError";
 }
 
 async function createOpsAlertSafely(
