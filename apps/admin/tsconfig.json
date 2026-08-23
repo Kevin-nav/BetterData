@@ -2,9 +2,19 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "allowJs": true,
+    "baseUrl": ".",
     "incremental": true,
     "jsx": "preserve",
     "noEmit": true,
+    "paths": {
+      "@/*": ["./*"],
+      "@betterdata/config": ["../../packages/config/src/index.ts"],
+      "@betterdata/contracts": ["../../packages/contracts/src/index.ts"],
+      "@betterdata/api-client": ["../../packages/api-client/src/index.ts"],
+      "@betterdata/app-api": ["../../packages/app-api/src/index.ts"],
+      "@betterdata/database": ["../../packages/database/src/index.ts"],
+      "@betterdata/ui": ["../../packages/ui/src/index.ts"]
+    },
     "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

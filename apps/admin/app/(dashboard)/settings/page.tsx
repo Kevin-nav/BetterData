@@ -6,6 +6,7 @@ import { convexApi } from "@betterdata/app-api";
 import { useAdminAuth } from "../../lib/auth";
 import { PaymentConfigEditor } from "../../components/PaymentConfigEditor";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/Toast";
 import type { UserRole } from "@betterdata/config";
 
@@ -27,6 +28,8 @@ export default function SettingsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isPromoting, setIsPromoting] = useState<string | null>(null);
   const [isDemoting, setIsDemoting] = useState<string | null>(null);
+  // Pending demotion awaiting confirmation in the ConfirmDialog
+  const [demoteTarget, setDemoteTarget] = useState<string | null>(null);
 
   // Mutations
   const promoteToAdmin = useMutation(convexApi.admin.promoteToAdmin);
@@ -61,13 +64,11 @@ export default function SettingsPage() {
   };
 
   const handleDemote = async (userId: string) => {
-    if (!confirm("Are you sure you want to demote this administrator? they will lose all admin privileges.")) {
-      return;
-    }
     try {
       setIsDemoting(userId);
       await demoteFromAdmin({ userId: userId as any });
       showToast("Administrator successfully demoted.", "success");
+      setDemoteTarget(null);
     } catch (err: any) {
       showToast(err.message || "Failed to demote admin.", "error");
     } finally {
@@ -112,7 +113,7 @@ export default function SettingsPage() {
         const isProtected = row.role === "superadmin";
         return (
           <button
-            onClick={() => handleDemote(row._id)}
+            onClick={() => setDemoteTarget(row._id)}
             disabled={isProtected || isDemoting === row._id}
             className="btn btn-ghost btn-sm text-danger"
             style={{ color: "var(--danger)" }}
@@ -296,6 +297,21 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={demoteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDemoteTarget(null);
+        }}
+        title="Demote administrator?"
+        description="This administrator will lose all admin privileges immediately."
+        confirmLabel="Demote"
+        destructive
+        loading={isDemoting !== null}
+        onConfirm={() => {
+          if (demoteTarget) void handleDemote(demoteTarget);
+        }}
+      />
     </div>
   );
 }

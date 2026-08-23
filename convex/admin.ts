@@ -1390,3 +1390,307 @@ export const listAuditLogs = query({
     );
   },
 });
+
+/* ── Purchase Outage Control ── */
+
+const OUTAGE_ACTIVE_KEY = "purchaseOutageActive";
+const OUTAGE_UPDATED_AT_KEY = "purchaseOutageUpdatedAt";
+const OUTAGE_MESSAGE_KEY = "purchaseOutageMessage";
+const DEFAULT_OUTAGE_ACTIVE = true;
+
+export const getPurchaseOutageStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const configs = await ctx.db.query("platformConfig").collect();
+    const readValue = (key: string) =>
+      configs.find((config) => config.key === key)?.value;
+
+    const activeValue = readValue(OUTAGE_ACTIVE_KEY);
+    const updatedValue = readValue(OUTAGE_UPDATED_AT_KEY);
+    const messageValue = readValue(OUTAGE_MESSAGE_KEY);
+
+    return {
+      isActive:
+        typeof activeValue === "boolean" ? activeValue : DEFAULT_OUTAGE_ACTIVE,
+      updatedAt: typeof updatedValue === "number" ? updatedValue : null,
+      message:
+        typeof messageValue === "string" && messageValue.trim().length > 0
+          ? messageValue
+          : null,
+    };
+  },
+});
+
+export const setPurchaseOutageStatus = mutation({
+  args: {
+    isActive: v.boolean(),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireSuperadmin(ctx);
+
+    await upsertPlatformConfig(ctx, OUTAGE_ACTIVE_KEY, args.isActive);
+    await upsertPlatformConfig(ctx, OUTAGE_UPDATED_AT_KEY, Date.now());
+
+    if (args.message !== undefined) {
+      const trimmed = args.message.trim();
+      await upsertPlatformConfig(ctx, OUTAGE_MESSAGE_KEY, trimmed);
+    }
+
+    await ctx.db.insert("auditLogs", {
+      actorId: admin.userId as any,
+      action: args.isActive ? "enable_purchase_outage" : "disable_purchase_outage",
+      target: "purchase_outage",
+      metadata: { message: args.message ?? null },
+    });
+
+    return { isActive: args.isActive };
+  },
+});
+
+export const listRestorationSubscribers = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    return await ctx.db
+      .query("purchaseOutageSubscribers")
+      .order("desc")
+      .take(500);
+  },
+});
+
+/* ── Ops Alert Escalation & Retry Management ── */
+
+export const escalateAlert = mutation({
+  args: {
+    alertId: v.id("opsAlerts"),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert) throw new Error("Ops alert not found.");
+
+    await ctx.db.patch(args.alertId, {
+      severity: "critical",
+      ...(args.message !== undefined && args.message.trim().length > 0
+        ? { message: args.message.trim() }
+        : {}),
+      updatedAt: Date.now()
+    });
+
+    await ctx.db.insert("auditLogs", {
+      actorId: admin.userId as any,
+      action: "escalate_ops_alert",
+      target: args.alertId,
+      metadata: { message: alert.message, reference: alert.reference },
+    });
+  },
+});
+
+export const retryAlertNow = mutation({  args: { alertId: v.id("opsAlerts") },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert) throw new Error("Ops alert not found.");
+    if (!alert.retryable) throw new Error("Ops alert is not retryable.");
+
+    await ctx.db.patch(args.alertId, {
+      retryStatus: "queued",
+      nextRetryAt: Date.now(),
+      updatedAt: Date.now()
+    });
+
+    await ctx.db.insert("auditLogs", {
+      actorId: admin.userId as any,
+      action: "retry_ops_alert",
+      target: args.alertId,
+      metadata: { reference: alert.reference, retryAction: alert.retryAction },
+    });
+  },
+});
+
+export const listRetriableAlerts = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    retryStatus: v.optional(
+      v.union(
+        v.literal("not_started"),
+        v.literal("queued"),
+        v.literal("running"),
+        v.literal("succeeded"),
+        v.literal("failed")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    let q = ctx.db.query("opsAlerts").withIndex("by_retry", (q) =>
+      q.eq("retryStatus", args.retryStatus ?? "queued")
+    );
+
+    return await q.order("desc").paginate(args.paginationOpts);
+  },
+});
+
+/* ── Paginated List Queries ── */
+
+export const listAgentApplicationsPage = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    let q = ctx.db.query("agentApplications");
+    if (args.status) {
+      q = q.filter((f) => f.eq(f.field("status"), args.status));
+    }
+
+    const page = await q.order("desc").paginate(args.paginationOpts);
+
+    const results = [];
+    for (const app of page.page) {
+      const user = await ctx.db.get(app.userId);
+      results.push({
+        ...app,
+        user: user
+          ? {
+              displayName: user.displayName,
+              email: user.email,
+              phone: user.phone,
+              isSuspended: user.isSuspended,
+            }
+          : null,
+      });
+    }
+
+    return { ...page, page: results };
+  },
+});
+
+export const listAgentsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const page = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "agent"))
+      .order("desc")
+      .paginate(args.paginationOpts);
+
+    const results = [];
+    for (const agent of page.page) {
+      const orders = await ctx.db
+        .query("orders")
+        .withIndex("by_user", (q) => q.eq("userId", agent._id))
+        .collect();
+
+      const completedOrders = orders.filter((o) => o.status === "completed");
+      const totalSpendGhs = completedOrders.reduce((sum, o) => sum + o.amountGhs, 0);
+
+      results.push({
+        ...agent,
+        totalOrders: completedOrders.length,
+        totalSpendGhs,
+      });
+    }
+
+    return { ...page, page: results };
+  },
+});
+
+export const listAnnouncementsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await ctx.db.query("announcements").order("desc").paginate(args.paginationOpts);
+  },
+});
+
+export const listSavedNumbersPage = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await ctx.db
+      .query("savedNumbers")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+  },
+});
+
+export const listDataPackagesWithPricingPage = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    network: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    // Pricing rules are a small table; load fully so price computation stays correct.
+    const rules = await ctx.db.query("pricingRules").collect();
+    const globalRule = rules.find((r) => r.isGlobal && r.isActive);
+
+    let packagesQuery = ctx.db.query("dataPackages");
+    if (args.network) {
+      packagesQuery = packagesQuery.filter((f) => f.eq(f.field("network"), args.network));
+    }
+
+    const page = await packagesQuery.order("desc").paginate(args.paginationOpts);
+
+    const results = page.page.map((pkg) => {
+      const rule = rules.find((r) => r.packageId === pkg._id && r.isActive) ?? globalRule;
+
+      let computedPriceGhs = pkg.customerPriceGhs;
+      if (rule) {
+        computedPriceGhs =
+          rule.mode === "percentage"
+            ? pkg.providerCostGhs * (1 + rule.value / 100)
+            : pkg.providerCostGhs + rule.value;
+      }
+
+      return {
+        ...pkg,
+        computedPriceGhs,
+        activeRule: rule
+          ? {
+              _id: rule._id,
+              mode: rule.mode,
+              value: rule.value,
+              isGlobal: rule.isGlobal,
+            }
+          : null,
+      };
+    });
+
+    return { ...page, page: results };
+  },
+});
+
+async function upsertPlatformConfig(
+  ctx: MutationCtx,
+  key: string,
+  value: string | number | boolean
+) {
+  const existing = await ctx.db
+    .query("platformConfig")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .first();
+
+  if (existing === null) {
+    await ctx.db.insert("platformConfig", { key, value });
+    return;
+  }
+
+  await ctx.db.patch(existing._id, { value });
+}

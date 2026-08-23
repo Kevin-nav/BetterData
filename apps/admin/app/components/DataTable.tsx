@@ -1,4 +1,17 @@
-import React from "react";
+"use client";
+
+import * as React from "react";
+
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 export type ColumnDef<T> = {
   key: string;
@@ -26,31 +39,41 @@ export function DataTable<T>({
   onRowClick,
   rowKey,
 }: DataTableProps<T>) {
+  const isClickable = !!onRowClick;
+
   if (isLoading) {
     return (
       <div className="table-shell">
-        <table className="table">
-          <thead>
-            <tr>
+        <Table>
+          <TableHeader>
+            <TableRow>
               {columns.map((col) => (
-                <th key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
+                <TableHead
+                  key={col.key}
+                  className={cn(col.hiddenOnMobile && "hidden md:table-cell")}
+                >
                   {col.header}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {Array.from({ length: 5 }).map((_, rIdx) => (
-              <tr key={rIdx}>
+              <TableRow key={rIdx}>
                 {columns.map((col) => (
-                  <td key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
-                    <div className="skeleton skeleton-text" style={{ width: "60%" }} />
-                  </td>
+                  <TableCell
+                    key={col.key}
+                    className={cn(
+                      col.hiddenOnMobile && "hidden md:table-cell"
+                    )}
+                  >
+                    <Skeleton className="h-3.5 w-[60%]" />
+                  </TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     );
   }
@@ -66,6 +89,7 @@ export function DataTable<T>({
             viewBox="0 0 24 24"
             stroke="currentColor"
             strokeWidth={1.5}
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -80,35 +104,57 @@ export function DataTable<T>({
     );
   }
 
-  const isClickable = !!onRowClick;
-
   return (
     <div className="table-shell">
-      <table className={`table${isClickable ? " table-clickable" : ""}`}>
-        <thead>
-          <tr>
+      <Table
+        className={cn(isClickable && "[&_tbody_tr]:cursor-pointer select-none")}
+      >
+        <TableHeader>
+          <TableRow>
             {columns.map((col) => (
-              <th key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
+              <TableHead
+                key={col.key}
+                className={cn(col.hiddenOnMobile && "hidden md:table-cell")}
+              >
                 {col.header}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {data.map((row) => (
-            <tr
+            <TableRow
               key={rowKey(row)}
+              tabIndex={isClickable ? 0 : undefined}
+              role={isClickable ? "button" : undefined}
               onClick={() => onRowClick && onRowClick(row)}
+              onKeyDown={
+                isClickable
+                  ? (event: React.KeyboardEvent<HTMLTableRowElement>) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onRowClick?.(row);
+                      }
+                    }
+                  : undefined
+              }
             >
               {columns.map((col) => (
-                <td key={col.key} className={col.hiddenOnMobile ? "hidden-mobile" : ""}>
-                  {col.render ? col.render(row) : (row[col.key as keyof T] as React.ReactNode)}
-                </td>
+                <TableCell
+                  key={col.key}
+                  className={cn(
+                    col.hiddenOnMobile && "hidden md:table-cell"
+                  )}
+                >
+                  {col.render
+                    ? col.render(row)
+                    : ((row[col.key as keyof T] ?? null) as React.ReactNode)}
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

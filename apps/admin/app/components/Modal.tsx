@@ -1,4 +1,14 @@
-import React, { useEffect } from "react";
+"use client";
+
+import React from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type ModalProps = {
   isOpen: boolean;
@@ -8,59 +18,28 @@ type ModalProps = {
   footer?: React.ReactNode;
 };
 
+/**
+ * Thin adapter over the shadcn/Radix Dialog primitives.
+ *
+ * Keeps the legacy props API (`isOpen`/`onClose`) so existing call sites
+ * keep compiling; Escape-to-close, backdrop-click close, focus trapping
+ * and aria attributes are provided by Radix.
+ */
 export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) {
-  // Close on Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-content"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="modal-header">
-          <h2 className="modal-title">{title}</h2>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={onClose}
-            aria-label="Close modal"
-            style={{ padding: "var(--space-1)", minWidth: "auto" }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-              style={{ width: "20px", height: "20px" }}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {/* Radix requires a Description or explicit aria-describedby={undefined};
+              DialogContent sets that via the hidden description below. */}
+          <DialogDescription className="sr-only">{title}</DialogDescription>
+        </DialogHeader>
 
-        <div className="modal-body">{children}</div>
+        <div>{children}</div>
 
-        {footer && <div className="modal-footer">{footer}</div>}
-      </div>
-    </div>
+        {footer ? <DialogFooter>{footer}</DialogFooter> : null}
+      </DialogContent>
+    </Dialog>
   );
 }

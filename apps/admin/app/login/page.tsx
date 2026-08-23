@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAdminAuth } from "../lib/auth";
@@ -15,9 +15,14 @@ export default function AdminLoginPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Already authorized — redirect to dashboard
+  // Already authorized — redirect to dashboard (never navigate during render).
+  useEffect(() => {
+    if (!loading && isAuthorized) {
+      router.replace("/");
+    }
+  }, [loading, isAuthorized, router]);
+
   if (!loading && isAuthorized) {
-    router.replace("/");
     return null;
   }
 
