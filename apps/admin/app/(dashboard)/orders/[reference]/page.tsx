@@ -6,6 +6,7 @@ import Link from "next/link";
 import { convexApi } from "@betterdata/app-api";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { Modal } from "../../../components/Modal";
+import { JsonViewer } from "../../../components/JsonViewer";
 
 type OrderDetailPageProps = {
   params: Promise<{ reference: string }>;
@@ -219,8 +220,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: "flex-start",
               position: "relative",
               padding: "0 var(--space-8)",
             }}
@@ -229,6 +229,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               <div
                 key={step.label}
                 style={{
+                  flex: 1,
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -285,9 +286,9 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                   <div
                     style={{
                       position: "absolute",
-                      left: "36px",
+                      left: "calc(50% + 24px)",
                       top: "18px",
-                      width: "calc(100vw / 6)",
+                      width: "calc(100% - 48px)",
                       height: "3px",
                       background: arr[idx + 1]?.done
                         ? "var(--primary)"
@@ -403,18 +404,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
                 <h2 className="card-header-title">Vendor Raw Payload</h2>
               </div>
               <div className="card-body">
-                <pre
-                  className="font-mono text-xs"
-                  style={{
-                    background: "var(--bg-inset)",
-                    padding: "var(--space-4)",
-                    borderRadius: "var(--radius-md)",
-                    overflowX: "auto",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  {JSON.stringify(order.vendorRaw, null, 2)}
-                </pre>
+                <JsonViewer value={order.vendorRaw} label="Vendor Response" />
               </div>
             </div>
           )}

@@ -69,9 +69,14 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
   const orders = useQuery(convexApi.admin.getUserOrders, {
     userId: id as any,
   }) as OrderRow[] | undefined;
-  const savedNumbers = useQuery(convexApi.admin.getUserSavedNumbers, {
-    userId: id as any,
-  }) as SavedNumberRow[] | undefined;
+  const savedNumbersQuery = usePaginatedQuery(
+    convexApi.admin.listSavedNumbersPage,
+    { userId: id as any },
+    { initialNumItems: 10 },
+  );
+  const savedNumbers = savedNumbersQuery.results;
+  const savedNumbersStatus = savedNumbersQuery.status;
+  const loadMoreSavedNumbers = savedNumbersQuery.loadMore;
 
   const {
     results: transactions,
@@ -561,12 +566,17 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
           {/* Card: Saved Numbers */}
           <div className="card">
             <div className="card-header">
-              <h2 className="card-header-title">
-                Saved Numbers ({savedNumbers?.length || 0})
-              </h2>
+              <h2 className="card-header-title">Saved Numbers</h2>
             </div>
             <div className="card-body" style={{ padding: 0 }}>
-              {!savedNumbers || savedNumbers.length === 0 ? (
+              {savedNumbersStatus === "LoadingFirstPage" ? (
+                <div
+                  style={{ padding: "var(--space-4)", textAlign: "center" }}
+                  className="text-muted italic"
+                >
+                  Loading saved numbers...
+                </div>
+              ) : !savedNumbers || savedNumbers.length === 0 ? (
                 <div
                   style={{ padding: "var(--space-4)", textAlign: "center" }}
                   className="text-muted italic"
@@ -612,6 +622,27 @@ export default function UserDetailPage({ params }: UserDetailPageProps) {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+              {(savedNumbersStatus === "CanLoadMore" ||
+                savedNumbersStatus === "LoadingMore") && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    padding: "var(--space-3)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={savedNumbersStatus === "LoadingMore"}
+                    onClick={() => loadMoreSavedNumbers(10)}
+                  >
+                    {savedNumbersStatus === "LoadingMore"
+                      ? "Loading..."
+                      : "Load More"}
+                  </button>
                 </div>
               )}
             </div>

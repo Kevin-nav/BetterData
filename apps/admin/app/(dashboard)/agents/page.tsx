@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { convexApi } from "@betterdata/app-api";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { StatusBadge } from "../../components/StatusBadge";
-import { Modal } from "../../components/Modal";
+import { AgentApplicationReviewModal } from "../../components/AgentApplicationReviewModal";
 import { useAdminAuth } from "../../lib/auth";
 
 type AgentApplicationRow = {
@@ -39,78 +39,41 @@ type ActiveAgentRow = {
 
 export default function AgentsPage() {
   const router = useRouter();
-  const { getAuthHeaders } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<"applications" | "agents">(
     "applications",
   );
 
   // Queries
-  const applications = useQuery(convexApi.admin.listAgentApplications, {}) as
-    | AgentApplicationRow[]
-    | undefined;
-  const agents = useQuery(convexApi.admin.listAgents) as
-    | ActiveAgentRow[]
-    | undefined;
+  const {
+    results: applications,
+    status: applicationsStatus,
+    loadMore: loadMoreApplications,
+  } = usePaginatedQuery(
+    convexApi.admin.listAgentApplicationsPage,
+    {},
+    { initialNumItems: 25 },
+  ) as {
+    results: AgentApplicationRow[] | undefined;
+    status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
+    loadMore: (numItems: number) => void;
+  };
+  const {
+    results: agents,
+    status: agentsStatus,
+    loadMore: loadMoreAgents,
+  } = usePaginatedQuery(convexApi.admin.listAgentsPage, {}, { initialNumItems: 25 }) as {
+    results: ActiveAgentRow[] | undefined;
+    status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
+    loadMore: (numItems: number) => void;
+  };
 
-  // Mutations
-  const approveApplication = useMutation(
-    convexApi.admin.approveAgentApplication,
-  );
-  const rejectApplication = useMutation(convexApi.admin.rejectAgentApplication);
-
-  // Action Modals State
-  const [selectedApp, setSelectedApp] = useState<AgentApplicationRow | null>(
-    null,
-  );
-  const [modalAction, setModalAction] = useState<"approve" | "reject" | null>(
-    null,
-  );
-  const [rejectReason, setRejectReason] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Shared review dialog state
+  const [review, setReview] = useState<{
+    app: AgentApplicationRow;
+    action: "approve" | "reject";
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const handleAction = async () => {
-    if (!selectedApp || !modalAction) return;
-    setIsSubmitting(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    try {
-      if (modalAction === "approve") {
-        await approveApplication({ applicationId: selectedApp._id as any });
-        try {
-          await sendAgentApprovalEmail(selectedApp.userId, getAuthHeaders);
-        } catch (emailErr) {
-          console.error("Failed to trigger agent approval email:", emailErr);
-          setErrorMessage("Agent approved, but the approval email failed to send.");
-        }
-        setSuccessMessage(
-          `Application for ${selectedApp.user?.displayName || "user"} approved successfully.`,
-        );
-      } else {
-        const args: { applicationId: any; reason?: string } = {
-          applicationId: selectedApp._id as any,
-        };
-        if (rejectReason.trim()) {
-          args.reason = rejectReason.trim();
-        }
-        await rejectApplication(args);
-        setSuccessMessage(
-          `Application for ${selectedApp.user?.displayName || "user"} rejected.`,
-        );
-      }
-      setSelectedApp(null);
-      setModalAction(null);
-      setRejectReason("");
-    } catch (err: any) {
-      console.error("Action failed:", err);
-      setErrorMessage(
-        err.message || "An error occurred while processing the request.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const appColumns: ColumnDef<AgentApplicationRow>[] = [
     {
@@ -178,8 +141,7 @@ export default function AgentsPage() {
               className="btn btn-primary btn-sm"
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedApp(row);
-                setModalAction("approve");
+                setReview({ app: row, action: "approve" });
               }}
             >
               Approve
@@ -189,8 +151,7 @@ export default function AgentsPage() {
               className="btn btn-danger btn-sm"
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedApp(row);
-                setModalAction("reject");
+                setReview({ app: row, action: "reject" });
               }}
             >
               Reject
@@ -302,161 +263,110 @@ export default function AgentsPage() {
           className={`tab${activeTab === "applications" ? " tab-active" : ""}`}
           onClick={() => setActiveTab("applications")}
         >
-          Pending Applications (
-          {applications?.filter((a) => a.status === "pending").length || 0})
+          Pending Applications
         </button>
         <button
           className={`tab${activeTab === "agents" ? " tab-active" : ""}`}
           onClick={() => setActiveTab("agents")}
         >
-          Active Agents ({agents?.length || 0})
+          Active Agents
         </button>
       </div>
 
       <div className="card">
         <div className="card-body">
           {activeTab === "applications" ? (
-            <DataTable
-              columns={appColumns}
-              data={applications ?? []}
-              isLoading={applications === undefined}
-              emptyStateTitle="No applications found"
-              emptyStateDescription="There are no pending or reviewed agent applications."
-              onRowClick={(row) => router.push(`/agents/${row.userId}`)}
-              rowKey={(row) => row._id}
-            />
+            <>
+              <DataTable
+                columns={appColumns}
+                data={applications ?? []}
+                isLoading={applicationsStatus === "LoadingFirstPage"}
+                emptyStateTitle="No applications found"
+                emptyStateDescription="There are no pending or reviewed agent applications."
+                onRowClick={(row) => router.push(`/agents/${row.userId}`)}
+                rowKey={(row) => row._id}
+              />
+              {(applicationsStatus === "CanLoadMore" ||
+                applicationsStatus === "LoadingMore") && (
+                <LoadMoreRow
+                  loading={applicationsStatus === "LoadingMore"}
+                  onClick={() => loadMoreApplications(25)}
+                />
+              )}
+            </>
           ) : (
-            <DataTable
-              columns={agentColumns}
-              data={agents ?? []}
-              isLoading={agents === undefined}
-              emptyStateTitle="No active agents"
-              emptyStateDescription="No users have been promoted to agent status yet."
-              onRowClick={(row) => router.push(`/agents/${row._id}`)}
-              rowKey={(row) => row._id}
-            />
+            <>
+              <DataTable
+                columns={agentColumns}
+                data={agents ?? []}
+                isLoading={agentsStatus === "LoadingFirstPage"}
+                emptyStateTitle="No active agents"
+                emptyStateDescription="No users have been promoted to agent status yet."
+                onRowClick={(row) => router.push(`/agents/${row._id}`)}
+                rowKey={(row) => row._id}
+              />
+              {(agentsStatus === "CanLoadMore" || agentsStatus === "LoadingMore") && (
+                <LoadMoreRow
+                  loading={agentsStatus === "LoadingMore"}
+                  onClick={() => loadMoreAgents(25)}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Confirmation Modal */}
-      <Modal
-        isOpen={selectedApp !== null && modalAction !== null}
-        onClose={() => {
-          if (!isSubmitting) {
-            setSelectedApp(null);
-            setModalAction(null);
-            setRejectReason("");
-          }
-        }}
-        title={
-          modalAction === "approve"
-            ? "Approve Agent Application"
-            : "Reject Agent Application"
-        }
-        footer={
-          <>
-            <button
-              className="btn btn-secondary"
-              disabled={isSubmitting}
-              onClick={() => {
-                setSelectedApp(null);
-                setModalAction(null);
-                setRejectReason("");
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className={
-                modalAction === "approve" ? "btn btn-primary" : "btn btn-danger"
+      <AgentApplicationReviewModal
+        action={review?.action ?? null}
+        application={
+          review
+            ? {
+                _id: review.app._id,
+                userId: review.app.userId,
+                paymentReference: review.app.paymentReference,
               }
-              disabled={isSubmitting}
-              onClick={handleAction}
-            >
-              {isSubmitting
-                ? "Processing..."
-                : modalAction === "approve"
-                  ? "Approve Agent"
-                  : "Reject Application"}
-            </button>
-          </>
+            : null
         }
-      >
-        {selectedApp && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-4)",
-            }}
-          >
-            <p>
-              Are you sure you want to{" "}
-              <strong>
-                {modalAction === "approve" ? "APPROVE" : "REJECT"}
-              </strong>{" "}
-              the agent application for{" "}
-              <strong>{selectedApp.user?.displayName || "this user"}</strong>?
-            </p>
-            <div
-              style={{
-                background: "var(--bg-inset)",
-                padding: "var(--space-3)",
-                borderRadius: "var(--radius-md)",
-                fontSize: "var(--font-size-sm)",
-              }}
-            >
-              <div>Email: {selectedApp.user?.email || "N/A"}</div>
-              <div>Phone: {selectedApp.user?.phone || "N/A"}</div>
-              {selectedApp.paymentReference && (
-                <div>Payment Ref: {selectedApp.paymentReference}</div>
-              )}
-            </div>
-
-            {modalAction === "approve" ? (
-              <p
-                className="text-muted"
-                style={{ fontSize: "var(--font-size-sm)" }}
-              >
-                Approving this application will change the user's role to{" "}
-                <strong>agent</strong> and grant them access to wholesale bundle
-                rates.
-              </p>
-            ) : (
-              <div className="form-group">
-                <label className="form-label" htmlFor="reject-reason">
-                  Reason for Rejection (Optional)
-                </label>
-                <textarea
-                  id="reject-reason"
-                  className="textarea"
-                  placeholder="Provide a reason for rejection (e.g., Unverified payment reference)"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
+        user={review?.app.user ?? null}
+        onClose={() => setReview(null)}
+        onSuccess={(message) => {
+          setErrorMessage(null);
+          setSuccessMessage(message);
+          setReview(null);
+        }}
+        onError={(message) => {
+          setSuccessMessage(null);
+          setErrorMessage(message);
+        }}
+      />
     </div>
   );
 }
 
-async function sendAgentApprovalEmail(
-  userId: string,
-  getAuthHeaders: () => Promise<HeadersInit>,
-) {
-  const headers = await getAuthHeaders();
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
-  const response = await fetch(`${apiBaseUrl}/admin/agents/${userId}/email-approved`, {
-    method: "POST",
-    headers
-  });
-
-  if (!response.ok) {
-    throw new Error(`Agent approval email failed with status ${response.status}.`);
-  }
+function LoadMoreRow({
+  loading,
+  onClick,
+}: {
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        marginTop: "var(--space-4)",
+      }}
+    >
+      <button
+        type="button"
+        className="btn btn-secondary"
+        disabled={loading}
+        onClick={onClick}
+      >
+        {loading ? "Loading..." : "Load More"}
+      </button>
+    </div>
+  );
 }
+

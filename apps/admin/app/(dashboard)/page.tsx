@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { convexApi } from "@betterdata/app-api";
 import {
@@ -8,6 +9,7 @@ import {
   type AdminOverviewResponse,
 } from "@betterdata/api-client";
 import { useAdminAuth } from "../lib/auth";
+import { getApiBaseUrl } from "../lib/api";
 import { MetricCard } from "../components/MetricCard";
 import { OpsAlertPanel } from "../components/OpsAlertPanel";
 import { PaymentConfigEditor } from "../components/PaymentConfigEditor";
@@ -63,6 +65,7 @@ type FinancialSummary = {
 };
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
   const { getAuthHeaders } = useAdminAuth();
 
   // Convex Subscriptions (Real-time)
@@ -84,8 +87,7 @@ export default function AdminDashboardPage() {
     try {
       const headers = await getAuthHeaders();
       const client = createBetterDataApiClient({
-        baseUrl:
-          process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000",
+        baseUrl: getApiBaseUrl(),
         headers,
       });
       const data = await client.getAdminOverview();
@@ -180,7 +182,7 @@ export default function AdminDashboardPage() {
         <MetricCard
           label="Vendor Balance"
           value={
-            apiData?.vendorBalanceGhs !== null
+            apiData?.vendorBalanceGhs != null
               ? formatGhs(apiData?.vendorBalanceGhs)
               : "..."
           }
@@ -489,12 +491,19 @@ export default function AdminDashboardPage() {
                   </thead>
                   <tbody>
                     {recentOrders.map((order) => (
-                      <tr key={order._id} className="table-row">
+                      <tr
+                        key={order._id}
+                        className="table-row"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => router.push(`/orders/${order.reference}`)}
+                      >
                         <td
                           className="table-cell"
                           style={{
                             padding: "var(--space-3) var(--space-4)",
                             fontFamily: "monospace",
+                            fontWeight: 600,
+                            color: "var(--primary)",
                           }}
                         >
                           {order.reference}
@@ -585,8 +594,7 @@ export default function AdminDashboardPage() {
                         borderRadius: "var(--radius-sm)",
                       }}
                     >
-                      {process.env.NEXT_PUBLIC_API_BASE_URL ??
-                        "http://localhost:4000"}
+                      {getApiBaseUrl()}
                     </code>
                   </div>
                   <div
