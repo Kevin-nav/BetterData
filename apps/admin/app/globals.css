@@ -1,10 +1,138 @@
 /* ============================================================
    Better Data Admin — App-Specific Styles
    Imports shared design system from @betterdata/ui
+   Tailwind CSS v4 (CSS-first config) + shadcn/ui token bridge
    ============================================================ */
 
+@import "tailwindcss";
 @import "@betterdata/ui/styles/base.css";
 @import "@betterdata/ui/styles/components.css";
+@import "tw-animate-css";
+
+/* --- Dark variant: follow the app's data-theme mechanism --- */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ===================== SHADCN/TAILWIND THEME BRIDGE =====================
+   Maps shadcn/ui semantic tokens onto the existing design-system variables
+   defined in @betterdata/ui/styles/base.css (:root and [data-theme="dark"]),
+   so shadcn components automatically match the current look in both themes.
+   We do NOT redefine any base.css variable here — only add new shadcn-scoped
+   names that reference them, which keeps the existing design system intact
+   while following the app's data-theme + prefers-color-scheme mechanism.
+   ======================================================================== */
+
+:root {
+  --background: var(--bg-root);
+  --foreground: var(--text);
+  --card: var(--bg-surface);
+  --card-foreground: var(--text);
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--text);
+  --primary-foreground: var(--text-on-primary);
+  --secondary: var(--bg-surface-hover);
+  --secondary-foreground: var(--text);
+  --muted: var(--bg-inset);
+  --muted-foreground: var(--text-muted);
+  --accent-foreground: var(--primary-hover);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border-strong);
+  --ring: var(--border-focus);
+}
+
+[data-theme="dark"] {
+  --background: var(--bg-root);
+  --foreground: var(--text);
+  --card: var(--bg-surface);
+  --card-foreground: var(--text);
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--text);
+  --primary-foreground: var(--text-on-primary);
+  --secondary: var(--bg-surface-hover);
+  --secondary-foreground: var(--text);
+  --muted: var(--bg-inset);
+  --muted-foreground: var(--text-muted);
+  --accent-foreground: var(--primary-hover);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border-strong);
+  --ring: var(--border-focus);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: var(--bg-root);
+    --foreground: var(--text);
+    --card: var(--bg-surface);
+    --card-foreground: var(--text);
+    --popover: var(--bg-surface);
+    --popover-foreground: var(--text);
+    --primary-foreground: var(--text-on-primary);
+    --secondary: var(--bg-surface-hover);
+    --secondary-foreground: var(--text);
+    --muted: var(--bg-inset);
+    --muted-foreground: var(--text-muted);
+    --accent-foreground: var(--primary-hover);
+    --destructive: var(--danger);
+    --destructive-foreground: #ffffff;
+    --input: var(--border-strong);
+    --ring: var(--border-focus);
+  }
+}
+
+@theme inline {
+  /* Surfaces & text */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Brand — --primary/--accent already exist in base.css with light/dark
+     values, so map straight onto them instead of redefining */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  /* Muted / accent (shadcn "accent" = brand-tinted hover surface) */
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--primary-light);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Semantic */
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* Lines — --border already exists in base.css with light/dark values */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Radius scale mirroring base.css tokens
+     (--radius-sm 4px / md 8px / lg 12px / xl 16px) */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Typography: reuse next/font variables from the app layout */
+  --font-sans: var(
+    --font-body,
+    "DM Sans",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif
+  );
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
 
 /* ===================== ADMIN LAYOUT ===================== */
 

@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { convexApi } from "@betterdata/app-api";
 import { useAdminAuth } from "../../lib/auth";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/Toast";
 
 type Announcement = {
@@ -33,6 +34,12 @@ export default function AnnouncementsPage() {
   // Table State
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [broadcastingId, setBroadcastingId] = useState<string | null>(null);
+
+  // Pending actions awaiting confirmation in a ConfirmDialog
+  const [broadcastTarget, setBroadcastTarget] = useState<Announcement | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // Queries & Mutations
   const announcements = useQuery(convexApi.admin.listAnnouncements);
@@ -111,14 +118,6 @@ export default function AnnouncementsPage() {
   };
 
   const handleBroadcast = async (announcement: Announcement) => {
-    if (
-      !confirm(
-        `Are you sure you want to broadcast "${announcement.title}" via email to audience: ${announcement.audience}?`,
-      )
-    ) {
-      return;
-    }
-
     setBroadcastingId(announcement._id);
     try {
       const headers = await getAuthHeaders();
@@ -143,6 +142,7 @@ export default function AnnouncementsPage() {
         `Broadcast sent! ${data.successCount} succeeded, ${data.failureCount} failed.`,
         "success",
       );
+      setBroadcastTarget(null);
     } catch (err: any) {
       showToast(err.message || "Failed to send email broadcast.", "error");
     } finally {
@@ -151,18 +151,11 @@ export default function AnnouncementsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this announcement? It will no longer be visible to users in-app.",
-      )
-    ) {
-      return;
-    }
-
     setDeletingId(id);
     try {
       await deleteAnnouncement({ announcementId: id as any });
       showToast("Announcement deleted.", "success");
+      setDeleteTarget(null);
     } catch (err: any) {
       showToast(err.message || "Failed to delete announcement.", "error");
     } finally {
@@ -222,14 +215,14 @@ export default function AnnouncementsPage() {
       render: (row) => (
         <div style={{ display: "flex", gap: "var(--space-2)" }}>
           <button
-            onClick={() => handleBroadcast(row)}
+            onClick={() => setBroadcastTarget(row)}
             disabled={broadcastingId === row._id}
             className="btn btn-secondary btn-sm"
           >
             {broadcastingId === row._id ? "Sending..." : "Email Broadcast"}
           </button>
           <button
-            onClick={() => handleDelete(row._id)}
+            onClick={() => setDeleteTarget(row._id)}
             disabled={deletingId === row._id}
             className="btn btn-ghost btn-sm text-danger"
             style={{ color: "var(--danger)" }}
@@ -402,6 +395,39 @@ export default function AnnouncementsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={broadcastTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setBroadcastTarget(null);
+        }}
+        title="Send email broadcast?"
+        description={
+          broadcastTarget
+            ? `This will email "${broadcastTarget.title}" to the audience: ${broadcastTarget.audience}.`
+            : undefined
+        }
+        confirmLabel="Send Broadcast"
+        loading={broadcastingId !== null}
+        onConfirm={() => {
+          if (broadcastTarget) void handleBroadcast(broadcastTarget);
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete announcement?"
+        description="It will no longer be visible to users in-app. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        loading={deletingId !== null}
+        onConfirm={() => {
+          if (deleteTarget) void handleDelete(deleteTarget);
+        }}
+      />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+"use client";
+
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 type MetricCardProps = {
@@ -63,7 +65,7 @@ export function MetricCard({
 function normalizeTone(tone: MetricCardProps["tone"]) {
   if (tone === "healthy") return "success";
   if (tone === "low") return "warning";
-  if (tone === "neutral" || tone === undefined) return "default";
+  if (tone === "neutral" || tone === undefined || tone === "unknown") return "default";
   return tone;
 }
 

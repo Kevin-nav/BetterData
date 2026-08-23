@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
 
@@ -11,6 +11,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const { loading, isAuthorized, firebaseUser } = useAdminAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Redirect to login when not signed in (never navigate during render).
+  useEffect(() => {
+    if (!loading && !firebaseUser) {
+      router.replace("/login");
+    }
+  }, [loading, firebaseUser, router]);
 
   // Still checking auth state
   if (loading) {
@@ -26,9 +33,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  // Not signed in — redirect to login
+  // Not signed in — redirect handled above; render nothing meanwhile
   if (!firebaseUser) {
-    router.replace("/login");
     return null;
   }
 

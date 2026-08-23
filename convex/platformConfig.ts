@@ -111,6 +111,35 @@ export const setNumberConfigByService = mutation({
   }
 });
 
+export const setStringConfigByService = mutation({
+  args: {
+    serviceSecret: v.string(),
+    key: v.string(),
+    value: v.string()
+  },
+  handler: async (ctx, args) => {
+    requireServiceSecret(args.serviceSecret);
+
+    const existing = await ctx.db
+      .query("platformConfig")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+
+    if (existing === null) {
+      return await ctx.db.insert("platformConfig", {
+        key: args.key,
+        value: args.value
+      });
+    }
+
+    await ctx.db.patch(existing._id, {
+      value: args.value
+    });
+
+    return existing._id;
+  }
+});
+
 export async function readNumberConfig(ctx: QueryCtx | MutationCtx, key: string) {
   const config = await ctx.db
     .query("platformConfig")

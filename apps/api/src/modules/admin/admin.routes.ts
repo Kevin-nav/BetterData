@@ -1,4 +1,4 @@
-import { adminFunctions, opsAlertFunctions, platformConfigFunctions, userFunctions } from "@betterdata/app-api";
+import { adminFunctions, opsAlertFunctions, platformConfigFunctions, purchaseOutageFunctions, userFunctions } from "@betterdata/app-api";
 import { getRequiredEnv } from "@betterdata/config";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -6,7 +6,9 @@ import type { Id } from "../../../../../convex/_generated/dataModel";
 import { createRequireAdmin } from "../../auth/adminAuth";
 import { resolveRateLimitConfig } from "../../config/rateLimits";
 import { createConvexHttpClient } from "../../convexClient";
+import { getPurchaseOutageStatus } from "../purchase-outage/purchaseOutage.routes";
 import { sendBroadcastEmail, sendAgentApplicationApprovedEmail, sendReengagementEmail } from "../../integrations/resend/client";
+import { sendPurchaseRestoredEmail } from "../../integrations/resend/client";
 import { snapshotMetrics } from "../../observability/metrics";
 import { createOrderStore } from "../../orders/orderStore";
 import { createQueueProvider, QUEUE_NAMES } from "../../queue";
@@ -24,6 +26,19 @@ type PaymentConfigKey =
   | "firstPurchaseDiscountGhs"
   | "agentDiscountPercentage"
   | "paymentIntentExpirySeconds";
+type RestorationRecipient = {
+  email: string;
+  userId?: string;
+  displayName?: string;
+  subscriberId?: string;
+  source: "account" | "subscriber";
+};
+
+function serviceArgs() {
+  return {
+    serviceSecret: getRequiredEnv("BETTERDATA_SERVICE_SECRET")
+  };
+}
 
 export async function registerAdminRoutes(server: FastifyInstance) {
   const rateLimits = resolveRateLimitConfig();
@@ -126,6 +141,97 @@ export async function registerAdminRoutes(server: FastifyInstance) {
     });
 
     return { updated: true };
+  });
+
+  server.get("/admin/purchase-outage", adminRouteOptions, async () => {
+    const convex = createConvexHttpClient();
+    const [adminStatus, publicStatus] = await Promise.all([
+      convex.query(adminFunctions.getPurchaseOutageStatus, {}),
+      getPurchaseOutageStatus()
+    ]);
+
+    return {
+      isActive: adminStatus.isActive,
+      updatedAt: adminStatus.updatedAt,
+      adminMessage: adminStatus.message,
+      publicMessage: publicStatus.message
+    };
+  });
+
+  server.post<{
+    Body: { isActive: boolean; message?: string };
+  }>("/admin/purchase-outage", adminRouteOptions, async (request, reply) => {
+    const body = request.body;
+
+    if (typeof body !== "object" || body === null || typeof body.isActive !== "boolean") {
+      return reply.code(400).send({ message: "Invalid purchase outage payload." });
+    }
+
+    const convex = createConvexHttpClient();
+    await convex.mutation(
+      purchaseOutageFunctions.setStatusByService,
+      {
+        ...serviceArgs(),
+        isActive: body.isActive
+      }
+    );
+
+    if (typeof body.message === "string" && body.message.trim().length > 0) {
+      await convex.mutation(platformConfigFunctions.setStringConfigByService, {
+        ...serviceArgs(),
+        key: "purchaseOutageMessage",
+        value: body.message.trim()
+      });
+    }
+
+    return { updated: true };
+  });
+
+  server.post("/admin/purchase-outage/restore-notify", adminRouteOptions, async () => {
+    const convex = createConvexHttpClient();
+
+    await convex.mutation(purchaseOutageFunctions.setStatusByService, {
+      ...serviceArgs(),
+      isActive: false
+    });
+
+    const recipients = (await convex.query(
+      purchaseOutageFunctions.listRestorationRecipients,
+      serviceArgs()
+    )) as RestorationRecipient[];
+    let successCount = 0;
+    let failureCount = 0;
+    const successfulSubscriberEmails: string[] = [];
+
+    for (const recipient of recipients) {
+      const result = await sendPurchaseRestoredEmail({
+        email: recipient.email,
+        ...(recipient.userId !== undefined ? { userId: recipient.userId } : {}),
+        ...(recipient.displayName !== undefined ? { displayName: recipient.displayName } : {})
+      });
+
+      if (result.status === "sent") {
+        successCount += 1;
+        if (recipient.subscriberId !== undefined || recipient.source === "subscriber") {
+          successfulSubscriberEmails.push(recipient.email);
+        }
+      } else {
+        failureCount += 1;
+      }
+    }
+
+    if (successfulSubscriberEmails.length > 0) {
+      await convex.mutation(purchaseOutageFunctions.markSubscribersNotifiedByService, {
+        ...serviceArgs(),
+        emails: successfulSubscriberEmails
+      });
+    }
+
+    return {
+      attempted: recipients.length,
+      successCount,
+      failureCount
+    };
   });
 
   server.post<{ Params: { alertId: string } }>(

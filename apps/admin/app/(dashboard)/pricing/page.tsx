@@ -7,6 +7,7 @@ import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { SearchFilter, type FilterSpec } from "../../components/SearchFilter";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Modal } from "../../components/Modal";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/Toast";
 
 interface DataPackageWithPricing {
@@ -89,6 +90,10 @@ export default function PricingPage() {
   );
   const [overrideValue, setOverrideValue] = useState("");
   const [overrideActive, setOverrideActive] = useState(true);
+
+  // Pending override removal awaiting confirmation in the ConfirmDialog
+  const [removeTarget, setRemoveTarget] =
+    useState<DataPackageWithPricing | null>(null);
 
   // Operations states
   const [submitting, setSubmitting] = useState(false);
@@ -242,13 +247,6 @@ export default function PricingPage() {
 
   const handleRemoveOverride = async (pkg: DataPackageWithPricing) => {
     if (!pkg.activeRule || pkg.activeRule.isGlobal) return;
-    if (
-      !confirm(
-        `Are you sure you want to remove the custom pricing override for "${pkg.name}"?`,
-      )
-    ) {
-      return;
-    }
 
     try {
       setSubmitting(true);
@@ -257,6 +255,7 @@ export default function PricingPage() {
         `Pricing override for "${pkg.name}" removed successfully.`,
         "success",
       );
+      setRemoveTarget(null);
     } catch (err: any) {
       showToast(err.message || "Failed to remove override", "error");
     } finally {
@@ -450,7 +449,7 @@ export default function PricingPage() {
             </button>
             {hasCustomOverride && (
               <button
-                onClick={() => handleRemoveOverride(row)}
+                onClick={() => setRemoveTarget(row)}
                 className="btn btn-ghost btn-sm text-danger"
                 style={{ color: "var(--danger)" }}
               >
@@ -1143,6 +1142,25 @@ export default function PricingPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null);
+        }}
+        title="Remove custom pricing override?"
+        description={
+          removeTarget
+            ? `"${removeTarget.name}" will fall back to the global retail markup (or cost price if none is set).`
+            : undefined
+        }
+        confirmLabel="Remove Override"
+        destructive
+        loading={submitting}
+        onConfirm={() => {
+          if (removeTarget) void handleRemoveOverride(removeTarget);
+        }}
+      />
     </div>
   );
 }

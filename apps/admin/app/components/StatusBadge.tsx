@@ -1,25 +1,34 @@
-const STATUS_CLASSES: Record<string, string> = {
-  completed: "badge status-completed",
-  processing: "badge status-processing",
-  pending: "badge status-pending",
-  failed: "badge status-failed",
-  refunded: "badge status-refunded",
-  verified: "badge status-verified",
-  initialized: "badge status-initialized",
-  abandoned: "badge status-abandoned",
+import React from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+const STATUS_VARIANTS: Record<
+  string,
+  React.ComponentProps<typeof Badge>["variant"]
+> = {
+  // Order / payment / email statuses
+  completed: "success",
+  verified: "success",
+  processing: "info",
+  pending: "warning",
+  failed: "destructive",
+  refunded: "destructive",
+  initialized: "outline",
+  abandoned: "outline",
 
   // Ops alert severities
-  info: "badge badge-info",
-  warning: "badge badge-warning",
-  critical: "badge badge-danger",
+  info: "info",
+  warning: "warning",
+  critical: "destructive",
 
   // Agent application statuses
-  approved: "badge badge-success",
-  rejected: "badge badge-danger",
+  approved: "success",
+  rejected: "destructive",
 
   // Generic
-  success: "badge badge-success",
-  neutral: "badge badge-neutral",
+  success: "success",
+  neutral: "outline",
 };
 
 export function StatusBadge({
@@ -29,6 +38,13 @@ export function StatusBadge({
   status: string;
   label?: string;
 }) {
-  const className = STATUS_CLASSES[status] ?? "badge badge-neutral";
-  return <span className={className}>{label ?? status}</span>;
+  const variant = STATUS_VARIANTS[status] ?? "outline";
+  return (
+    <Badge
+      variant={variant}
+      className={cn(variant === "outline" && "bg-muted text-muted-foreground")}
+    >
+      {label ?? status}
+    </Badge>
+  );
 }
