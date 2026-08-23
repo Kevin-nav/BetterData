@@ -1606,6 +1606,44 @@ export const listAgentsPage = query({
   },
 });
 
+export const listAuditLogsPage = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    action: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    let q = ctx.db.query("auditLogs");
+    if (args.action) {
+      q = q.filter((f) => f.eq(f.field("action"), args.action));
+    }
+
+    const page = await q.order("desc").paginate(args.paginationOpts);
+
+    const results = [];
+    for (const log of page.page) {
+      if (!log.actorId) {
+        results.push({ ...log, actor: null });
+        continue;
+      }
+      const user = await ctx.db.get(log.actorId);
+      results.push({
+        ...log,
+        actor: user
+          ? {
+              displayName: user.displayName,
+              email: user.email,
+              role: user.role,
+            }
+          : null,
+      });
+    }
+
+    return { ...page, page: results };
+  },
+});
+
 export const listAnnouncementsPage = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {

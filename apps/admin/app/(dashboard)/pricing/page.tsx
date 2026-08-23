@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { convexApi } from "@betterdata/app-api";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { SearchFilter, type FilterSpec } from "../../components/SearchFilter";
@@ -46,9 +46,19 @@ type PaymentConfig = {
 export default function PricingPage() {
   const { showToast } = useToast();
   // Query for packages and rules
-  const packages = useQuery(convexApi.admin.listDataPackagesWithPricing, {}) as
-    | DataPackageWithPricing[]
-    | undefined;
+  const {
+    results: packages,
+    status: packagesStatus,
+    loadMore: loadMorePackages,
+  } = usePaginatedQuery(
+    convexApi.admin.listDataPackagesWithPricingPage,
+    {},
+    { initialNumItems: 25 },
+  ) as {
+    results: DataPackageWithPricing[] | undefined;
+    status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
+    loadMore: (numItems: number) => void;
+  };
   const pricingRules = useQuery(convexApi.admin.listPricingRules, {}) as
     | PricingRule[]
     | undefined;
@@ -808,11 +818,31 @@ export default function PricingPage() {
           <DataTable
             columns={columns}
             data={filteredPackages ?? []}
-            isLoading={packages === undefined}
+            isLoading={packagesStatus === "LoadingFirstPage"}
             emptyStateTitle="No packages found"
             emptyStateDescription="Try adjusting your filters or search query."
             rowKey={(row) => row._id}
           />
+
+          {(packagesStatus === "CanLoadMore" ||
+            packagesStatus === "LoadingMore") && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginTop: "var(--space-4)",
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={packagesStatus === "LoadingMore"}
+                onClick={() => loadMorePackages(25)}
+              >
+                {packagesStatus === "LoadingMore" ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import { convexApi } from "@betterdata/app-api";
 import { useAdminAuth } from "../../lib/auth";
+import { getApiBaseUrl } from "../../lib/api";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/Toast";
@@ -42,7 +43,15 @@ export default function AnnouncementsPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // Queries & Mutations
-  const announcements = useQuery(convexApi.admin.listAnnouncements);
+  const {
+    results: announcements,
+    status,
+    loadMore,
+  } = usePaginatedQuery(
+    convexApi.admin.listAnnouncementsPage,
+    {},
+    { initialNumItems: 25 },
+  );
   const createAnnouncement = useMutation(convexApi.admin.createAnnouncement);
   const deleteAnnouncement = useMutation(convexApi.admin.deleteAnnouncement);
 
@@ -72,11 +81,9 @@ export default function AnnouncementsPage() {
       // 2. Trigger email broadcast if requested
       if (channel === "email" || channel === "both") {
         const headers = await getAuthHeaders();
-        const apiBaseUrl =
-          process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
         const res = await fetch(
-          `${apiBaseUrl}/admin/announcements/${id}/broadcast`,
+          `${getApiBaseUrl()}/admin/announcements/${id}/broadcast`,
           {
             method: "POST",
             headers,
@@ -121,11 +128,9 @@ export default function AnnouncementsPage() {
     setBroadcastingId(announcement._id);
     try {
       const headers = await getAuthHeaders();
-      const apiBaseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
       const res = await fetch(
-        `${apiBaseUrl}/admin/announcements/${announcement._id}/broadcast`,
+        `${getApiBaseUrl()}/admin/announcements/${announcement._id}/broadcast`,
         {
           method: "POST",
           headers,
@@ -387,11 +392,30 @@ export default function AnnouncementsPage() {
             <DataTable
               columns={columns}
               data={announcements ?? []}
-              isLoading={announcements === undefined}
+              isLoading={status === "LoadingFirstPage"}
               emptyStateTitle="No announcements found"
               emptyStateDescription="Created announcements will be shown here."
               rowKey={(row) => row._id}
             />
+
+            {(status === "CanLoadMore" || status === "LoadingMore") && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  marginTop: "var(--space-4)",
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={status === "LoadingMore"}
+                  onClick={() => loadMore(25)}
+                >
+                  {status === "LoadingMore" ? "Loading..." : "Load More"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

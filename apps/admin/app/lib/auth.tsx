@@ -18,6 +18,7 @@ import {
   signOut as firebaseSignOut,
   getIdToken,
 } from "./firebase";
+import { getApiBaseUrl } from "./api";
 
 /* ── Types ── */
 type AdminAuthState = {
@@ -44,9 +45,7 @@ type AdminAuthState = {
 const AdminAuthContext = createContext<AdminAuthState | null>(null);
 
 /* ── Provider ── */
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
-const apiClient = createBetterDataApiClient({ baseUrl: API_BASE_URL });
+const apiClient = createBetterDataApiClient({ baseUrl: getApiBaseUrl() });
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);

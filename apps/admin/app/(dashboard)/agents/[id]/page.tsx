@@ -1,13 +1,12 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import Link from "next/link";
 import { convexApi } from "@betterdata/app-api";
 import { StatusBadge } from "../../../components/StatusBadge";
-import { Modal } from "../../../components/Modal";
+import { AgentApplicationReviewModal } from "../../../components/AgentApplicationReviewModal";
 import { useToast } from "../../../components/Toast";
-import { useAdminAuth } from "../../../lib/auth";
 
 type AgentDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -16,21 +15,14 @@ type AgentDetailPageProps = {
 export default function AgentDetailPage({ params }: AgentDetailPageProps) {
   const { id } = use(params);
   const { showToast } = useToast();
-  const { getAuthHeaders } = useAdminAuth();
 
   // Queries
   const user = useQuery(convexApi.admin.getUser, { userId: id as any });
   const application = useQuery(convexApi.admin.getAgentApplication, { userId: id as any });
   const stats = useQuery(convexApi.admin.getAgentStats, { userId: id as any });
 
-  // Mutations
-  const approveApplication = useMutation(convexApi.admin.approveAgentApplication);
-  const rejectApplication = useMutation(convexApi.admin.rejectAgentApplication);
-
-  // Action Modals State
+  // Action Modal State
   const [modalAction, setModalAction] = useState<"approve" | "reject" | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (user === undefined || application === undefined) {
     return (
@@ -54,49 +46,6 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
       </div>
     );
   }
-
-  const handleAction = async () => {
-    if (!application || !modalAction) return;
-    setIsSubmitting(true);
-    try {
-      if (modalAction === "approve") {
-        await approveApplication({ applicationId: application._id as any });
-        showToast("Agent application approved successfully.", "success");
-
-        try {
-          const headers = await getAuthHeaders();
-          const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
-          const emailResponse = await fetch(`${apiBaseUrl}/admin/agents/${id}/email-approved`, {
-            method: "POST",
-            headers
-          });
-          if (!emailResponse.ok) {
-            const errorText = await emailResponse.text();
-            throw new Error(`Server returned status ${emailResponse.status}: ${errorText}`);
-          }
-        } catch (emailErr: any) {
-          console.error("Failed to trigger agent approval email:", emailErr);
-          showToast("Agent approved, but notification email failed to send.", "warning");
-        }
-      } else {
-        const args: { applicationId: any; reason?: string } = {
-          applicationId: application._id as any,
-        };
-        if (rejectReason.trim()) {
-          args.reason = rejectReason.trim();
-        }
-        await rejectApplication(args);
-        showToast("Agent application rejected.", "success");
-      }
-      setModalAction(null);
-      setRejectReason("");
-    } catch (err: any) {
-      console.error("Action failed:", err);
-      showToast(err.message || "An error occurred while processing the request.", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <div>
@@ -219,7 +168,7 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
               <div style={{ gridColumn: "span 2" }}>
                 <span className="text-muted text-sm" style={{ display: "block" }}>Total Volume Purchased</span>
                 <div style={{ fontSize: "var(--font-size-3xl)", fontWeight: 800, color: "var(--primary)" }}>
-                  GHS {stats?.totalSpendGhs.toFixed(2) ?? "0.00"}
+                  GHS {(stats?.totalSpendGhs ?? 0).toFixed(2)}
                 </div>
               </div>
             </div>
@@ -228,66 +177,27 @@ export default function AgentDetailPage({ params }: AgentDetailPageProps) {
       </div>
 
       {/* Approve/Reject Confirmation Modal */}
-      <Modal
-        isOpen={modalAction !== null}
-        onClose={() => {
-          if (!isSubmitting) {
-            setModalAction(null);
-            setRejectReason("");
-          }
-        }}
-        title={modalAction === "approve" ? "Approve Agent" : "Reject Agent Application"}
-        footer={
-          <>
-            <button
-              className="btn btn-secondary"
-              disabled={isSubmitting}
-              onClick={() => {
-                setModalAction(null);
-                setRejectReason("");
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className={modalAction === "approve" ? "btn btn-primary" : "btn btn-danger"}
-              disabled={isSubmitting}
-              onClick={handleAction}
-            >
-              {isSubmitting ? "Processing..." : modalAction === "approve" ? "Confirm Approve" : "Confirm Reject"}
-            </button>
-          </>
+      <AgentApplicationReviewModal
+        action={modalAction}
+        application={
+          application
+            ? {
+                _id: application._id as any,
+                userId: id,
+                paymentReference: application.paymentReference,
+              }
+            : null
         }
-      >
-        {application && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            <p>
-              Are you sure you want to <strong>{modalAction === "approve" ? "APPROVE" : "REJECT"}</strong> the agent application for{" "}
-              <strong>{user.displayName || "this user"}</strong>?
-            </p>
-
-            {modalAction === "approve" ? (
-              <p className="text-muted" style={{ fontSize: "var(--font-size-sm)" }}>
-                This updates their role to <strong>agent</strong>, which gives them access to cheaper reseller packages.
-              </p>
-            ) : (
-              <div className="form-group">
-                <label className="form-label" htmlFor="reason">
-                  Reason for Rejection (Optional)
-                </label>
-                <textarea
-                  id="reason"
-                  className="textarea"
-                  placeholder="Provide a reason for rejection..."
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
+        user={user}
+        onClose={() => setModalAction(null)}
+        onSuccess={(message) => {
+          showToast(message, "success");
+          setModalAction(null);
+        }}
+        onError={(message) => {
+          showToast(message, "error");
+        }}
+      />
     </div>
   );
 }

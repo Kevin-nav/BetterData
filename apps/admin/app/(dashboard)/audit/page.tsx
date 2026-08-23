@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import { convexApi } from "@betterdata/app-api";
 import { DataTable, type ColumnDef } from "../../components/DataTable";
 import { Modal } from "../../components/Modal";
+import { JsonViewer } from "../../components/JsonViewer";
 
 type AuditLog = {
   _id: string;
@@ -56,7 +57,19 @@ export default function AuditLogsPage() {
     queryArgs.action = selectedAction;
   }
 
-  const logs = useQuery(convexApi.admin.listAuditLogs, queryArgs);
+  const {
+    results: logs,
+    status,
+    loadMore,
+  } = usePaginatedQuery(
+    convexApi.admin.listAuditLogsPage,
+    queryArgs,
+    { initialNumItems: 25 },
+  );
+
+  const isLoadingFirstPage = status === "LoadingFirstPage";
+  const isLoadingMore = status === "LoadingMore";
+  const hasMore = status === "CanLoadMore";
 
   const columns: ColumnDef<AuditLog>[] = [
     {
@@ -197,11 +210,29 @@ export default function AuditLogsPage() {
           <DataTable
             columns={columns}
             data={logs ?? []}
-            isLoading={logs === undefined}
+            isLoading={isLoadingFirstPage}
             emptyStateTitle="No audit logs recorded"
             emptyStateDescription="Activity events will be populated as admin actions occur."
             rowKey={(row) => row._id}
           />
+
+          {hasMore && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginTop: "var(--space-4)",
+              }}
+            >
+              <button
+                className="btn btn-secondary"
+                disabled={isLoadingMore}
+                onClick={() => loadMore(25)}
+              >
+                {isLoadingMore ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -272,34 +303,10 @@ export default function AuditLogsPage() {
               <span className="font-mono">{selectedLog.target}</span>
             </div>
 
-            <div>
-              <span
-                style={{
-                  fontWeight: 600,
-                  color: "var(--text-muted)",
-                  display: "block",
-                  marginBottom: "var(--space-2)",
-                  fontSize: "var(--font-size-sm)",
-                }}
-              >
-                Metadata Payload:
-              </span>
-              <pre
-                style={{
-                  background: "var(--bg-inset)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                  padding: "var(--space-3)",
-                  overflowX: "auto",
-                  fontSize: "var(--font-size-xs)",
-                  color: "var(--text)",
-                  fontFamily: "monospace",
-                  margin: 0,
-                }}
-              >
-                {JSON.stringify(selectedLog.metadata || {}, null, 2)}
-              </pre>
-            </div>
+            <JsonViewer
+              value={selectedLog.metadata ?? {}}
+              label="Metadata Payload"
+            />
           </div>
         )}
       </Modal>
