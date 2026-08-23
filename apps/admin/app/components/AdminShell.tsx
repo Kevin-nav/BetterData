@@ -6,6 +6,7 @@ import { Menu } from "lucide-react";
 
 import { useAdminAuth } from "../lib/auth";
 import { Sidebar } from "./Sidebar";
+import { OutageBanner } from "./OutageBanner";
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const { loading, isAuthorized, firebaseUser } = useAdminAuth();
@@ -60,7 +61,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <div />
         </div>
 
-        <main className="admin-page">{children}</main>
+        <main
+          className="admin-page"
+          style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}
+        >
+          <OutageBanner />
+          {children}
+        </main>
       </div>
     </div>
   );

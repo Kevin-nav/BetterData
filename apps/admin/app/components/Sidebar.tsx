@@ -14,6 +14,8 @@ import {
   LogOut,
   X,
   Mail,
+  RefreshCcw,
+  ShieldAlert,
 } from "lucide-react";
 
 import { useAdminAuth } from "../lib/auth";
@@ -31,6 +33,8 @@ const SYSTEM_ITEMS = [
   { label: "Settings", href: "/settings", icon: Settings },
   { label: "Announcements", href: "/announcements", icon: Megaphone },
   { label: "Audit Log", href: "/audit", icon: ClipboardList },
+  { label: "Retry Queue", href: "/retries", icon: RefreshCcw },
+  { label: "Availability", href: "/outage", icon: ShieldAlert },
 ];
 
 function getInitials(name: string | null, email: string | null): string {
